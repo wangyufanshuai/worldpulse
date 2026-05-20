@@ -1,0 +1,10 @@
+.venv/
+.playwright-cli/
+__pycache__/
+.pytest_cache/
+*.pyc
+data/*.sqlite
+data/*.db
+data/*.log
+data/cache/
+data/reports/

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WorldPulse 世界局势模拟器</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div><p class="eyebrow">全球综合风险与情景推演</p><h1>WorldPulse</h1></div>
+      <div class="top-actions"><span id="health" class="status-pill">连接中...</span><button id="refresh" type="button">刷新</button><button id="exportReport" type="button">导出报告</button></div>
+    </header>
+
+    <nav class="module-nav" aria-label="功能模块">
+      <button class="module-tab active" data-module="dashboard" type="button">风险总览</button>
+      <button class="module-tab" data-module="simulation" type="button">世界模拟器</button>
+      <button class="module-tab" data-module="ai" type="button">AI 分析</button>
+      <button class="module-tab" data-module="species" type="button">物种分布</button>
+      <button class="module-tab" data-module="analysis" type="button">详细分析</button>
+      <button class="module-tab" data-module="scenario" type="button">快速情景</button>
+      <button class="module-tab" data-module="replay" type="button">事件复盘</button>
+      <button class="module-tab" data-module="indicators" type="button">指标库</button>
+      <button class="module-tab" data-module="alerts" type="button">预警中心</button>
+      <button class="module-tab" data-module="health" type="button">数据健康</button>
+      <button class="module-tab" data-module="downloads" type="button">下载中心</button>
+      <button class="module-tab" data-module="reports" type="button">报告中心</button>
+    </nav>
+
+    <main id="dashboardModule" class="grid module-view">
+      <section class="panel hero-panel"><div class="dial"><span class="dial-label">综合指数</span><strong id="score">--</strong><span id="level">--</span></div><div class="brief"><p class="eyebrow">风险态势</p><h2 id="headline">正在加载全球风险状态</h2><p id="summary" class="summary"></p><div class="forecast"><div><span>30天上升概率</span><strong id="forecast">--</strong></div><div><span>趋势</span><strong id="trend">--</strong></div><div><span>日期</span><strong id="date">--</strong></div></div></div></section>
+      <section class="panel wide"><div class="section-heading"><div><p class="eyebrow">历史走势</p><h2>风险时间线</h2></div><span class="muted">综合与分项得分，0-100</span></div><div id="chart" class="chart"></div></section>
+      <section class="panel"><div class="section-heading"><div><p class="eyebrow">分项风险</p><h2>风险结构</h2></div></div><div id="components" class="component-list"></div></section>
+      <section class="panel"><div class="section-heading"><div><p class="eyebrow">驱动因素</p><h2>当前信号</h2></div></div><div id="drivers" class="drivers"></div></section>
+    </main>
+
+    <main id="simulationModule" class="workbench module-view hidden">
+      <section class="panel wide simulation-hero"><div><p class="eyebrow">World Situation Simulator</p><h2>世界局势模拟器</h2><p class="summary">把国家/经济体作为 Agent，沿贸易、能源、金融、冲突网络传播政策冲击。结果显示 P10/P50/P90 不确定性区间，不给单点预测。</p></div><div class="mini-score"><span>12个月中位风险</span><strong id="simulationScore">--</strong><em id="simulationBand">P10/P90 --</em></div></section>
+      <section class="panel"><div class="section-heading"><div><p class="eyebrow">政策输入</p><h2>情景控制台</h2></div></div><div class="simulation-controls"><label>内置情景<select id="simulationScenario"></select></label><label>冲击类型<select id="shockType"><option value="energy">能源价格冲击</option><option value="tariff">关税壁垒</option><option value="sanction">制裁链条</option><option value="rate_hike">利率上行</option><option value="rate_cut">利率下行</option></select></label><label>目标经济体<select id="shockTargets" multiple size="7"></select></label><label>强度 <b id="shockIntensityLabel">0.50</b><input id="shockIntensity" type="range" min="0.05" max="1" step="0.05" value="0.5" /></label><label>持续月数 <b id="shockDurationLabel">6</b><input id="shockDuration" type="range" min="1" max="12" step="1" value="6" /></label><label>传播系数 <b id="shockPropagationLabel">0.35</b><input id="shockPropagation" type="range" min="0.05" max="0.8" step="0.05" value="0.35" /></label><label>蒙特卡洛次数<input id="simulationRuns" type="number" min="50" max="2000" value="500" /></label><button id="runSimulation" type="button">运行模拟</button></div></section>
+      <section class="panel"><div class="section-heading"><div><p class="eyebrow">解释</p><h2>模拟结论</h2></div></div><p id="simulationSummary" class="scenario-output">选择情景后运行模拟。</p><div id="simulationDrivers" class="analysis-list"></div></section>
+      <section class="panel wide"><div class="section-heading"><div><p class="eyebrow">不确定性</p><h2>全球风险分位带</h2></div><span class="muted">P10 / P50 / P90</span></div><div id="simulationPathChart" class="chart"></div></section>
+      <section class="panel wide"><div class="section-heading"><div><p class="eyebrow">地图</p><h2>国家 Agent 热力</h2></div><span class="muted">颜色为 P50 风险，点大小为不确定性</span></div><div id="simulationMap" class="species-map"></div></section>
+      <section class="panel"><div class="section-heading"><div><p class="eyebrow">影响排名</p><h2>承压经济体</h2></div></div><div id="countryImpactList" class="analysis-list"></div></section>
+      <section class="panel"><div class="section-heading"><div><p class="eyebrow">传播链</p><h2>网络外溢</h2></div></div><div id="propagationList" class="analysis-list"></div></section>
+      <section class="panel"><div class="section-heading"><div><p class="eyebrow">国家详情</p><h2 id="agentDetailTitle">选择地图节点</h2></div></div><div id="agentDetail" class="analysis-list"><article class="analysis-card"><strong>等待选择</strong><p>点击地图上的国家/经济体节点，查看真实指标、数据来源和兜底字段。</p></article></div></section>
+      <section class="panel wide"><div class="section-heading"><div><p class="eyebrow">Data Accuracy</p><h2>数据准确度面板</h2></div><span class="muted">真实数据、缓存与兜底字段</span></div><div id="simulationDataHealth" class="library-grid"></div></section>
+    </main>
+
+    <main id="aiModule" class="workbench module-view hidden">
+      <section class="panel wide module-hero"><p class="eyebrow">AI Situation Analysis</p><h2>AI 局势分析</h2><p class="summary">默认使用硅基流动，DeepSeek 作为备用模型。AI 只读取本地风险、模拟、事件和数据质量结果，生成结构化研判报告；不输出确定性预测。</p></section>
+      <section class="panel"><div class="section-heading"><div><p class="eyebrow">状态</p><h2>模型网关</h2></div></div><div id="aiStatus" class="analysis-list"></div><div class="replay-controls"><label>分析对象<select id="aiAgentSelect"><option value="">全球</option></select></label><label>事件窗口<select id="aiWindow"><option value="7">近7天</option><option value="30" selected>近30天</option><option value="90">近90天</option></select></label><button id="analyzeRisk" type="button">分析当前风险</button><button id="analyzeSimulation" type="button">解释当前模拟</button></div></section>
+      <section class="panel"><div class="section-heading"><div><p class="eyebrow">事件摘要</p><h2>新闻舆情与事件</h2></div></div><div id="eventDigest" class="analysis-list"></div></section>
+      <section class="panel wide"><div class="section-heading"><div><p class="eyebrow">结构化输出</p><h2 id="aiResultTitle">等待分析</h2></div><span class="muted">证据 / 不确定性 / 观察信号</span></div><div id="aiResult" class="indicator-matrix"></div></section>
+    </main>
+
+    <main id="replayModule" class="workbench module-view hidden"><section class="panel wide scenario-hero"><div><p class="eyebrow">Replay Lab</p><h2>事件复盘中心</h2><p id="replaySummary" class="summary">选择历史窗口，观察综合风险、分项结构和资产表现如何变化。</p></div><div class="mini-score"><span>风险变化</span><strong id="replayChange">--</strong><em id="replayWindow">--</em></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">窗口选择</p><h2>复盘参数</h2></div></div><div class="replay-controls"><label>历史窗口<select id="replayWindowSelect"><option value="60">近60个交易日</option><option value="120" selected>近120个交易日</option><option value="240">近240个交易日</option><option value="360">近360个交易日</option></select></label><button id="loadReplay" type="button">生成复盘</button><a id="downloadReplay" href="/api/exports/replay.csv?window_days=120">下载复盘CSV</a></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">资产联动</p><h2>市场表现</h2></div></div><div id="assetMoves" class="analysis-list"></div></section><section class="panel wide"><div class="section-heading"><div><p class="eyebrow">复盘曲线</p><h2>窗口内风险变化</h2></div></div><div id="replayChart" class="chart"></div></section><section class="panel wide"><div class="section-heading"><div><p class="eyebrow">结构变化</p><h2>分项起止对比</h2></div></div><div id="replayComponents" class="library-grid"></div></section></main>
+    <main id="speciesModule" class="workbench module-view hidden"><section class="panel species-hero"><div><p class="eyebrow">Biodiversity Signal</p><h2>生物多样性分布研究</h2><p class="summary">接入非洲动物与海洋生物公开观测记录，用物种分布、观测密度和最近记录补充生态风险视角。</p></div><div class="species-controls"><label>选择物种<select id="speciesSelect"></select></label><button id="loadSpecies" type="button">加载物种</button></div></section><section class="panel wide"><div class="section-heading"><div><p class="eyebrow">分布地图</p><h2 id="speciesTitle">等待加载</h2></div><span id="speciesMeta" class="muted">GBIF / OBIS 公开数据</span></div><div id="speciesMap" class="species-map"></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">生态压力</p><h2>物种档案</h2></div></div><div id="speciesProfile" class="species-profile"></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">样本记录</p><h2>最近观测点</h2></div></div><div id="occurrenceList" class="occurrence-list"></div></section></main>
+    <main id="analysisModule" class="workbench module-view hidden"><section class="panel wide analysis-hero"><div><p class="eyebrow">Risk Attribution</p><h2>详细分析与风险归因</h2><p id="analysisSummary" class="summary">正在加载指标贡献、近30天变化和关键驱动因素。</p></div><div class="mini-score"><span>综合风险</span><strong id="analysisScore">--</strong><em id="analysisLevel">--</em></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">分项贡献</p><h2>总分拆解</h2></div></div><div id="componentAttribution" class="analysis-list"></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">变化排行</p><h2>关键驱动</h2></div></div><div id="driverRanking" class="analysis-list"></div></section><section class="panel wide"><div class="section-heading"><div><p class="eyebrow">指标级拆解</p><h2>全部信号</h2></div></div><div id="indicatorMatrix" class="indicator-matrix"></div></section></main>
+    <main id="scenarioModule" class="workbench module-view hidden"><section class="panel wide scenario-hero"><div><p class="eyebrow">Quick Sensitivity</p><h2>快速情景实验室</h2><p class="summary">拖动五类风险，快速观察综合风险分数和等级变化。它适合敏感性分析，不代表真实预测。</p></div><div class="mini-score"><span>模拟总分</span><strong id="scenarioScore">--</strong><em id="scenarioLevel">--</em></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">假设输入</p><h2>风险滑块</h2></div></div><div id="scenarioControls" class="scenario-controls"></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">结果解释</p><h2>模拟结论</h2></div></div><div id="scenarioOutput" class="scenario-output"></div></section></main>
+    <main id="indicatorsModule" class="workbench module-view hidden"><section class="panel wide module-hero"><p class="eyebrow">Indicator Library</p><h2>指标库</h2><p class="summary">查看所有进入模型的指标、来源、频率、公式、当前风险分和30天变化。</p></section><section class="panel wide"><div id="indicatorLibrary" class="library-grid"></div></section></main>
+    <main id="alertsModule" class="workbench module-view hidden"><section class="panel wide module-hero"><p class="eyebrow">Alert Center</p><h2>预警中心</h2><p class="summary">基于综合风险、分项风险和指标异动生成规则预警。</p></section><section class="panel wide"><div id="alertList" class="alert-list"></div></section></main>
+    <main id="healthModule" class="workbench module-view hidden"><section class="panel wide module-hero"><p class="eyebrow">Data Source Health</p><h2>数据源健康中心</h2><p class="summary">检查当前数据源、缓存年龄、兜底状态和公开接口使用情况。</p></section><section class="panel wide"><div id="dataHealthList" class="health-list"></div></section></main>
+    <main id="downloadsModule" class="workbench module-view hidden"><section class="panel wide module-hero"><p class="eyebrow">Export Center</p><h2>下载中心</h2><p class="summary">导出历史风险、指标库、预警列表、复盘曲线和当前物种样本。</p></section><section class="panel wide"><div id="downloadCards" class="report-grid"></div></section></main>
+    <main id="reportsModule" class="workbench module-view hidden"><section class="panel wide module-hero"><p class="eyebrow">Report Lab</p><h2>报告中心</h2><p class="summary">生成综合简报、详细归因报告和系统健康报告。</p></section><section class="panel wide"><div id="reportTemplates" class="report-grid"></div></section></main>
+
+    <script src="/static/app.js?v=ai-gateway"></script>
+  </body>
+</html>

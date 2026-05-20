@@ -1,0 +1,66 @@
+financial:
+  weight: 0.30
+  series:
+    - key: sp500
+      name: S&P 500
+      symbol: ^GSPC
+      fred_id: SP500
+      kind: market
+    - key: nasdaq
+      name: Nasdaq 100
+      symbol: ^NDX
+      fred_id: NASDAQ100
+      kind: market
+    - key: gold
+      name: Gold
+      symbol: GLD
+      world_bank_price_code: GOLD
+      kind: haven
+    - key: oil
+      name: WTI Crude Oil
+      symbol: USO
+      fred_id: DCOILWTICO
+      kind: commodity
+    - key: vix
+      name: VIX
+      symbol: ^VIX
+      fred_id: VIXCLS
+      kind: volatility
+climate:
+  weight: 0.20
+  synthetic:
+    - key: temp_anomaly
+      name: Global Temperature Anomaly
+    - key: ocean_heat
+      name: Ocean Heat Stress
+    - key: co2_pressure
+      name: Atmospheric CO2 Pressure
+    - key: enso_stress
+      name: ENSO Climate Stress
+geopolitical:
+  weight: 0.20
+  synthetic:
+    - key: conflict_intensity
+      name: Conflict Intensity
+    - key: policy_uncertainty
+      name: Policy Uncertainty
+ecology:
+  weight: 0.15
+  synthetic:
+    - key: drought_stress
+      name: Drought Stress
+    - key: food_pressure
+      name: Food Price Pressure
+    - key: fertilizer_pressure
+      name: Fertilizer Price Pressure
+macro:
+  weight: 0.15
+  synthetic:
+    - key: credit_spread
+      name: US High Yield Credit Spread
+    - key: yield_curve
+      name: US Treasury Yield Curve Stress
+    - key: dollar_stress
+      name: Trade Weighted Dollar Stress
+    - key: gas_pressure
+      name: Natural Gas Price Pressure
