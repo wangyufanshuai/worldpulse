@@ -4,6 +4,11 @@ from fastapi.responses import PlainTextResponse, Response
 from app.core.models import (
     AIAnalysisRequest,
     AIAnalysisResult,
+    CausalAnalysisRequest,
+    CausalAnalysisResult,
+    CausalBacktestResult,
+    CausalChain,
+    CausalEvent,
     CompositeRisk,
     CountryAgent,
     EventDigest,
@@ -24,6 +29,10 @@ from app.core.models import (
 )
 from app.services.ai_analysis import analyze_current_risk, analyze_simulation, export_ai_report
 from app.services.ai_client import ai_status
+from app.services.causal_analysis import analyze_causal_world, export_causal_report
+from app.services.causal_backtest import run_causal_backtest
+from app.services.causal_data import build_causal_events, select_event
+from app.services.causal_graph import build_causal_chain
 from app.services.event_digest import build_agent_event_digest, build_event_digest
 from app.services.exports import alerts_csv, indicators_csv, replay_csv, risk_history_csv, species_occurrences_csv
 from app.services.report import export_report, render_report
@@ -106,6 +115,32 @@ def events_digest(window_days: int = 30, region: str = "global") -> EventDigest:
 @router.get("/events/agent/{code}", response_model=EventDigest)
 def events_agent_digest(code: str, window_days: int = 30) -> EventDigest:
     return build_agent_event_digest(code=code, window_days=window_days)
+
+
+@router.get("/causal/events", response_model=list[CausalEvent])
+def causal_events(window_days: int = 30, region: str = "global") -> list[CausalEvent]:
+    return build_causal_events(window_days=window_days, region=region)
+
+
+@router.get("/causal/graph", response_model=CausalChain)
+def causal_graph(window_days: int = 30, region: str = "global", event_type: str | None = None) -> CausalChain:
+    events = build_causal_events(window_days=window_days, region=region)
+    return build_causal_chain(select_event(events, event_type))
+
+
+@router.post("/causal/analyze", response_model=CausalAnalysisResult)
+def causal_analyze(request: CausalAnalysisRequest) -> CausalAnalysisResult:
+    return analyze_causal_world(request)
+
+
+@router.get("/causal/backtest", response_model=CausalBacktestResult)
+def causal_backtest(event_type: str = "conflict", window_days: int = 120, horizon_days: int = 20) -> CausalBacktestResult:
+    return run_causal_backtest(event_type=event_type, window_days=window_days, horizon_days=horizon_days)
+
+
+@router.post("/causal/report/export", response_model=ReportExport)
+def causal_report_export(request: CausalAnalysisRequest) -> ReportExport:
+    return export_causal_report(request)
 
 
 @router.get("/simulation/agents", response_model=list[CountryAgent])

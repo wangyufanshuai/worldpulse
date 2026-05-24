@@ -379,3 +379,93 @@ class AIAnalysisResult(BaseModel):
     watch_signals: list[WatchSignal]
     scenario_suggestions: list[ScenarioSuggestion]
     disclaimer: str
+
+
+class CausalEvent(BaseModel):
+    event_type: str
+    name: str
+    region: str
+    window_days: int
+    intensity: float
+    event_count: int
+    source: str
+    summary: str
+    confidence: float
+
+
+class CausalGraphNode(BaseModel):
+    id: str
+    label: str
+    kind: str
+    score: float
+
+
+class CausalGraphEdge(BaseModel):
+    source: str
+    target: str
+    relation: str
+    weight: float
+    confidence: float
+    explanation: str
+
+
+class CausalChain(BaseModel):
+    event_type: str
+    title: str
+    nodes: list[CausalGraphNode]
+    edges: list[CausalGraphEdge]
+    confidence: float
+    explanation: str
+
+
+class MarketImpact(BaseModel):
+    asset_key: str
+    asset_name: str
+    direction: str
+    expected_return_pct: float
+    confidence: float
+    rationale: str
+
+
+class SimilarEvent(BaseModel):
+    date: str
+    event_type: str
+    title: str
+    similarity: float
+    market_move: str
+    notes: str
+
+
+class CausalBacktestResult(BaseModel):
+    event_type: str
+    window_days: int
+    sample_count: int
+    hit_rate: float
+    average_impact: float
+    max_error: float
+    impacts: list[MarketImpact]
+    similar_events: list[SimilarEvent]
+    error_attribution: list[str]
+
+
+class CausalAnalysisRequest(BaseModel):
+    event_type: str | None = None
+    region: str = "global"
+    window_days: int = 30
+    horizon_days: int = 20
+    use_ai: bool = True
+
+
+class CausalAnalysisResult(BaseModel):
+    title: str
+    summary: str
+    events: list[CausalEvent]
+    chains: list[CausalChain]
+    impacts: list[MarketImpact]
+    similar_events: list[SimilarEvent]
+    backtest: CausalBacktestResult
+    uncertainty: list[str]
+    error_attribution: list[str]
+    reasoning_path: list[str]
+    ai_explanation: str
+    disclaimer: str

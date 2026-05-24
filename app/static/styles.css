@@ -765,6 +765,7 @@ meter::-webkit-meter-even-less-good-value {
 }
 
 select,
+input[type="text"],
 input[type="number"],
 .species-controls button,
 .replay-controls button,
@@ -779,6 +780,7 @@ input[type="number"],
 }
 
 select,
+input[type="text"],
 input[type="number"] {
   width: 100%;
   padding: 8px 10px;

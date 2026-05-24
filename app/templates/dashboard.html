@@ -30,6 +30,7 @@
     <nav class="module-nav" aria-label="功能模块">
       <button class="module-tab active" data-module="dashboard" type="button">风险总览</button>
       <button class="module-tab" data-module="simulation" type="button">世界模拟器</button>
+      <button class="module-tab" data-module="causal" type="button">因果系统</button>
       <button class="module-tab" data-module="ai" type="button">AI 研判</button>
       <button class="module-tab" data-module="species" type="button">物种分布</button>
       <button class="module-tab" data-module="analysis" type="button">详细分析</button>
@@ -90,6 +91,53 @@
       <section class="panel wide"><div class="section-heading"><div><p class="eyebrow">结构化输出</p><h2 id="aiResultTitle">等待分析</h2></div><span class="muted">证据 / 不确定性 / 观察信号</span></div><div id="aiResult" class="indicator-matrix"></div></section>
     </main>
 
+    <main id="causalModule" class="workbench module-view hidden">
+      <section class="panel wide module-hero">
+        <p class="eyebrow">CausalWorldQuant</p>
+        <h2>可解释因果推理系统</h2>
+        <p class="summary">从新闻、宏观、商品、汇率和股票代理数据中抽取事件，构建因果链，回测相似事件，并输出置信度、历史证据和错误归因。</p>
+      </section>
+      <section class="panel">
+        <div class="section-heading"><div><p class="eyebrow">控制台</p><h2>因果分析输入</h2></div></div>
+        <div class="replay-controls">
+          <label>事件类型<select id="causalEventType"><option value="">自动选择最强事件</option><option value="conflict">冲突</option><option value="sanctions">制裁</option><option value="energy">能源</option><option value="food">粮食</option><option value="rates">利率</option><option value="trade">贸易</option><option value="climate">气候灾害</option></select></label>
+          <label>区域<input id="causalRegion" type="text" value="global" /></label>
+          <label>事件窗口<select id="causalWindow"><option value="7">近 7 天</option><option value="30" selected>近 30 天</option><option value="90">近 90 天</option></select></label>
+          <label>影响窗口<select id="causalHorizon"><option value="10">10 日</option><option value="20" selected>20 日</option><option value="60">60 日</option></select></label>
+          <button id="runCausal" type="button">运行因果分析</button>
+          <button id="exportCausalReport" type="button">导出因果报告</button>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="section-heading"><div><p class="eyebrow">事件热度</p><h2>事件候选</h2></div></div>
+        <div id="causalEvents" class="analysis-list"></div>
+      </section>
+      <section class="panel wide chart-panel">
+        <div class="section-heading"><div><p class="eyebrow">因果图谱</p><h2>事件到市场的推理路径</h2></div><span class="muted">节点大小代表强度，边代表可解释传播机制</span></div>
+        <div id="causalGraph" class="chart loading-surface"></div>
+      </section>
+      <section class="panel">
+        <div class="section-heading"><div><p class="eyebrow">市场影响</p><h2>影响矩阵</h2></div></div>
+        <div id="causalImpacts" class="analysis-list"></div>
+      </section>
+      <section class="panel">
+        <div class="section-heading"><div><p class="eyebrow">回测</p><h2>事件类型验证</h2></div></div>
+        <div id="causalBacktest" class="analysis-list"></div>
+      </section>
+      <section class="panel">
+        <div class="section-heading"><div><p class="eyebrow">相似历史</p><h2>历史相似事件</h2></div></div>
+        <div id="causalSimilar" class="analysis-list"></div>
+      </section>
+      <section class="panel">
+        <div class="section-heading"><div><p class="eyebrow">归因边界</p><h2>错误归因分析</h2></div></div>
+        <div id="causalErrors" class="analysis-list"></div>
+      </section>
+      <section class="panel wide">
+        <div class="section-heading"><div><p class="eyebrow">解释</p><h2 id="causalTitle">等待因果分析</h2></div><span class="muted">置信度 / 推理路径 / 不确定性</span></div>
+        <div id="causalReasoning" class="indicator-matrix"></div>
+      </section>
+    </main>
+
     <main id="replayModule" class="workbench module-view hidden"><section class="panel wide scenario-hero"><div><p class="eyebrow">Replay Lab</p><h2>事件复盘中心</h2><p id="replaySummary" class="summary">选择历史窗口，观察综合风险、分项结构和资产表现如何变化。</p></div><div class="mini-score"><span>风险变化</span><strong id="replayChange">--</strong><em id="replayWindow">--</em></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">窗口选择</p><h2>复盘参数</h2></div></div><div class="replay-controls"><label>历史窗口<select id="replayWindowSelect"><option value="60">近 60 个交易日</option><option value="120" selected>近 120 个交易日</option><option value="240">近 240 个交易日</option><option value="360">近 360 个交易日</option></select></label><button id="loadReplay" type="button">生成复盘</button><a id="downloadReplay" href="/api/exports/replay.csv?window_days=120">下载复盘 CSV</a></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">资产联动</p><h2>市场表现</h2></div></div><div id="assetMoves" class="analysis-list"></div></section><section class="panel wide chart-panel"><div class="section-heading"><div><p class="eyebrow">复盘曲线</p><h2>窗口内风险变化</h2></div></div><div id="replayChart" class="chart loading-surface"></div></section><section class="panel wide"><div class="section-heading"><div><p class="eyebrow">结构变化</p><h2>分项起止对比</h2></div></div><div id="replayComponents" class="library-grid"></div></section></main>
     <main id="speciesModule" class="workbench module-view hidden"><section class="panel species-hero"><div><p class="eyebrow">Biodiversity Signal</p><h2>生物多样性分布研究</h2><p class="summary">接入非洲动物与海洋生物公开观测记录，用物种分布、观测密度和最近记录补充生态风险视角。</p></div><div class="species-controls"><label>选择物种<select id="speciesSelect"></select></label><button id="loadSpecies" type="button">加载物种</button></div></section><section class="panel wide chart-panel"><div class="section-heading"><div><p class="eyebrow">分布地图</p><h2 id="speciesTitle">等待加载</h2></div><span id="speciesMeta" class="muted">GBIF / OBIS 公开数据</span></div><div id="speciesMap" class="species-map loading-surface"></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">生态压力</p><h2>物种档案</h2></div></div><div id="speciesProfile" class="species-profile"></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">样本记录</p><h2>最近观测点</h2></div></div><div id="occurrenceList" class="occurrence-list"></div></section></main>
     <main id="analysisModule" class="workbench module-view hidden"><section class="panel wide analysis-hero"><div><p class="eyebrow">Risk Attribution</p><h2>详细分析与风险归因</h2><p id="analysisSummary" class="summary">正在加载指标贡献、近 30 天变化和关键驱动因素。</p></div><div class="mini-score"><span>综合风险</span><strong id="analysisScore">--</strong><em id="analysisLevel">--</em></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">分项贡献</p><h2>总分拆解</h2></div></div><div id="componentAttribution" class="analysis-list"></div></section><section class="panel"><div class="section-heading"><div><p class="eyebrow">变化排行</p><h2>关键驱动</h2></div></div><div id="driverRanking" class="analysis-list"></div></section><section class="panel wide"><div class="section-heading"><div><p class="eyebrow">指标级拆解</p><h2>全部信号</h2></div></div><div id="indicatorMatrix" class="indicator-matrix"></div></section></main>
@@ -100,6 +148,6 @@
     <main id="downloadsModule" class="workbench module-view hidden"><section class="panel wide module-hero"><p class="eyebrow">Export Center</p><h2>下载中心</h2><p class="summary">导出历史风险、指标库、预警列表、复盘曲线和当前物种样本。</p></section><section class="panel wide"><div id="downloadCards" class="report-grid"></div></section></main>
     <main id="reportsModule" class="workbench module-view hidden"><section class="panel wide module-hero"><p class="eyebrow">Report Lab</p><h2>报告中心</h2><p class="summary">生成综合简报、详细归因报告和系统健康报告。</p></section><section class="panel wide"><div id="reportTemplates" class="report-grid"></div></section></main>
 
-    <script src="/static/app.js?v=observatory"></script>
+    <script src="/static/app.js?v=causal-world-quant"></script>
   </body>
 </html>

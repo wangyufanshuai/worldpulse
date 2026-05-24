@@ -133,6 +133,8 @@ async function boot() {
   $("#simulationScenario")?.addEventListener("change", applySelectedScenario);
   $("#analyzeRisk")?.addEventListener("click", () => runAiAnalysis("risk"));
   $("#analyzeSimulation")?.addEventListener("click", () => runAiAnalysis("simulation"));
+  $("#runCausal")?.addEventListener("click", runCausalAnalysis);
+  $("#exportCausalReport")?.addEventListener("click", exportCausalReport);
   $("#aiAgentSelect")?.addEventListener("change", loadEventDigest);
   $("#aiWindow")?.addEventListener("change", loadEventDigest);
   ["shockIntensity", "shockDuration", "shockPropagation"].forEach((id) => $(`#${id}`)?.addEventListener("input", updateSimulationLabels));
@@ -145,7 +147,7 @@ async function boot() {
     setText("#health", "服务不可用");
   }
 
-  await Promise.allSettled([loadSpeciesPresets(), loadSimulationSetup(), loadWorkbench(), loadReports(), loadAiModule()]);
+  await Promise.allSettled([loadSpeciesPresets(), loadSimulationSetup(), loadWorkbench(), loadReports(), loadAiModule(), loadCausalPreview()]);
   await renderDashboard();
 
   const initialModule = window.location.hash.replace("#", "");
@@ -163,6 +165,7 @@ function showModule(name) {
   if (name === "analysis") loadAnalysis();
   if (name === "replay") loadReplay();
   if (name === "ai") loadAiModule();
+  if (name === "causal") runCausalAnalysis();
 }
 
 async function renderDashboard() {
@@ -505,6 +508,137 @@ function renderAiResult(result) {
     ...(result.scenario_suggestions || []).map((item) => card(item.name, item.rationale, `${item.shock_type}: ${item.target_codes.join(", ")}`)),
     card("边界声明", result.disclaimer),
   ].join("");
+}
+
+function causalPayload() {
+  return {
+    event_type: $("#causalEventType")?.value || null,
+    region: $("#causalRegion")?.value || "global",
+    window_days: Number($("#causalWindow")?.value || 30),
+    horizon_days: Number($("#causalHorizon")?.value || 20),
+    use_ai: true,
+  };
+}
+
+async function loadCausalPreview() {
+  const target = $("#causalEvents");
+  if (!target) return;
+  try {
+    const events = await fetchJson("/api/causal/events?window_days=30&region=global");
+    renderCausalEvents(events);
+  } catch (error) {
+    setError(target, "因果事件加载失败", error);
+  }
+}
+
+async function runCausalAnalysis() {
+  const reasoning = $("#causalReasoning");
+  setBusy(reasoning, "因果分析中");
+  try {
+    const payload = causalPayload();
+    const result = await postJson("/api/causal/analyze", payload);
+    window.worldPulseLastCausalPayload = payload;
+    renderCausalResult(result);
+  } catch (error) {
+    setError(reasoning, "因果分析失败", error);
+  }
+}
+
+async function exportCausalReport() {
+  const payload = window.worldPulseLastCausalPayload || causalPayload();
+  try {
+    const result = await postJson("/api/causal/report/export", payload);
+    alert(`因果报告已导出：${result.path}`);
+  } catch (error) {
+    alert(`因果报告导出失败：${error.message || error}`);
+  }
+}
+
+function renderCausalResult(result) {
+  setText("#causalTitle", result.title);
+  renderCausalEvents(result.events || []);
+  renderCausalGraph(result.chains?.[0]);
+  $("#causalImpacts").innerHTML = (result.impacts || []).map((item) => card(
+    item.asset_name,
+    `方向：${directionLabel(item.direction)}，期望变化 ${signed(item.expected_return_pct)}%，置信度 ${fmt(item.confidence, 1)}。${item.rationale}`,
+    item.asset_key
+  )).join("");
+  const backtest = result.backtest || {};
+  $("#causalBacktest").innerHTML = [
+    card("方向一致性", `样本数 ${backtest.sample_count || 0}，胜率 ${fmt((backtest.hit_rate || 0) * 100, 0)}%，平均影响 ${fmt(backtest.average_impact, 2)}%，最大反向误差 ${fmt(backtest.max_error, 2)}%。`, backtest.event_type || "--"),
+    ...((backtest.impacts || []).slice(0, 4).map((item) => card(item.asset_name, `历史平均变化 ${signed(item.expected_return_pct)}%，置信度 ${fmt(item.confidence, 1)}。`, item.direction))),
+  ].join("");
+  $("#causalSimilar").innerHTML = (result.similar_events || []).map((item) => card(
+    `${item.date} / 相似度 ${fmt(item.similarity, 1)}`,
+    `${item.market_move}。${item.notes}`,
+    item.event_type
+  )).join("");
+  $("#causalErrors").innerHTML = (result.error_attribution || []).map((item) => card("错误归因风险", item)).join("");
+  $("#causalReasoning").innerHTML = [
+    card("摘要", result.summary),
+    card("AI/本地解释", result.ai_explanation),
+    ...(result.reasoning_path || []).map((item, index) => card(`推理步骤 ${index + 1}`, item)),
+    ...(result.uncertainty || []).map((item) => card("关键不确定性", item)),
+    card("边界声明", result.disclaimer),
+  ].join("");
+}
+
+function renderCausalEvents(events) {
+  const target = $("#causalEvents");
+  if (!target) return;
+  target.innerHTML = events.length
+    ? events.slice(0, 7).map((item) => card(item.name, `${item.summary} 强度 ${fmt(item.intensity, 1)}，置信度 ${fmt(item.confidence, 1)}。`, `${item.region} / ${item.source}`)).join("")
+    : card("暂无事件候选", "当前窗口没有形成稳定事件信号。");
+}
+
+function renderCausalGraph(chain) {
+  if (!window.Plotly || !$("#causalGraph") || !chain?.nodes?.length) return;
+  const nodes = chain.nodes;
+  const edges = chain.edges || [];
+  const positions = {};
+  nodes.forEach((node, index) => {
+    positions[node.id] = {
+      x: index % 3,
+      y: 1.5 - Math.floor(index / 3),
+    };
+  });
+  const edgeX = [];
+  const edgeY = [];
+  edges.forEach((edge) => {
+    const source = positions[edge.source];
+    const target = positions[edge.target];
+    if (!source || !target) return;
+    edgeX.push(source.x, target.x, null);
+    edgeY.push(source.y, target.y, null);
+  });
+  Plotly.newPlot(
+    "causalGraph",
+    [
+      { x: edgeX, y: edgeY, type: "scatter", mode: "lines", line: { color: "rgba(99,215,255,0.34)", width: 2 }, hoverinfo: "skip", showlegend: false },
+      {
+        x: nodes.map((node) => positions[node.id].x),
+        y: nodes.map((node) => positions[node.id].y),
+        type: "scatter",
+        mode: "markers+text",
+        text: nodes.map((node) => node.label),
+        textposition: "bottom center",
+        marker: { size: nodes.map((node) => 24 + node.score * 0.26), color: nodes.map((node) => node.score), colorscale: [[0, "#45e0bd"], [0.5, "#ffd27a"], [1, "#ff6b6b"]], line: { color: "rgba(255,255,255,0.9)", width: 1 } },
+        customdata: nodes.map((node) => `${node.kind} / ${fmt(node.score, 1)}`),
+        hovertemplate: "%{text}<br>%{customdata}<extra></extra>",
+        showlegend: false,
+      },
+    ],
+    { ...chartTheme, xaxis: { visible: false }, yaxis: { visible: false }, annotations: edges.map((edge) => {
+      const source = positions[edge.source];
+      const target = positions[edge.target];
+      return source && target ? { x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 + 0.08, text: edge.relation, showarrow: false, font: { size: 11, color: "rgba(244,248,251,0.68)" } } : null;
+    }).filter(Boolean) },
+    plotConfig
+  );
+}
+
+function directionLabel(direction) {
+  return { up: "上行", down: "下行", mixed: "分化" }[direction] || direction;
 }
 
 async function loadAnalysis() {
