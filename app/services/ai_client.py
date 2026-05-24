@@ -5,11 +5,23 @@ import os
 from typing import Any
 
 from app.core.models import AIAnalysisResult, EvidenceItem, ScenarioSuggestion, WatchSignal
-from app.services.llm_client import LLMMessage, call_llm_json, get_llm_status
+from app.services.llm_client import LLMMessage, call_llm_json, get_llm_status, smoke_test_llm
 
 
 def ai_status() -> dict[str, Any]:
     return get_llm_status()
+
+
+def ai_smoke_test() -> dict[str, Any]:
+    result = smoke_test_llm(timeout=int(os.getenv("AI_TIMEOUT_SECONDS", "45")))
+    return {
+        "enabled": result.enabled,
+        "provider": result.provider,
+        "model": result.model,
+        "mode": result.mode,
+        "error": result.error,
+        "content_preview": result.content[:360],
+    }
 
 
 def request_structured_analysis(prompt: str, context: dict[str, Any]) -> AIAnalysisResult:
@@ -22,13 +34,14 @@ def request_structured_analysis(prompt: str, context: dict[str, Any]) -> AIAnaly
                     "你是 WorldPulse 的金融与地缘局势研判层。"
                     "你只能基于输入 JSON 中的数据、模拟结果、事件摘要和数据质量进行分析。"
                     "不要输出确定性预测，不要给投资、政治或安全行动指令。"
-                    "必须输出一个 JSON 对象，字段严格包含 schema 要求的全部字段。"
+                    "必须输出一个 json 对象，字段严格包含 schema 要求的全部字段。"
                 ),
             ),
             LLMMessage(
                 role="user",
                 content=(
                     f"{prompt}\n\n"
+                    '请返回合法 json object，示例：{"title":"...","summary":"...","key_findings":["..."],"evidence":[],"uncertainties":[],"watch_signals":[],"scenario_suggestions":[],"disclaimer":"..."}。'
                     "输出字段要求：title、summary、key_findings、evidence、uncertainties、watch_signals、scenario_suggestions、disclaimer。"
                     "evidence 必须引用输入中的数据源或指标；watch_signals 必须可观察；scenario_suggestions 必须能映射到现有模拟器 shock_type。"
                     f"\n\n上下文 JSON:\n{json.dumps(context, ensure_ascii=False)}"

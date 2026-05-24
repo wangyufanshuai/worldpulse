@@ -4,6 +4,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
+from copy import deepcopy
 from typing import Any
 
 import requests
@@ -47,7 +48,7 @@ DEFAULTS = {
     },
     "deepseek": {
         "base_url": "https://api.deepseek.com",
-        "model": "deepseek-v4-flash",
+        "model": "deepseek-v4-pro",
         "key_env": "DEEPSEEK_API_KEY",
         "base_env": "DEEPSEEK_BASE_URL",
         "model_env": "DEEPSEEK_MODEL",
@@ -83,6 +84,9 @@ def get_llm_status() -> dict[str, Any]:
         "fallback_model": fallback.model,
         "fallback_enabled": fallback.enabled,
         "mode": "live" if enabled else "disabled",
+        "recommended_provider": "deepseek",
+        "recommended_model": "deepseek-v4-pro",
+        "last_error": os.getenv("AI_LAST_ERROR", ""),
     }
 
 
@@ -93,16 +97,52 @@ def call_llm_json(messages: list[LLMMessage], schema_hint: dict[str, Any], timeo
         if not config.enabled:
             errors.append(f"{config.provider} API key not configured")
             continue
+        result, provider_errors = _call_provider_with_retries(config, messages, schema_hint, timeout)
+        if result is not None:
+            os.environ["AI_LAST_ERROR"] = ""
+            return result
+        errors.extend(provider_errors)
+    if errors:
+        os.environ["AI_LAST_ERROR"] = errors[-1]
+    fallback = providers[-1] if providers else get_provider_config("siliconflow")
+    return LLMResult(enabled=False, provider=fallback.provider, model=fallback.model, mode="disabled", content="", error=" | ".join(errors) if errors else None)
+
+
+def smoke_test_llm(timeout: int = 45) -> LLMResult:
+    return call_llm_json(
+        [
+            LLMMessage(role="system", content="你是严格 JSON 输出助手。输出必须是 JSON object。"),
+            LLMMessage(
+                role="user",
+                content=(
+                    '请只输出 json：{"title":"AI smoke test","summary":"live ok",'
+                    '"key_findings":["ok"],"evidence":[],"uncertainties":[],"watch_signals":[],'
+                    '"scenario_suggestions":[],"disclaimer":"test"}'
+                ),
+            ),
+        ],
+        {"required": ["title", "summary"]},
+        timeout=timeout,
+    )
+
+
+def _call_provider_with_retries(
+    config: LLMProviderConfig,
+    messages: list[LLMMessage],
+    schema_hint: dict[str, Any],
+    timeout: int,
+) -> tuple[LLMResult | None, list[str]]:
+    errors: list[str] = []
+    base_payload = {
+        "model": config.model,
+        "messages": [{"role": message.role, "content": message.content} for message in messages],
+        "temperature": 0.2,
+        "max_tokens": int(os.getenv("AI_MAX_TOKENS", "1800")),
+        "stream": False,
+    }
+    attempts = _payload_attempts(base_payload)
+    for index, payload in enumerate(attempts, start=1):
         try:
-            payload = {
-                "model": config.model,
-                "messages": [{"role": message.role, "content": message.content} for message in messages],
-                "temperature": 0.2,
-                "max_tokens": int(os.getenv("AI_MAX_TOKENS", "1800")),
-                "stream": False,
-            }
-            if os.getenv("AI_USE_RESPONSE_FORMAT", "true").lower() != "false":
-                payload["response_format"] = {"type": "json_object"}
             response = _post_chat_completion(config, payload, timeout)
             content = _extract_chat_content(response.json())
             try:
@@ -110,11 +150,47 @@ def call_llm_json(messages: list[LLMMessage], schema_hint: dict[str, Any], timeo
             except Exception:
                 parsed = {"summary": content.strip()}
             _validate_required_keys(parsed, schema_hint)
-            return LLMResult(enabled=True, provider=config.provider, model=config.model, mode="live", content=json.dumps(parsed, ensure_ascii=False))
+            return LLMResult(enabled=True, provider=config.provider, model=config.model, mode="live", content=json.dumps(parsed, ensure_ascii=False)), errors
         except Exception as exc:
-            errors.append(f"{config.provider}: {type(exc).__name__}: {exc}")
-    fallback = providers[-1] if providers else get_provider_config("siliconflow")
-    return LLMResult(enabled=False, provider=fallback.provider, model=fallback.model, mode="disabled", content="", error=" | ".join(errors) if errors else None)
+            errors.append(f"{config.provider} attempt {index}: {type(exc).__name__}: {exc}")
+    return None, errors
+
+
+def _payload_attempts(base_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    attempts = []
+    use_json = os.getenv("AI_USE_RESPONSE_FORMAT", "true").lower() != "false"
+    if use_json:
+        json_payload = deepcopy(base_payload)
+        json_payload["response_format"] = {"type": "json_object"}
+        json_payload["messages"] = _with_json_instruction(json_payload["messages"])
+        attempts.append(json_payload)
+    plain_payload = deepcopy(base_payload)
+    plain_payload["messages"] = _with_json_instruction(plain_payload["messages"])
+    attempts.append(plain_payload)
+    compact_payload = deepcopy(base_payload)
+    compact_payload["messages"] = _compact_messages(_with_json_instruction(compact_payload["messages"]))
+    attempts.append(compact_payload)
+    return attempts
+
+
+def _with_json_instruction(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    if not messages:
+        return messages
+    out = deepcopy(messages)
+    out[0]["content"] = (
+        out[0].get("content", "")
+        + "\n必须返回合法 JSON object，不要 Markdown，不要解释性前后缀。JSON 字段至少包含 title 和 summary。"
+    )
+    return out
+
+
+def _compact_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    out = deepcopy(messages)
+    for message in out:
+        content = message.get("content", "")
+        if len(content) > 6000:
+            message["content"] = content[:5200] + "\n...上下文已压缩，请基于已给数据输出 JSON。"
+    return out
 
 
 def extract_json(text: str) -> dict[str, Any]:
@@ -143,10 +219,24 @@ def _extract_chat_content(payload: dict[str, Any]) -> str:
     if not choices:
         raise ValueError("chat completion response has no choices")
     message = choices[0].get("message") or {}
-    content = message.get("content")
-    if not content:
+    content = message.get("content") or message.get("reasoning_content") or ""
+    if isinstance(content, list):
+        content = "\n".join(_content_part_to_text(part) for part in content)
+    if not str(content).strip():
+        tool_calls = message.get("tool_calls") or []
+        if tool_calls:
+            content = json.dumps({"summary": f"model returned tool_calls: {len(tool_calls)}"}, ensure_ascii=False)
+    if not str(content).strip():
         raise ValueError("chat completion response has no message content")
     return str(content)
+
+
+def _content_part_to_text(part: Any) -> str:
+    if isinstance(part, str):
+        return part
+    if isinstance(part, dict):
+        return str(part.get("text") or part.get("content") or "")
+    return str(part)
 
 
 def _post_chat_completion(config: LLMProviderConfig, payload: dict[str, Any], timeout: int) -> requests.Response:

@@ -81,7 +81,69 @@ def test_llm_falls_back_to_deepseek_when_primary_fails(monkeypatch):
 
     assert result.enabled is True
     assert result.provider == "deepseek"
+    assert any("siliconflow" in url for url in calls)
+    assert any("deepseek" in url for url in calls)
+
+
+def test_llm_uses_reasoning_content_when_content_empty(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-key")
+
+    def fake_post(url, **kwargs):
+        return _mock_response(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "",
+                            "reasoning_content": '{"title":"ok","summary":"from reasoning"}',
+                        }
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(llm_client.requests, "post", fake_post)
+
+    result = llm_client.call_llm_json([LLMMessage(role="user", content="json")], {"required": ["title", "summary"]})
+
+    assert result.enabled is True
+    assert result.provider == "deepseek"
+    assert "from reasoning" in result.content
+
+
+def test_llm_retries_without_json_mode_when_content_empty(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-key")
+    calls = []
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs["json"])
+        if len(calls) == 1:
+            return _mock_response({"choices": [{"message": {"content": ""}}]})
+        return _mock_response({"choices": [{"message": {"content": '{"title":"ok","summary":"retry"}'}}]})
+
+    monkeypatch.setattr(llm_client.requests, "post", fake_post)
+
+    result = llm_client.call_llm_json([LLMMessage(role="user", content="json")], {"required": ["title", "summary"]})
+
+    assert result.enabled is True
     assert len(calls) == 2
+    assert "response_format" in calls[0]
+    assert "response_format" not in calls[1]
+
+
+def test_ai_smoke_test_api_without_key(monkeypatch):
+    monkeypatch.delenv("SILICONFLOW_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    client = TestClient(app)
+
+    response = client.post("/api/ai/smoke-test")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["enabled"] is False
+    assert payload["error"]
 
 
 def test_event_digest_contract(monkeypatch):

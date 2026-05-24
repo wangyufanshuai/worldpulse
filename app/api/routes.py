@@ -28,8 +28,8 @@ from app.core.models import (
     WorkbenchStatus,
 )
 from app.services.ai_analysis import analyze_current_risk, analyze_simulation, export_ai_report
-from app.services.ai_client import ai_status
-from app.services.causal_analysis import analyze_causal_world, export_causal_report
+from app.services.ai_client import ai_smoke_test, ai_status
+from app.services.causal_analysis import analyze_causal_world, causal_ai_smoke_test, export_causal_report
 from app.services.causal_backtest import run_causal_backtest
 from app.services.causal_data import build_causal_events, select_event
 from app.services.causal_graph import build_causal_chain
@@ -92,6 +92,11 @@ def ai_service_status() -> dict:
     return ai_status()
 
 
+@router.post("/ai/smoke-test")
+def ai_service_smoke_test() -> dict:
+    return ai_smoke_test()
+
+
 @router.post("/ai/analyze-risk", response_model=AIAnalysisResult)
 def ai_analyze_risk(request: AIAnalysisRequest) -> AIAnalysisResult:
     return analyze_current_risk(request)
@@ -141,6 +146,11 @@ def causal_backtest(event_type: str = "conflict", window_days: int = 120, horizo
 @router.post("/causal/report/export", response_model=ReportExport)
 def causal_report_export(request: CausalAnalysisRequest) -> ReportExport:
     return export_causal_report(request)
+
+
+@router.post("/causal/ai-smoke-test")
+def causal_ai_service_smoke_test() -> dict:
+    return causal_ai_smoke_test()
 
 
 @router.get("/simulation/agents", response_model=list[CountryAgent])

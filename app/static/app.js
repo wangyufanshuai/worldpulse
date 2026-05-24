@@ -427,7 +427,9 @@ async function loadAiModule() {
     const status = await fetchJson("/api/ai/status");
     statusTarget.innerHTML = card(
       status.enabled ? "AI 已启用" : "AI 未启用",
-      status.enabled ? `主模型：${status.provider} / ${status.model}；备用：${status.fallback_provider} / ${status.fallback_model}` : "未配置 SILICONFLOW_API_KEY 或 DEEPSEEK_API_KEY，页面会使用本地兜底分析，不影响其他功能。",
+      status.enabled
+        ? `主模型：${status.provider} / ${status.model}；备用：${status.fallback_provider} / ${status.fallback_model}；推荐：${status.recommended_provider || "deepseek"} / ${status.recommended_model || "deepseek-v4-pro"}${status.last_error ? `；最近错误：${status.last_error}` : ""}`
+        : "未配置 SILICONFLOW_API_KEY 或 DEEPSEEK_API_KEY，页面会使用本地兜底分析，不影响其他功能。",
       status.mode
     );
     const controls = $("#aiAgentSelect")?.closest(".replay-controls");
@@ -576,7 +578,7 @@ function renderCausalResult(result) {
   $("#causalErrors").innerHTML = (result.error_attribution || []).map((item) => card("错误归因风险", item)).join("");
   $("#causalReasoning").innerHTML = [
     card("摘要", result.summary),
-    card("AI/本地解释", result.ai_explanation),
+    card(result.ai_explanation?.startsWith("[") ? "AI live 解释" : "本地兜底解释", result.ai_explanation),
     ...(result.reasoning_path || []).map((item, index) => card(`推理步骤 ${index + 1}`, item)),
     ...(result.uncertainty || []).map((item) => card("关键不确定性", item)),
     card("边界声明", result.disclaimer),

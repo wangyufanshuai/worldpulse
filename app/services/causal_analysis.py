@@ -118,16 +118,59 @@ def _local_ai_text(event, chain, backtest) -> str:
 
 
 def _try_ai_explanation(event, chain, backtest, impacts) -> str | None:
-    context = {
-        "event": event.model_dump(),
-        "chain": chain.model_dump(),
-        "backtest": backtest.model_dump(),
-        "impacts": [item.model_dump() for item in impacts],
-    }
+    context = _compact_ai_context(event, chain, backtest, impacts)
     result = request_structured_analysis(
         "请用中文解释这条世界事件到市场影响的因果链，必须强调证据、置信度、历史相似事件和错误归因边界。",
         {"causal_world_quant": context},
     )
     if result.mode == "disabled":
         return None
-    return result.summary
+    return f"[{result.mode}] {result.summary}"
+
+
+def causal_ai_smoke_test() -> dict:
+    events = build_causal_events(window_days=7, region="global")
+    event = select_event(events, "conflict")
+    backtest = run_causal_backtest(event_type=event.event_type, window_days=120, horizon_days=10)
+    chain = build_causal_chain(event)
+    impacts = estimate_market_impacts(event, backtest_confidence=backtest.hit_rate * 100)
+    text = _try_ai_explanation(event, chain, backtest, impacts)
+    return {
+        "live": bool(text and not text.startswith("本地解释")),
+        "event_type": event.event_type,
+        "chain_confidence": chain.confidence,
+        "sample_count": backtest.sample_count,
+        "explanation_preview": (text or _local_ai_text(event, chain, backtest))[:360],
+    }
+
+
+def _compact_ai_context(event, chain, backtest, impacts) -> dict:
+    return {
+        "event": {
+            "event_type": event.event_type,
+            "name": event.name,
+            "region": event.region,
+            "window_days": event.window_days,
+            "intensity": event.intensity,
+            "event_count": event.event_count,
+            "source": event.source,
+            "confidence": event.confidence,
+            "summary": event.summary,
+        },
+        "chain": {
+            "title": chain.title,
+            "confidence": chain.confidence,
+            "explanation": chain.explanation,
+            "edges": [edge.model_dump() for edge in chain.edges[:6]],
+        },
+        "backtest": {
+            "event_type": backtest.event_type,
+            "sample_count": backtest.sample_count,
+            "hit_rate": backtest.hit_rate,
+            "average_impact": backtest.average_impact,
+            "max_error": backtest.max_error,
+            "similar_events": [item.model_dump() for item in backtest.similar_events[:5]],
+            "error_attribution": backtest.error_attribution[:5],
+        },
+        "impacts": [item.model_dump() for item in impacts[:5]],
+    }

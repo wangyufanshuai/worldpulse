@@ -77,3 +77,17 @@ def test_causal_report_export(monkeypatch):
     payload = response.json()
     assert payload["path"].endswith(".md")
     assert "CausalWorldQuant" in payload["markdown"]
+
+
+def test_causal_ai_smoke_test_without_key(monkeypatch):
+    monkeypatch.delenv("SILICONFLOW_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setattr(event_digest, "_gdelt_count", _fake_gdelt_count)
+    client = TestClient(app)
+
+    response = client.post("/api/causal/ai-smoke-test")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["live"] is False
+    assert payload["explanation_preview"]
