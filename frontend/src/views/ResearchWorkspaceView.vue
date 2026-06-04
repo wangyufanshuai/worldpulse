@@ -162,10 +162,21 @@
           <p class="report-summary">{{ detail.report.summary }}</p>
           <h3>核心结论</h3>
           <ul class="finding-list">
-            <li v-for="item in detail.report.key_findings" :key="item">
-              <button @click="openEvidenceDrawer(item)">{{ item }}</button>
+            <li v-for="(item, index) in detail.report.key_findings" :key="item">
+              <button @click="openEvidenceDrawer(item, index)">{{ item }}</button>
+              <span class="citation-row" v-if="citationsByFinding[index]?.length">
+                <button
+                  v-for="citation in citationsByFinding[index]"
+                  :key="citation.citation_id"
+                  class="citation-chip"
+                  @click.stop="openCitationDrawer(item, citation)"
+                >
+                  [{{ citationLabel(citation) }}]
+                </button>
+              </span>
             </li>
           </ul>
+          <p v-if="!hasStableCitations" class="citation-fallback">该历史报告未生成稳定引用，可重新运行研究生成。</p>
           <h3>证据链</h3>
           <div class="evidence-list">
             <div v-for="item in detail.report.evidence" :key="item.title">
@@ -226,6 +237,15 @@
       </ul>
       <h3>结论边界</h3>
       <ul><li v-for="item in evidenceDrawer.uncertainties" :key="item">{{ item }}</li></ul>
+      <template v-if="evidenceDrawer.citation">
+        <h3>引用元数据</h3>
+        <div class="citation-meta">
+          <div><span>编号</span><code>{{ evidenceDrawer.citation.citation_id }}</code></div>
+          <div><span>类型</span><code>{{ evidenceDrawer.citation.kind }}</code></div>
+          <div><span>来源</span><code>{{ evidenceDrawer.citation.source }}</code></div>
+          <div><span>置信度</span><code>{{ Math.round(evidenceDrawer.citation.confidence || 0) }}/100</code></div>
+        </div>
+      </template>
     </aside>
   </main>
   <main v-else class="loading-page">加载研究工作台...</main>
@@ -259,6 +279,16 @@ const prompts = ['证据链最弱的一环是什么？', '有没有历史反例�
 
 const runVersions = computed(() => detail.value?.runs || [])
 const compareCandidates = computed(() => runVersions.value.filter(run => run.run_id !== selectedRunId.value))
+const hasStableCitations = computed(() => (detail.value?.report?.citations || []).length > 0)
+const citationsByFinding = computed(() => {
+  const groups = {}
+  for (const citation of detail.value?.report?.citations || []) {
+    const index = citation.finding_index ?? 0
+    groups[index] = groups[index] || []
+    groups[index].push(citation)
+  }
+  return groups
+})
 const workflowEvents = computed(() => detail.value?.latest_run?.data_snapshot?.workflow_events || [])
 const sourceCount = computed(() => detail.value?.latest_run?.data_snapshot?.sources?.length || detail.value?.graph?.evidence_sources?.length || 0)
 const graphConfidence = computed(() => editableGraph.value?.confidence ?? detail.value?.graph?.confidence ?? 0)
@@ -461,20 +491,94 @@ async function saveGraph() {
   }
 }
 
-function openEvidenceDrawer(finding) {
+function openEvidenceDrawer(finding, findingIndex = 0) {
   const evidence = detail.value?.report?.evidence || []
   const edges = detail.value?.graph?.edges || []
   const uncertainties = detail.value?.report?.uncertainties || []
-  const rankedEdges = rankEvidenceEdges(finding, edges)
+  const stableCitations = citationsByFinding.value[findingIndex] || []
+  const citedEdges = stableCitations
+    .filter(item => item.kind === 'causal_edge')
+    .map(item => edgeFromCitation(item))
+    .filter(Boolean)
+  const rankedEdges = citedEdges.length ? citedEdges : rankEvidenceEdges(finding, edges)
   evidenceDrawer.value = {
     finding,
-    summary: rankedEdges.length
+    summary: stableCitations.length
+      ? '该结论已生成稳定引用，引用关系会随历史运行版本一起保存。'
+      : rankedEdges.length
       ? '已按结论关键词匹配最相关因果边；点击边可在图谱中定位。'
       : '未找到强匹配边，该结论主要依赖报告证据和不确定性说明。',
     evidence,
     edges: rankedEdges.slice(0, 5),
-    uncertainties
+    uncertainties,
+    citation: stableCitations[0] || null
   }
+}
+
+function openCitationDrawer(finding, citation) {
+  if (citation.kind === 'causal_edge') {
+    const edge = edgeFromCitation(citation)
+    evidenceDrawer.value = {
+      finding,
+      summary: citation.summary,
+      evidence: [],
+      edges: edge ? [edge] : [],
+      uncertainties: detail.value?.report?.uncertainties || [],
+      citation
+    }
+    if (edge) focusEvidenceEdge(edge, false)
+    return
+  }
+  if (citation.kind === 'evidence') {
+    evidenceDrawer.value = {
+      finding,
+      summary: citation.summary,
+      evidence: evidenceFromCitation(citation),
+      edges: [],
+      uncertainties: detail.value?.report?.uncertainties || [],
+      citation
+    }
+    return
+  }
+  evidenceDrawer.value = {
+    finding,
+    summary: citation.summary,
+    evidence: [],
+    edges: [],
+    uncertainties: detail.value?.latest_run?.backtest_snapshot?.error_attribution || detail.value?.report?.uncertainties || [],
+    citation
+  }
+}
+
+function citationLabel(citation) {
+  const prefix = { evidence: '证据', causal_edge: '边', backtest: '回测' }[citation.kind] || '引用'
+  return `${prefix}${citation.citation_id.replace(/^[A-Z]/, '')}`
+}
+
+function edgeFromCitation(citation) {
+  const target = String(citation.target_id || '')
+  const match = target.match(/^edge:(.*?)->(.*?):(.*)$/)
+  if (!match) return null
+  const [, source, targetNode, relation] = match
+  return (detail.value?.graph?.edges || []).find(edge => edge.source === source && edge.target === targetNode && String(edge.relation || '') === relation) || {
+    source,
+    target: targetNode,
+    relation,
+    confidence: citation.confidence,
+    explanation: citation.summary
+  }
+}
+
+function evidenceFromCitation(citation) {
+  const match = String(citation.target_id || '').match(/^evidence:(\d+)$/)
+  const index = match ? Number(match[1]) : -1
+  const item = detail.value?.report?.evidence?.[index]
+  return item ? [item] : [{
+    title: citation.title,
+    source: citation.source,
+    value: `${Math.round(citation.confidence || 0)}/100`,
+    interpretation: citation.summary
+  }]
 }
 
 function rankEvidenceEdges(finding, edges) {
@@ -502,12 +606,12 @@ function edgeLabel(id) {
   return node?.label || id
 }
 
-function focusEvidenceEdge(edge) {
+function focusEvidenceEdge(edge, closeDrawer = true) {
   focusedEdgeKey.value = edgeKey(edge)
   selected.value = { ...edge }
   selectedType.value = 'edge'
   selectGraphItem(edge, 'edge')
-  evidenceDrawer.value = null
+  if (closeDrawer) evidenceDrawer.value = null
   nextTick(renderGraph)
 }
 

@@ -1,3 +1,4 @@
+import sqlite3
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -174,6 +175,9 @@ def test_project_api_lifecycle(monkeypatch, tmp_path):
     assert detail["graph"]["nodes"]
     assert detail["graph"]["edges"][0]["evidence"]
     assert detail["report"]["key_findings"]
+    assert detail["report"]["citations"]
+    assert {item["kind"] for item in detail["report"]["citations"]} >= {"evidence", "causal_edge", "backtest"}
+    assert "## 引用脚注" in detail["report"]["markdown"]
     first_run_id = detail["latest_run"]["run_id"]
 
     second_run = client.post(f"/api/projects/{project_id}/run?mode=fast")
@@ -236,6 +240,12 @@ def test_project_api_lifecycle(monkeypatch, tmp_path):
     report = client.get(f"/api/projects/{project_id}/report")
     assert report.status_code == 200
     assert "markdown" in report.json()
+    assert "citations" in report.json()
+
+    citations = client.get(f"/api/projects/{project_id}/runs/{latest_run_id}/citations")
+    assert citations.status_code == 200
+    assert citations.json()
+    assert citations.json()[0]["finding_index"] >= 0
 
 
 def test_project_chat_uses_stored_context(monkeypatch, tmp_path):
@@ -271,3 +281,34 @@ def test_project_chat_uses_stored_context(monkeypatch, tmp_path):
 
     detail = client.get(f"/api/projects/{project_id}").json()
     assert len(detail["chat_messages"]) == 2
+
+
+def test_project_store_migrates_ai_report_citations(monkeypatch, tmp_path):
+    db_path = tmp_path / "legacy_worldpulse.db"
+    monkeypatch.setattr(project_store, "DB_PATH", db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE ai_reports (
+                report_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                generated_at TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                title TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                key_findings TEXT NOT NULL,
+                evidence TEXT NOT NULL,
+                uncertainties TEXT NOT NULL,
+                watch_signals TEXT NOT NULL,
+                scenario_suggestions TEXT NOT NULL,
+                markdown TEXT NOT NULL,
+                disclaimer TEXT NOT NULL
+            )
+            """
+        )
+    project_store.init_db()
+    with sqlite3.connect(db_path) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(ai_reports)").fetchall()}
+    assert "citations" in columns

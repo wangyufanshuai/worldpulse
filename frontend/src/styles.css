@@ -486,6 +486,32 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
   color: #f8fafc;
   background: rgba(92,225,230,0.08);
 }
+.citation-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.citation-row .citation-chip {
+  width: auto;
+  border: 1px solid rgba(245,184,95,0.36);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #fde68a;
+  font-size: 12px;
+  background: rgba(245,184,95,0.08);
+}
+.citation-row .citation-chip:hover {
+  border-color: rgba(245,184,95,0.68);
+  background: rgba(245,184,95,0.14);
+}
+.citation-fallback {
+  border: 1px solid rgba(245,184,95,0.24);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: #fde68a;
+  background: rgba(245,184,95,0.07);
+}
 .evidence-drawer {
   position: fixed;
   top: 82px;
@@ -524,6 +550,27 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
 .evidence-drawer li button:hover {
   border-color: rgba(245,184,95,0.45);
   background: rgba(245,184,95,0.08);
+}
+.citation-meta {
+  display: grid;
+  gap: 8px;
+}
+.citation-meta div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 10px;
+  background: rgba(255,255,255,0.035);
+}
+.citation-meta span { color: var(--muted); }
+.citation-meta code {
+  max-width: 70%;
+  overflow: hidden;
+  color: #eaf2ff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .report-chat { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr); gap: 20px; }
 .report-summary { color: #dbe4ef; font-size: 17px; line-height: 1.75; }

@@ -23,6 +23,7 @@ from app.core.models import (
     ProjectChatRequest,
     ProjectDetail,
     GraphEditRequest,
+    ReportCitation,
     ResearchProject,
     ResearchProjectCreate,
     ResearchRun,
@@ -218,8 +219,8 @@ def run_project(project_id: str, mode: str = "fast") -> ProjectDetail:
         conn.execute(
             """
             INSERT INTO ai_reports
-            (report_id, project_id, run_id, generated_at, mode, title, summary, key_findings, evidence, uncertainties, watch_signals, scenario_suggestions, markdown, disclaimer)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (report_id, project_id, run_id, generated_at, mode, title, summary, key_findings, evidence, uncertainties, watch_signals, scenario_suggestions, citations, markdown, disclaimer)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 report.report_id,
@@ -234,6 +235,7 @@ def run_project(project_id: str, mode: str = "fast") -> ProjectDetail:
                 dumps(report.uncertainties),
                 dumps([item.model_dump() for item in report.watch_signals]),
                 dumps([item.model_dump() for item in report.scenario_suggestions]),
+                dumps([item.model_dump() for item in report.citations]),
                 report.markdown,
                 report.disclaimer,
             ),
@@ -267,6 +269,15 @@ def project_runs(project_id: str) -> list[ResearchRun]:
 
 def project_run_detail(project_id: str, run_id: str) -> ProjectDetail:
     return get_project_detail(project_id, run_id=run_id)
+
+
+def project_run_citations(project_id: str, run_id: str) -> list[ReportCitation]:
+    report = _report_for_run(project_id, run_id)
+    if report is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail=f"Report not found for run: {run_id}")
+    return report.citations
 
 
 def edit_project_graph(project_id: str, payload: GraphEditRequest) -> ProjectDetail:
@@ -505,6 +516,7 @@ def _latest_report(project_id: str) -> ProjectAIReport | None:
         uncertainties=loads(row["uncertainties"], []),
         watch_signals=loads(row["watch_signals"], []),
         scenario_suggestions=loads(row["scenario_suggestions"], []),
+        citations=loads(row["citations"] if "citations" in row.keys() else None, []),
         markdown=row["markdown"],
         disclaimer=row["disclaimer"],
     )
@@ -532,6 +544,7 @@ def _report_for_run(project_id: str, run_id: str) -> ProjectAIReport | None:
         uncertainties=loads(row["uncertainties"], []),
         watch_signals=loads(row["watch_signals"], []),
         scenario_suggestions=loads(row["scenario_suggestions"], []),
+        citations=loads(row["citations"] if "citations" in row.keys() else None, []),
         markdown=row["markdown"],
         disclaimer=row["disclaimer"],
     )
@@ -718,7 +731,8 @@ def _project_report(project: ResearchProject, run: ResearchRun, graph: CausalGra
         f"研究问题：{project.question}",
     ]
     ai.key_findings = _dedupe_texts([*leading_findings, *ai.key_findings])[:6]
-    markdown = render_ai_markdown(ai)
+    citations = _build_report_citations(ai.key_findings, ai.evidence, graph, run.backtest_snapshot)
+    markdown = _render_project_markdown(ai, citations)
     return ProjectAIReport(
         report_id=f"report_{uuid4().hex[:12]}",
         project_id=project.project_id,
@@ -732,9 +746,128 @@ def _project_report(project: ResearchProject, run: ResearchRun, graph: CausalGra
         uncertainties=ai.uncertainties,
         watch_signals=ai.watch_signals,
         scenario_suggestions=ai.scenario_suggestions,
+        citations=citations,
         markdown=markdown,
         disclaimer=ai.disclaimer,
     )
+
+
+def _build_report_citations(
+    findings: list[str],
+    evidence: list[EvidenceItem],
+    graph: CausalGraphSnapshot,
+    backtest: dict,
+) -> list[ReportCitation]:
+    citations: list[ReportCitation] = []
+    edges = graph.edges or []
+    node_labels = {str(node.get("id")): str(node.get("label") or node.get("id")) for node in graph.nodes or []}
+    for index, finding in enumerate(findings):
+        evidence_item = evidence[index % len(evidence)] if evidence else None
+        if evidence_item is not None:
+            citations.append(
+                ReportCitation(
+                    citation_id=f"E{index + 1}",
+                    finding_index=index,
+                    kind="evidence",
+                    target_id=f"evidence:{index % len(evidence)}",
+                    title=evidence_item.title,
+                    summary=evidence_item.interpretation,
+                    source=evidence_item.source,
+                    confidence=72.0,
+                )
+            )
+        edge = _best_edge_for_finding(finding, edges) if edges else None
+        if edge is not None:
+            edge_id = _edge_target_id(edge)
+            citations.append(
+                ReportCitation(
+                    citation_id=f"G{index + 1}",
+                    finding_index=index,
+                    kind="causal_edge",
+                    target_id=edge_id,
+                    title=f"{_edge_label(edge.get('source'), node_labels)} -> {_edge_label(edge.get('target'), node_labels)}",
+                    summary=str(edge.get("explanation") or edge.get("relation") or "因果边引用"),
+                    source="WorldPulse causal graph",
+                    confidence=float(edge.get("confidence") or graph.confidence or 50.0),
+                )
+            )
+        if backtest:
+            sample_count = backtest.get("sample_count", 0)
+            hit_rate = backtest.get("hit_rate", 0)
+            max_error = backtest.get("max_error", 0)
+            citations.append(
+                ReportCitation(
+                    citation_id=f"B{index + 1}",
+                    finding_index=index,
+                    kind="backtest",
+                    target_id=f"backtest:{backtest.get('event_type', 'event')}",
+                    title="历史窗口回测",
+                    summary=f"样本数 {sample_count}，方向一致性 {float(hit_rate):.0%}，最大误差 {float(max_error):.2f}。",
+                    source="WorldPulse historical backtest",
+                    confidence=max(35.0, min(85.0, float(hit_rate or 0) * 100)),
+                )
+            )
+    return citations
+
+
+def _best_edge_for_finding(finding: str, edges: list[dict]) -> dict | None:
+    tokens = _citation_tokens(finding)
+    ranked = []
+    for edge in edges:
+        text = " ".join(
+            str(edge.get(key, ""))
+            for key in ["source", "target", "relation", "explanation"]
+        ).lower()
+        score = sum(1 for token in tokens if token in text) + float(edge.get("confidence") or 0) / 200
+        ranked.append((score, edge))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return ranked[0][1] if ranked and ranked[0][0] > 0 else edges[0] if edges else None
+
+
+def _citation_tokens(text: str) -> list[str]:
+    lower = text.lower()
+    hints = ["能源", "冲突", "原油", "黄金", "纳指", "风险", "利率", "通胀", "美元", "商品", "事件", "图谱", "回测"]
+    ascii_words = [part for part in lower.replace("：", " ").replace("，", " ").replace("。", " ").split() if len(part) >= 2]
+    return list(dict.fromkeys([*ascii_words, *[hint for hint in hints if hint in lower]]))
+
+
+def _edge_target_id(edge: dict) -> str:
+    return f"edge:{edge.get('source')}->{edge.get('target')}:{edge.get('relation', '')}"
+
+
+def _edge_label(value, labels: dict[str, str] | None = None) -> str:
+    key = str(value or "unknown")
+    return (labels or {}).get(key, key)
+
+
+def _render_project_markdown(ai: AIAnalysisResult, citations: list[ReportCitation]) -> str:
+    base = render_ai_markdown(ai)
+    if not citations:
+        return base
+    grouped: dict[int, list[ReportCitation]] = {}
+    for citation in citations:
+        grouped.setdefault(citation.finding_index, []).append(citation)
+    lines = base.splitlines()
+    rendered: list[str] = []
+    in_findings = False
+    finding_index = 0
+    for line in lines:
+        if line == "## 核心结论":
+            in_findings = True
+            rendered.append(line)
+            continue
+        if in_findings and line.startswith("## "):
+            in_findings = False
+        if in_findings and line.startswith("- "):
+            suffix = " ".join(f"[^{item.citation_id}]" for item in grouped.get(finding_index, []))
+            rendered.append(f"{line} {suffix}".rstrip())
+            finding_index += 1
+        else:
+            rendered.append(line)
+    rendered.extend(["", "## 引用脚注", ""])
+    for citation in citations:
+        rendered.append(f"[^{citation.citation_id}]: {citation.title}（{citation.kind}，{citation.source}，置信度 {citation.confidence:.0f}/100）：{citation.summary}")
+    return "\n".join(rendered)
 
 
 def _run_summary(title: str, event_name: str, risk_score: float, confidence: float) -> str:

@@ -21,6 +21,7 @@ from app.core.models import (
     ReplayResult,
     ReportExport,
     ReportTemplate,
+    ReportCitation,
     ResearchProject,
     ResearchProjectCreate,
     ResearchRun,
@@ -55,6 +56,7 @@ from app.services.projects import (
     latest_project_report,
     list_projects,
     project_run_detail,
+    project_run_citations,
     project_runs,
     run_project,
 )
@@ -107,6 +109,11 @@ def research_project_run_compare(project_id: str, base_run_id: str, target_run_i
 @router.get("/projects/{project_id}/runs/{run_id}", response_model=ProjectDetail)
 def research_project_run_detail(project_id: str, run_id: str) -> ProjectDetail:
     return project_run_detail(project_id, run_id)
+
+
+@router.get("/projects/{project_id}/runs/{run_id}/citations", response_model=list[ReportCitation])
+def research_project_run_citations(project_id: str, run_id: str) -> list[ReportCitation]:
+    return project_run_citations(project_id, run_id)
 
 
 @router.get("/projects/{project_id}/graph", response_model=CausalGraphSnapshot)

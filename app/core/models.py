@@ -543,6 +543,17 @@ class ResearchRunDiff(BaseModel):
     changed_metrics: dict = {}
 
 
+class ReportCitation(BaseModel):
+    citation_id: str
+    finding_index: int
+    kind: str
+    target_id: str
+    title: str
+    summary: str
+    source: str
+    confidence: float
+
+
 class ProjectAIReport(BaseModel):
     report_id: str
     project_id: str
@@ -556,6 +567,7 @@ class ProjectAIReport(BaseModel):
     uncertainties: list[str]
     watch_signals: list[WatchSignal]
     scenario_suggestions: list[ScenarioSuggestion]
+    citations: list[ReportCitation] = []
     markdown: str
     disclaimer: str
 

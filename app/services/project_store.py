@@ -70,6 +70,7 @@ def init_db() -> None:
                 uncertainties TEXT NOT NULL,
                 watch_signals TEXT NOT NULL,
                 scenario_suggestions TEXT NOT NULL,
+                citations TEXT NOT NULL DEFAULT '[]',
                 markdown TEXT NOT NULL,
                 disclaimer TEXT NOT NULL,
                 FOREIGN KEY(project_id) REFERENCES research_projects(project_id),
@@ -87,6 +88,7 @@ def init_db() -> None:
             );
             """
         )
+        _ensure_column(conn, "ai_reports", "citations", "TEXT NOT NULL DEFAULT '[]'")
 
 
 @contextmanager
@@ -108,3 +110,9 @@ def loads(value: str | None, default: Any) -> Any:
     if not value:
         return default
     return json.loads(value)
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
