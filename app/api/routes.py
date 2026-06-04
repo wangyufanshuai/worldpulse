@@ -75,8 +75,8 @@ def research_project_detail(project_id: str) -> ProjectDetail:
 
 
 @router.post("/projects/{project_id}/run", response_model=ProjectDetail)
-def research_project_run(project_id: str) -> ProjectDetail:
-    return run_project(project_id)
+def research_project_run(project_id: str, mode: str = "fast") -> ProjectDetail:
+    return run_project(project_id, mode=mode)
 
 
 @router.get("/projects/{project_id}/graph", response_model=CausalGraphSnapshot)

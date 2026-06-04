@@ -107,19 +107,25 @@ def get_project_detail(project_id: str) -> ProjectDetail:
     )
 
 
-def run_project(project_id: str) -> ProjectDetail:
+def run_project(project_id: str, mode: str = "fast") -> ProjectDetail:
     project = _get_project(project_id)
     started = _now()
     run_id = f"run_{uuid4().hex[:12]}"
+    run_mode = _resolve_run_mode(mode)
+    workflow_events: list[dict] = []
+    _append_workflow_event(workflow_events, "project", "研究任务", "completed", "已读取研究问题、地区、资产范围和事件类型。")
 
-    if _fast_mode():
+    if run_mode == "fast":
         risk, events, causal, backtest, simulation = _fast_research_bundle(project)
         event = events[0]
         chain = causal.chains[0]
+        _append_workflow_event(workflow_events, "data", "快速数据快照", "completed", "使用可解释代理快照，避免首次运行被外部数据源阻塞。")
     else:
         risk = build_risk_overview()
+        _append_workflow_event(workflow_events, "data", "真实数据抓取", "completed", "已读取风险、宏观、市场与事件数据源。")
         events = build_causal_events(window_days=project.event_window_days, region=project.region)
         event = select_event(events, _preferred_event_type(project, events))
+        _append_workflow_event(workflow_events, "events", "事件识别", "completed", f"识别主导事件：{event.name}，事件强度 {event.intensity:.1f}/100。")
         causal = analyze_causal_world(
             CausalAnalysisRequest(
                 event_type=event.event_type,
@@ -132,11 +138,18 @@ def run_project(project_id: str) -> ProjectDetail:
         chain = causal.chains[0]
         backtest = run_causal_backtest(event_type=event.event_type, window_days=max(120, project.event_window_days * 4), horizon_days=20)
         simulation = run_simulation(_simulation_request_for_event(event.event_type))
+    if run_mode == "fast":
+        _append_workflow_event(workflow_events, "events", "事件识别", "completed", f"快速模式锁定主导事件：{event.name}。")
+    _append_workflow_event(workflow_events, "graph", "因果图谱", "completed", f"生成 {len(chain.nodes)} 个节点、{len(chain.edges)} 条因果边，图谱置信度 {chain.confidence:.1f}/100。")
+    _append_workflow_event(workflow_events, "backtest", "历史验证", "completed", f"回测样本 {backtest.sample_count} 个，方向一致性 {backtest.hit_rate:.0%}。")
+    _append_workflow_event(workflow_events, "simulation", "情景模拟", "completed", f"生成 {simulation.horizon_months} 个月路径，运行次数 {simulation.runs}。")
     data_snapshot = {
         "question": project.question,
         "region": project.region,
         "asset_scope": project.asset_scope,
         "event_types": project.event_types,
+        "run_mode": run_mode,
+        "workflow_events": workflow_events,
         "sources": sorted({event.source for event in events} | {"WorldPulse risk engine", "WorldPulse simulation", "Causal backtest"}),
     }
     summary = _run_summary(project.title, event.name, risk.latest.score, chain.confidence)
@@ -156,6 +169,8 @@ def run_project(project_id: str) -> ProjectDetail:
     )
     graph = _graph_snapshot(project.project_id, run_id, chain, backtest)
     report = _project_report(project, run, graph, causal)
+    _append_workflow_event(workflow_events, "report", "AI 报告", "completed", f"生成报告：{report.title}，模式 {report.mode}。")
+    run.data_snapshot["workflow_events"] = workflow_events
 
     with connect() as conn:
         conn.execute(
@@ -449,14 +464,16 @@ def _graph_snapshot(project_id: str, run_id: str, chain, backtest) -> CausalGrap
 
 
 def _project_report(project: ResearchProject, run: ResearchRun, graph: CausalGraphSnapshot, causal) -> ProjectAIReport:
-    ai = _fast_ai_report(project, run, graph) if _fast_mode() else analyze_current_risk(AIAnalysisRequest(focus=project.question, window_days=project.event_window_days))
+    run_mode = str(run.data_snapshot.get("run_mode", "fast"))
+    ai = _fast_ai_report(project, run, graph) if run_mode == "fast" else analyze_current_risk(AIAnalysisRequest(focus=project.question, window_days=project.event_window_days))
     ai.title = f"{project.title} 研究报告"
-    ai.summary = f"{run.summary}\n\n{ai.summary}"
-    ai.key_findings = [
+    if run.summary not in ai.summary:
+        ai.summary = f"{run.summary}\n\n{ai.summary}"
+    leading_findings = [
         f"主导事件链：{causal.chains[0].title}，图谱置信度 {graph.confidence:.1f}/100。",
         f"研究问题：{project.question}",
-        *ai.key_findings[:4],
     ]
+    ai.key_findings = _dedupe_texts([*leading_findings, *ai.key_findings])[:6]
     markdown = render_ai_markdown(ai)
     return ProjectAIReport(
         report_id=f"report_{uuid4().hex[:12]}",
@@ -484,8 +501,40 @@ def _now() -> str:
     return datetime.now().replace(microsecond=0).isoformat()
 
 
+def _dedupe_texts(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        text = str(item).strip()
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+    return out
+
+
 def _fast_mode() -> bool:
     return os.getenv("WORLDPULSE_STUDIO_FAST_MODE", "true").lower() != "false"
+
+
+def _resolve_run_mode(mode: str) -> str:
+    normalized = (mode or "fast").lower()
+    if normalized in {"full", "real", "complete"}:
+        return "full"
+    if normalized == "env":
+        return "fast" if _fast_mode() else "full"
+    return "fast"
+
+
+def _append_workflow_event(events: list[dict], key: str, title: str, status: str, detail: str) -> None:
+    events.append(
+        {
+            "key": key,
+            "title": title,
+            "status": status,
+            "detail": detail,
+            "timestamp": _now(),
+        }
+    )
 
 
 def _fast_research_bundle(project: ResearchProject):

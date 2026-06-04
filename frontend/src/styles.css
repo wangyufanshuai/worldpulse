@@ -203,6 +203,30 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
 .workspace-head h1 { font-size: clamp(30px, 4vw, 54px); margin-bottom: 14px; }
 .workspace-head p { color: #cbd5e1; max-width: 880px; }
 .head-actions { display: flex; align-items: center; gap: 12px; }
+.mode-switch {
+  display: grid;
+  gap: 6px;
+  min-width: 150px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.mode-switch select {
+  padding: 9px 11px;
+  border-radius: 12px;
+}
+.quality-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--cyan);
+  background: rgba(92, 225, 230, 0.09);
+  border: 1px solid rgba(92, 225, 230, 0.28);
+  font-size: 12px;
+}
 .workflow-rail {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -255,6 +279,20 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
 }
 .detail-drawer button { float: right; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: #cbd5e1; padding: 6px 10px; }
 .detail-drawer li { color: #cbd5e1; margin-bottom: 7px; }
+.edge-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.edge-meta span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: #cbd5e1;
+  background: rgba(255,255,255,0.05);
+  font-size: 12px;
+}
 .summary-box {
   color: #dbe4ef;
   line-height: 1.7;
@@ -263,6 +301,44 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
   padding: 16px;
   background: rgba(255,255,255,0.045);
 }
+.timeline-list {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+.timeline-list article {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  padding: 13px 13px 13px 40px;
+  background: rgba(255,255,255,0.035);
+}
+.timeline-list article::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 18px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 18px rgba(71, 209, 140, 0.45);
+}
+.timeline-list article span {
+  color: var(--green);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.timeline-list article strong {
+  display: block;
+  margin: 4px 0;
+}
+.timeline-list article p {
+  color: #cbd5e1;
+  line-height: 1.55;
+  margin-bottom: 6px;
+}
+.timeline-list article small { color: var(--muted); }
 .source-list { display: grid; gap: 10px; margin-top: 18px; }
 .source-list span {
   border: 1px solid var(--line);

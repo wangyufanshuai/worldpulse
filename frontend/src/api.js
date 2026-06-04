@@ -6,7 +6,7 @@ const api = axios.create({
 })
 
 export async function getRiskOverview() {
-  const { data } = await api.get('/risk/overview')
+  const { data } = await api.get('/risk/overview', { timeout: 8000 })
   return data
 }
 
@@ -25,8 +25,8 @@ export async function getProject(projectId) {
   return data
 }
 
-export async function runProject(projectId) {
-  const { data } = await api.post(`/projects/${projectId}/run`)
+export async function runProject(projectId, mode = 'fast') {
+  const { data } = await api.post(`/projects/${projectId}/run`, null, { params: { mode } })
   return data
 }
 

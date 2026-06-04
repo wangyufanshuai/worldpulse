@@ -7,8 +7,17 @@
         <p>{{ detail.project.question }}</p>
       </div>
       <div class="head-actions">
-        <span :class="['status-badge', detail.project.status]">{{ detail.project.status }}</span>
-        <button class="primary" :disabled="running" @click="run">{{ running ? '研究运行中...' : '运行研究' }}</button>
+        <span :class="['status-badge', detail.project.status]">{{ statusText }}</span>
+        <label class="mode-switch">
+          <span>运行模式</span>
+          <select v-model="runMode">
+            <option value="fast">快速研究</option>
+            <option value="full">完整真实数据</option>
+          </select>
+        </label>
+        <button class="primary" :disabled="running" @click="run">
+          {{ running ? '研究运行中...' : '运行研究' }}
+        </button>
       </div>
     </section>
 
@@ -23,8 +32,11 @@
     <section class="split-lab">
       <div class="graph-panel">
         <div class="section-title">
-          <p class="eyebrow">Causal Graph</p>
-          <h2>事件到市场的推理路径</h2>
+          <div>
+            <p class="eyebrow">Causal Graph</p>
+            <h2>事件到市场的推理路径</h2>
+          </div>
+          <span v-if="detail.graph" class="quality-pill">置信度 {{ detail.graph.confidence.toFixed(1) }}</span>
         </div>
         <div ref="graphEl" class="graph-canvas"></div>
         <div v-if="selected" class="detail-drawer">
@@ -35,19 +47,35 @@
           <ul v-if="selected.evidence">
             <li v-for="item in selected.evidence" :key="item">{{ item }}</li>
           </ul>
+          <div v-if="selected.backtest" class="edge-meta">
+            <span>样本 {{ selected.backtest.sample_count }}</span>
+            <span>一致性 {{ Math.round(selected.backtest.hit_rate * 100) }}%</span>
+            <span>最大误差 {{ selected.backtest.max_error }}</span>
+          </div>
         </div>
       </div>
 
       <aside class="insight-panel">
         <div class="section-title">
-          <p class="eyebrow">Run Summary</p>
-          <h2>研究运行</h2>
+          <div>
+            <p class="eyebrow">Run Timeline</p>
+            <h2>研究过程</h2>
+          </div>
+          <span class="quality-pill">{{ currentModeText }}</span>
         </div>
         <p class="summary-box">{{ detail.latest_run?.summary || '尚未运行。点击“运行研究”生成数据快照、因果图谱和报告。' }}</p>
+        <div class="timeline-list" v-if="workflowEvents.length">
+          <article v-for="event in workflowEvents" :key="`${event.key}-${event.timestamp}`">
+            <span>{{ event.status }}</span>
+            <strong>{{ event.title }}</strong>
+            <p>{{ event.detail }}</p>
+            <small>{{ event.timestamp }}</small>
+          </article>
+        </div>
         <div class="metric-grid" v-if="detail.graph">
-          <div><span>图谱置信度</span><strong>{{ detail.graph.confidence.toFixed(1) }}</strong></div>
           <div><span>节点</span><strong>{{ detail.graph.nodes.length }}</strong></div>
           <div><span>因果边</span><strong>{{ detail.graph.edges.length }}</strong></div>
+          <div><span>证据源</span><strong>{{ detail.graph.evidence_sources.length }}</strong></div>
         </div>
         <div class="source-list" v-if="detail.graph">
           <strong>证据来源</strong>
@@ -59,8 +87,11 @@
     <section class="report-chat">
       <article class="report-panel">
         <div class="section-title">
-          <p class="eyebrow">AI Report</p>
-          <h2>{{ detail.report?.title || '等待报告' }}</h2>
+          <div>
+            <p class="eyebrow">AI Report</p>
+            <h2>{{ detail.report?.title || '等待报告' }}</h2>
+          </div>
+          <span v-if="detail.report" class="quality-pill">{{ detail.report.mode }}</span>
         </div>
         <template v-if="detail.report">
           <p class="report-summary">{{ detail.report.summary }}</p>
@@ -83,8 +114,10 @@
 
       <aside class="chat-panel">
         <div class="section-title">
-          <p class="eyebrow">Interaction</p>
-          <h2>继续追问</h2>
+          <div>
+            <p class="eyebrow">Interaction</p>
+            <h2>继续追问</h2>
+          </div>
         </div>
         <div class="quick-prompts">
           <button v-for="prompt in prompts" :key="prompt" @click="message = prompt">{{ prompt }}</button>
@@ -117,8 +150,15 @@ const selected = ref(null)
 const running = ref(false)
 const chatting = ref(false)
 const message = ref('')
+const runMode = ref('fast')
 const prompts = ['证据链最弱的一环是什么？', '有没有历史反例？', '如果能源冲击减弱，结论怎么变？', '哪些指标最值得未来7天观察？']
 
+const workflowEvents = computed(() => detail.value?.latest_run?.data_snapshot?.workflow_events || [])
+const currentModeText = computed(() => {
+  const mode = detail.value?.latest_run?.data_snapshot?.run_mode || runMode.value
+  return mode === 'full' ? '完整真实数据' : '快速研究'
+})
+const statusText = computed(() => ({ created: '已创建', completed: '已完成' }[detail.value?.project?.status] || detail.value?.project?.status || '未知'))
 const steps = computed(() => [
   { index: '01', key: 'project', title: '研究任务', desc: '问题、地区和事件范围已锁定', done: !!detail.value?.project },
   { index: '02', key: 'events', title: '事件识别', desc: '聚合新闻、冲突和宏观信号', done: !!detail.value?.latest_run?.event_snapshot?.length },
@@ -134,6 +174,7 @@ const markdownUrl = computed(() => {
 
 async function load() {
   detail.value = await getProject(props.projectId)
+  runMode.value = detail.value?.latest_run?.data_snapshot?.run_mode || runMode.value
   await nextTick()
   renderGraph()
 }
@@ -141,7 +182,7 @@ async function load() {
 async function run() {
   running.value = true
   try {
-    detail.value = await runProject(props.projectId)
+    detail.value = await runProject(props.projectId, runMode.value)
     await nextTick()
     renderGraph()
   } finally {
