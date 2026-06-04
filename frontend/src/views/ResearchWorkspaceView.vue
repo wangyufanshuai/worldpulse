@@ -49,9 +49,27 @@
             <button @click="toggleGraphEdit">{{ graphEditMode ? '退出编辑' : '编辑图谱' }}</button>
             <label v-if="graphEditMode" class="inline-edit">置信度<input v-model.number="editableGraph.confidence" type="number" min="0" max="100" /></label>
             <button v-if="graphEditMode" @click="addGraphNode">添加节点</button>
-            <button v-if="graphEditMode" @click="addGraphEdge">添加边</button>
             <button v-if="graphEditMode" :disabled="savingGraph" @click="saveGraph">{{ savingGraph ? '保存中...' : '保存校正' }}</button>
           </div>
+        </div>
+        <div v-if="graphEditMode" class="edge-builder">
+          <label>
+            起点
+            <select v-model="edgeDraft.source">
+              <option v-for="node in editableGraph.nodes" :key="node.id" :value="node.id">{{ node.label }}</option>
+            </select>
+          </label>
+          <label>
+            终点
+            <select v-model="edgeDraft.target">
+              <option v-for="node in editableGraph.nodes" :key="node.id" :value="node.id">{{ node.label }}</option>
+            </select>
+          </label>
+          <label>
+            关系
+            <input v-model="edgeDraft.relation" placeholder="例如：推高风险溢价" />
+          </label>
+          <button @click="addGraphEdge">添加因果边</button>
         </div>
         <div ref="graphEl" class="graph-canvas"></div>
         <div v-if="selected" class="detail-drawer">
@@ -64,6 +82,7 @@
             <label>分数/权重<input v-model.number="selectedEdit.score" type="number" min="0" max="100" /></label>
             <label>解释<textarea v-model="selectedEdit.explanation" rows="3"></textarea></label>
             <button class="drawer-action" @click="applySelectedEdit">应用到图谱</button>
+            <button class="drawer-action danger" @click="deleteSelectedGraphItem">删除{{ selectedType === 'node' ? '节点' : '边' }}</button>
           </template>
           <p v-else>{{ selected.explanation || selected.id }}</p>
           <ul v-if="selected.evidence">
@@ -200,7 +219,9 @@
       <h3>相关因果边</h3>
       <ul>
         <li v-for="edge in evidenceDrawer.edges" :key="`${edge.source}-${edge.target}-${edge.relation}`">
-          {{ edge.source }} → {{ edge.target }} · {{ edge.relation }} · 置信度 {{ Math.round(edge.confidence || 0) }}
+          <button @click="focusEvidenceEdge(edge)">
+            {{ edgeLabel(edge.source) }} → {{ edgeLabel(edge.target) }} · {{ edge.relation }} · 置信度 {{ Math.round(edge.confidence || 0) }}
+          </button>
         </li>
       </ul>
       <h3>结论边界</h3>
@@ -231,6 +252,8 @@ const graphEditMode = ref(false)
 const editableGraph = ref(null)
 const selectedType = ref('')
 const selectedEdit = ref({ label: '', kind: '', score: 50, explanation: '' })
+const edgeDraft = ref({ source: '', target: '', relation: '人工假设' })
+const focusedEdgeKey = ref('')
 const evidenceDrawer = ref(null)
 const prompts = ['证据链最弱的一环是什么？', '有没有历史反例？', '如果能源冲击减弱，结论怎么变？', '哪些指标最值得未来7天观察？']
 
@@ -312,6 +335,7 @@ function versionLabel(run) {
 
 function prepareGraphDraft() {
   editableGraph.value = detail.value?.graph ? JSON.parse(JSON.stringify(detail.value.graph)) : null
+  syncEdgeDraft()
 }
 
 function prepareCompareBase() {
@@ -350,6 +374,15 @@ function selectGraphItem(item, type) {
   }
 }
 
+function syncEdgeDraft() {
+  const nodes = editableGraph.value?.nodes || []
+  edgeDraft.value = {
+    source: nodes[0]?.id || '',
+    target: nodes[1]?.id || nodes[0]?.id || '',
+    relation: edgeDraft.value.relation || '人工假设'
+  }
+}
+
 function applySelectedEdit() {
   if (!editableGraph.value || !selected.value) return
   if (selectedType.value === 'node') {
@@ -373,20 +406,35 @@ function addGraphNode() {
   if (!editableGraph.value) return
   const id = `analyst_${Date.now()}`
   editableGraph.value.nodes.push({ id, label: '人工节点', kind: 'analyst', score: 50 })
+  syncEdgeDraft()
   renderGraph()
 }
 
 function addGraphEdge() {
   if (!editableGraph.value || editableGraph.value.nodes.length < 2) return
-  const [source, target] = editableGraph.value.nodes.slice(-2)
+  if (!edgeDraft.value.source || !edgeDraft.value.target || edgeDraft.value.source === edgeDraft.value.target) return
   editableGraph.value.edges.push({
-    source: source.id,
-    target: target.id,
-    relation: '人工假设',
+    source: edgeDraft.value.source,
+    target: edgeDraft.value.target,
+    relation: edgeDraft.value.relation || '人工假设',
     weight: 0.5,
     confidence: 50,
     explanation: '由研究者手动加入，需通过后续数据和回测验证。'
   })
+  renderGraph()
+}
+
+function deleteSelectedGraphItem() {
+  if (!editableGraph.value || !selected.value) return
+  if (selectedType.value === 'node') {
+    const nodeId = selected.value.id
+    editableGraph.value.nodes = editableGraph.value.nodes.filter(node => node.id !== nodeId)
+    editableGraph.value.edges = editableGraph.value.edges.filter(edge => edge.source !== nodeId && edge.target !== nodeId)
+    syncEdgeDraft()
+  } else {
+    editableGraph.value.edges = editableGraph.value.edges.filter(edge => !(edge.source === selected.value.source && edge.target === selected.value.target))
+  }
+  selected.value = null
   renderGraph()
 }
 
@@ -417,13 +465,56 @@ function openEvidenceDrawer(finding) {
   const evidence = detail.value?.report?.evidence || []
   const edges = detail.value?.graph?.edges || []
   const uncertainties = detail.value?.report?.uncertainties || []
+  const rankedEdges = rankEvidenceEdges(finding, edges)
   evidenceDrawer.value = {
     finding,
-    summary: '该结论由报告证据、因果边和不确定性共同支撑。若证据不足，应降低置信度或运行完整真实数据模式复核。',
+    summary: rankedEdges.length
+      ? '已按结论关键词匹配最相关因果边；点击边可在图谱中定位。'
+      : '未找到强匹配边，该结论主要依赖报告证据和不确定性说明。',
     evidence,
-    edges: edges.slice(0, 5),
+    edges: rankedEdges.slice(0, 5),
     uncertainties
   }
+}
+
+function rankEvidenceEdges(finding, edges) {
+  const tokens = tokenize(finding)
+  return [...edges]
+    .map(edge => {
+      const text = `${edgeLabel(edge.source)} ${edgeLabel(edge.target)} ${edge.relation || ''} ${edge.explanation || ''}`.toLowerCase()
+      const score = tokens.reduce((total, token) => total + (text.includes(token) ? 1 : 0), 0) + Number(edge.confidence || 0) / 200
+      return { edge, score }
+    })
+    .filter(item => item.score > 0.2)
+    .sort((a, b) => b.score - a.score)
+    .map(item => item.edge)
+}
+
+function tokenize(text) {
+  const raw = String(text || '').toLowerCase()
+  const chineseHints = ['能源', '冲突', '原油', '黄金', '纳指', '风险', '利率', '通胀', '美元', '商品', '事件', '图谱']
+  const words = raw.split(/[^\p{L}\p{N}]+/u).filter(item => item.length >= 2)
+  return [...new Set([...words, ...chineseHints.filter(item => raw.includes(item))])]
+}
+
+function edgeLabel(id) {
+  const node = (detail.value?.graph?.nodes || editableGraph.value?.nodes || []).find(item => item.id === id)
+  return node?.label || id
+}
+
+function focusEvidenceEdge(edge) {
+  focusedEdgeKey.value = edgeKey(edge)
+  selected.value = { ...edge }
+  selectedType.value = 'edge'
+  selectGraphItem(edge, 'edge')
+  evidenceDrawer.value = null
+  nextTick(renderGraph)
+}
+
+function edgeKey(edge) {
+  const source = edge.source?.id || edge.source
+  const target = edge.target?.id || edge.target
+  return `${source}->${target}:${edge.relation || ''}`
 }
 
 function clamp(value, min, max) {
@@ -448,7 +539,7 @@ function renderGraph() {
     .force('collide', d3.forceCollide(52))
 
   const link = svg.append('g').selectAll('line').data(edges).enter().append('line')
-    .attr('class', 'edge-line')
+    .attr('class', d => edgeKey(d) === focusedEdgeKey.value ? 'edge-line edge-focused' : 'edge-line')
     .attr('stroke-width', d => 1 + d.weight * 2)
     .on('click', (_, d) => {
       selectGraphItem({ ...d, source: d.source.id || d.source, target: d.target.id || d.target }, 'edge')

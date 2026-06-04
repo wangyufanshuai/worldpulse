@@ -257,6 +257,38 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
   color: var(--text);
   background: rgba(255,255,255,0.06);
 }
+.edge-builder {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(180px, 1.2fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.035);
+}
+.edge-builder label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.edge-builder select, .edge-builder input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  color: var(--text);
+  background: rgba(255,255,255,0.06);
+}
+.edge-builder button {
+  border: 1px solid rgba(92,225,230,0.35);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--cyan);
+  background: rgba(92,225,230,0.08);
+}
 .workflow-rail {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -287,6 +319,11 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
   overflow: hidden;
 }
 .edge-line { stroke: rgba(125,167,255,0.58); cursor: pointer; }
+.edge-focused {
+  stroke: var(--amber);
+  stroke-width: 5 !important;
+  filter: drop-shadow(0 0 10px rgba(245,184,95,0.55));
+}
 .node circle {
   fill: rgba(92,225,230,0.32);
   stroke: rgba(92,225,230,0.95);
@@ -324,7 +361,12 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
   color: var(--text);
   background: rgba(255,255,255,0.06);
 }
-.drawer-action { float: none !important; margin-top: 4px; }
+.drawer-action { float: none !important; margin: 4px 8px 0 0; }
+.drawer-action.danger {
+  border-color: rgba(255,107,107,0.42);
+  color: #fecaca;
+  background: rgba(255,107,107,0.08);
+}
 .edge-meta {
   display: flex;
   flex-wrap: wrap;
@@ -470,6 +512,19 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
 .evidence-drawer h2 { margin: 10px 0 12px; }
 .evidence-drawer h3 { margin: 18px 0 10px; }
 .evidence-drawer li { color: #cbd5e1; line-height: 1.55; margin-bottom: 8px; }
+.evidence-drawer li button {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  color: #dbeafe;
+  text-align: left;
+  background: rgba(255,255,255,0.04);
+}
+.evidence-drawer li button:hover {
+  border-color: rgba(245,184,95,0.45);
+  background: rgba(245,184,95,0.08);
+}
 .report-chat { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr); gap: 20px; }
 .report-summary { color: #dbe4ef; font-size: 17px; line-height: 1.75; }
 .report-panel h3 { margin: 24px 0 12px; }
