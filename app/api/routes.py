@@ -22,6 +22,7 @@ from app.core.models import (
     ReportTemplate,
     ResearchProject,
     ResearchProjectCreate,
+    ResearchRun,
     RiskAnalysis,
     RiskOverview,
     RiskPoint,
@@ -42,7 +43,17 @@ from app.services.causal_data import build_causal_events, select_event
 from app.services.causal_graph import build_causal_chain
 from app.services.event_digest import build_agent_event_digest, build_event_digest
 from app.services.exports import alerts_csv, indicators_csv, replay_csv, risk_history_csv, species_occurrences_csv
-from app.services.projects import chat_with_project, create_project, get_project_detail, latest_project_graph, latest_project_report, list_projects, run_project
+from app.services.projects import (
+    chat_with_project,
+    create_project,
+    get_project_detail,
+    latest_project_graph,
+    latest_project_report,
+    list_projects,
+    project_run_detail,
+    project_runs,
+    run_project,
+)
 from app.services.report import export_report, render_report
 from app.services.risk_engine import build_latest_risk, build_replay, build_risk_analysis, build_risk_history, build_risk_overview
 from app.services.simulation_engine import list_agents, list_scenarios, run_simulation
@@ -77,6 +88,16 @@ def research_project_detail(project_id: str) -> ProjectDetail:
 @router.post("/projects/{project_id}/run", response_model=ProjectDetail)
 def research_project_run(project_id: str, mode: str = "fast") -> ProjectDetail:
     return run_project(project_id, mode=mode)
+
+
+@router.get("/projects/{project_id}/runs", response_model=list[ResearchRun])
+def research_project_runs(project_id: str) -> list[ResearchRun]:
+    return project_runs(project_id)
+
+
+@router.get("/projects/{project_id}/runs/{run_id}", response_model=ProjectDetail)
+def research_project_run_detail(project_id: str, run_id: str) -> ProjectDetail:
+    return project_run_detail(project_id, run_id)
 
 
 @router.get("/projects/{project_id}/graph", response_model=CausalGraphSnapshot)

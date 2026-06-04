@@ -551,6 +551,7 @@ class ProjectChatMessage(BaseModel):
 class ProjectDetail(BaseModel):
     project: ResearchProject
     latest_run: ResearchRun | None = None
+    runs: list[ResearchRun] = []
     graph: CausalGraphSnapshot | None = None
     report: ProjectAIReport | None = None
     chat_messages: list[ProjectChatMessage] = []

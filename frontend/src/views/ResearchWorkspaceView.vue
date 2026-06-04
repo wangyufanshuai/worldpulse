@@ -15,6 +15,14 @@
             <option value="full">完整真实数据</option>
           </select>
         </label>
+        <label v-if="runVersions.length" class="mode-switch">
+          <span>研究版本</span>
+          <select v-model="selectedRunId" @change="selectRun">
+            <option v-for="run in runVersions" :key="run.run_id" :value="run.run_id">
+              {{ versionLabel(run) }}
+            </option>
+          </select>
+        </label>
         <button class="primary" :disabled="running" @click="run">
           {{ running ? '研究运行中...' : '运行研究' }}
         </button>
@@ -81,6 +89,14 @@
           <strong>证据来源</strong>
           <span v-for="source in detail.graph.evidence_sources" :key="source">{{ source }}</span>
         </div>
+        <div class="trace-panel" v-if="detail.latest_run">
+          <strong>证据追溯</strong>
+          <div><span>运行编号</span><code>{{ detail.latest_run.run_id }}</code></div>
+          <div><span>运行时间</span><code>{{ detail.latest_run.completed_at || detail.latest_run.started_at }}</code></div>
+          <div><span>事件样本</span><code>{{ detail.latest_run.event_snapshot?.length || 0 }}</code></div>
+          <div><span>风险读数</span><code>{{ riskScoreText }}</code></div>
+          <div><span>数据源</span><code>{{ sourceCount }} 个</code></div>
+        </div>
       </aside>
     </section>
 
@@ -141,7 +157,7 @@
 <script setup>
 import * as d3 from 'd3'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { chatWithProject, getProject, runProject } from '../api'
+import { chatWithProject, getProject, getProjectRun, runProject } from '../api'
 
 const props = defineProps({ projectId: String })
 const detail = ref(null)
@@ -151,9 +167,16 @@ const running = ref(false)
 const chatting = ref(false)
 const message = ref('')
 const runMode = ref('fast')
+const selectedRunId = ref('')
 const prompts = ['证据链最弱的一环是什么？', '有没有历史反例？', '如果能源冲击减弱，结论怎么变？', '哪些指标最值得未来7天观察？']
 
+const runVersions = computed(() => detail.value?.runs || [])
 const workflowEvents = computed(() => detail.value?.latest_run?.data_snapshot?.workflow_events || [])
+const sourceCount = computed(() => detail.value?.latest_run?.data_snapshot?.sources?.length || detail.value?.graph?.evidence_sources?.length || 0)
+const riskScoreText = computed(() => {
+  const score = detail.value?.latest_run?.risk_snapshot?.latest?.score
+  return typeof score === 'number' ? `${score.toFixed(1)}/100` : '--'
+})
 const currentModeText = computed(() => {
   const mode = detail.value?.latest_run?.data_snapshot?.run_mode || runMode.value
   return mode === 'full' ? '完整真实数据' : '快速研究'
@@ -172,8 +195,9 @@ const markdownUrl = computed(() => {
   return URL.createObjectURL(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }))
 })
 
-async function load() {
-  detail.value = await getProject(props.projectId)
+async function load(runId = selectedRunId.value) {
+  detail.value = runId ? await getProjectRun(props.projectId, runId) : await getProject(props.projectId)
+  selectedRunId.value = detail.value?.latest_run?.run_id || ''
   runMode.value = detail.value?.latest_run?.data_snapshot?.run_mode || runMode.value
   await nextTick()
   renderGraph()
@@ -183,6 +207,7 @@ async function run() {
   running.value = true
   try {
     detail.value = await runProject(props.projectId, runMode.value)
+    selectedRunId.value = detail.value?.latest_run?.run_id || ''
     await nextTick()
     renderGraph()
   } finally {
@@ -190,15 +215,25 @@ async function run() {
   }
 }
 
+async function selectRun() {
+  await load(selectedRunId.value)
+}
+
 async function send() {
   chatting.value = true
   try {
     await chatWithProject(props.projectId, message.value)
     message.value = ''
-    await load()
+    await load(selectedRunId.value)
   } finally {
     chatting.value = false
   }
+}
+
+function versionLabel(run) {
+  const mode = run.data_snapshot?.run_mode === 'full' ? '完整' : '快速'
+  const time = run.completed_at || run.started_at
+  return `${mode} · ${time}`
 }
 
 function renderGraph() {

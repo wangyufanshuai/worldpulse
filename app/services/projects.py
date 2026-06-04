@@ -96,13 +96,16 @@ def list_projects(limit: int = 50) -> list[ResearchProject]:
     return [_project_from_row(row) for row in rows]
 
 
-def get_project_detail(project_id: str) -> ProjectDetail:
+def get_project_detail(project_id: str, run_id: str | None = None) -> ProjectDetail:
     project = _get_project(project_id)
+    runs = _project_runs(project_id)
+    selected_run = _run_by_id(project_id, run_id) if run_id else (runs[0] if runs else None)
     return ProjectDetail(
         project=project,
-        latest_run=_latest_run(project_id),
-        graph=_latest_graph(project_id),
-        report=_latest_report(project_id),
+        latest_run=selected_run,
+        runs=runs,
+        graph=_graph_for_run(project_id, selected_run.run_id) if selected_run else None,
+        report=_report_for_run(project_id, selected_run.run_id) if selected_run else None,
         chat_messages=_chat_messages(project_id),
     )
 
@@ -234,7 +237,7 @@ def run_project(project_id: str, mode: str = "fast") -> ProjectDetail:
             ),
         )
         conn.execute("UPDATE research_projects SET status = ?, updated_at = ? WHERE project_id = ?", ("completed", completed, project.project_id))
-    return get_project_detail(project.project_id)
+    return get_project_detail(project.project_id, run_id=run_id)
 
 
 def latest_project_graph(project_id: str) -> CausalGraphSnapshot:
@@ -253,6 +256,15 @@ def latest_project_report(project_id: str) -> ProjectAIReport:
         report = _latest_report(project_id)
     assert report is not None
     return report
+
+
+def project_runs(project_id: str) -> list[ResearchRun]:
+    _get_project(project_id)
+    return _project_runs(project_id)
+
+
+def project_run_detail(project_id: str, run_id: str) -> ProjectDetail:
+    return get_project_detail(project_id, run_id=run_id)
 
 
 def chat_with_project(project_id: str, payload: ProjectChatRequest) -> ProjectChatMessage:
@@ -308,8 +320,31 @@ def _get_project(project_id: str) -> ResearchProject:
 def _latest_run(project_id: str) -> ResearchRun | None:
     init_db()
     with connect() as conn:
-        row = conn.execute("SELECT * FROM research_runs WHERE project_id = ? ORDER BY started_at DESC LIMIT 1", (project_id,)).fetchone()
+        row = conn.execute("SELECT * FROM research_runs WHERE project_id = ? ORDER BY started_at DESC, run_id DESC LIMIT 1", (project_id,)).fetchone()
     return _run_from_row(row) if row else None
+
+
+def _project_runs(project_id: str, limit: int = 20) -> list[ResearchRun]:
+    init_db()
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM research_runs WHERE project_id = ? ORDER BY started_at DESC, run_id DESC LIMIT ?",
+            (project_id, max(1, min(limit, 50))),
+        ).fetchall()
+    return [_run_from_row(row) for row in rows]
+
+
+def _run_by_id(project_id: str, run_id: str | None) -> ResearchRun | None:
+    if not run_id:
+        return None
+    init_db()
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM research_runs WHERE project_id = ? AND run_id = ?", (project_id, run_id)).fetchone()
+    if row is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail=f"Unknown run for project: {run_id}")
+    return _run_from_row(row)
 
 
 def _latest_graph(project_id: str) -> CausalGraphSnapshot | None:
@@ -330,10 +365,58 @@ def _latest_graph(project_id: str) -> CausalGraphSnapshot | None:
     )
 
 
+def _graph_for_run(project_id: str, run_id: str) -> CausalGraphSnapshot | None:
+    init_db()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM causal_graph_snapshots WHERE project_id = ? AND run_id = ? ORDER BY generated_at DESC LIMIT 1",
+            (project_id, run_id),
+        ).fetchone()
+    if not row:
+        return None
+    return CausalGraphSnapshot(
+        graph_id=row["graph_id"],
+        project_id=row["project_id"],
+        run_id=row["run_id"],
+        generated_at=row["generated_at"],
+        nodes=loads(row["nodes"], []),
+        edges=loads(row["edges"], []),
+        confidence=float(row["confidence"]),
+        evidence_sources=loads(row["evidence_sources"], []),
+    )
+
+
 def _latest_report(project_id: str) -> ProjectAIReport | None:
     init_db()
     with connect() as conn:
         row = conn.execute("SELECT * FROM ai_reports WHERE project_id = ? ORDER BY generated_at DESC LIMIT 1", (project_id,)).fetchone()
+    if not row:
+        return None
+    return ProjectAIReport(
+        report_id=row["report_id"],
+        project_id=row["project_id"],
+        run_id=row["run_id"],
+        generated_at=row["generated_at"],
+        mode=row["mode"],
+        title=row["title"],
+        summary=row["summary"],
+        key_findings=loads(row["key_findings"], []),
+        evidence=loads(row["evidence"], []),
+        uncertainties=loads(row["uncertainties"], []),
+        watch_signals=loads(row["watch_signals"], []),
+        scenario_suggestions=loads(row["scenario_suggestions"], []),
+        markdown=row["markdown"],
+        disclaimer=row["disclaimer"],
+    )
+
+
+def _report_for_run(project_id: str, run_id: str) -> ProjectAIReport | None:
+    init_db()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM ai_reports WHERE project_id = ? AND run_id = ? ORDER BY generated_at DESC LIMIT 1",
+            (project_id, run_id),
+        ).fetchone()
     if not row:
         return None
     return ProjectAIReport(
@@ -498,7 +581,7 @@ def _run_summary(title: str, event_name: str, risk_score: float, confidence: flo
 
 
 def _now() -> str:
-    return datetime.now().replace(microsecond=0).isoformat()
+    return datetime.now().isoformat(timespec="milliseconds")
 
 
 def _dedupe_texts(items: list[str]) -> list[str]:

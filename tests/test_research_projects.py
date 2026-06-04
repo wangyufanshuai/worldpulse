@@ -170,9 +170,26 @@ def test_project_api_lifecycle(monkeypatch, tmp_path):
     assert run.status_code == 200
     detail = run.json()
     assert detail["latest_run"]["status"] == "completed"
+    assert len(detail["runs"]) == 1
     assert detail["graph"]["nodes"]
     assert detail["graph"]["edges"][0]["evidence"]
     assert detail["report"]["key_findings"]
+    first_run_id = detail["latest_run"]["run_id"]
+
+    second_run = client.post(f"/api/projects/{project_id}/run?mode=fast")
+    assert second_run.status_code == 200
+    second_detail = second_run.json()
+    assert len(second_detail["runs"]) == 2
+
+    runs = client.get(f"/api/projects/{project_id}/runs")
+    assert runs.status_code == 200
+    assert len(runs.json()) == 2
+
+    historical = client.get(f"/api/projects/{project_id}/runs/{first_run_id}")
+    assert historical.status_code == 200
+    assert historical.json()["latest_run"]["run_id"] == first_run_id
+    assert historical.json()["graph"]["run_id"] == first_run_id
+    assert historical.json()["report"]["run_id"] == first_run_id
 
     graph = client.get(f"/api/projects/{project_id}/graph")
     assert graph.status_code == 200

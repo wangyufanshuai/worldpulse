@@ -25,6 +25,16 @@ export async function getProject(projectId) {
   return data
 }
 
+export async function getProjectRun(projectId, runId) {
+  const { data } = await api.get(`/projects/${projectId}/runs/${runId}`)
+  return data
+}
+
+export async function listProjectRuns(projectId) {
+  const { data } = await api.get(`/projects/${projectId}/runs`)
+  return data
+}
+
 export async function runProject(projectId, mode = 'fast') {
   const { data } = await api.post(`/projects/${projectId}/run`, null, { params: { mode } })
   return data
