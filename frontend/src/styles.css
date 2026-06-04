@@ -227,6 +227,36 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
   border: 1px solid rgba(92, 225, 230, 0.28);
   font-size: 12px;
 }
+.graph-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.graph-actions button, .drawer-action {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: #dbeafe;
+  background: rgba(255,255,255,0.055);
+}
+.graph-actions button:disabled { opacity: 0.55; cursor: progress; }
+.inline-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.inline-edit input {
+  width: 70px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 9px;
+  color: var(--text);
+  background: rgba(255,255,255,0.06);
+}
 .workflow-rail {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -279,6 +309,22 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
 }
 .detail-drawer button { float: right; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: #cbd5e1; padding: 6px 10px; }
 .detail-drawer li { color: #cbd5e1; margin-bottom: 7px; }
+.detail-drawer label {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.detail-drawer input, .detail-drawer textarea, .compact-field select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  color: var(--text);
+  background: rgba(255,255,255,0.06);
+}
+.drawer-action { float: none !important; margin-top: 4px; }
 .edge-meta {
   display: flex;
   flex-wrap: wrap;
@@ -375,6 +421,55 @@ input:focus, textarea:focus, select:focus { border-color: rgba(92,225,230,0.65);
   white-space: nowrap;
   font-family: "SFMono-Regular", Consolas, monospace;
 }
+.compact-field {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.diff-summary {
+  color: #dbeafe;
+  line-height: 1.55;
+}
+.finding-list button {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: #cbd5e1;
+  text-align: left;
+  background: rgba(255,255,255,0.035);
+}
+.finding-list button:hover {
+  border-color: rgba(92,225,230,0.35);
+  color: #f8fafc;
+  background: rgba(92,225,230,0.08);
+}
+.evidence-drawer {
+  position: fixed;
+  top: 82px;
+  right: clamp(16px, 3vw, 42px);
+  z-index: 40;
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 112px);
+  overflow: auto;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 24px;
+  padding: 22px;
+  background: rgba(9, 13, 20, 0.96);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(22px);
+}
+.evidence-drawer > button {
+  float: right;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 11px;
+  color: #cbd5e1;
+  background: rgba(255,255,255,0.05);
+}
+.evidence-drawer h2 { margin: 10px 0 12px; }
+.evidence-drawer h3 { margin: 18px 0 10px; }
+.evidence-drawer li { color: #cbd5e1; line-height: 1.55; margin-bottom: 8px; }
 .report-chat { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr); gap: 20px; }
 .report-summary { color: #dbe4ef; font-size: 17px; line-height: 1.75; }
 .report-panel h3 { margin: 24px 0 12px; }

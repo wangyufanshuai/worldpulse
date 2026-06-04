@@ -22,9 +22,11 @@ from app.core.models import (
     ProjectChatMessage,
     ProjectChatRequest,
     ProjectDetail,
+    GraphEditRequest,
     ResearchProject,
     ResearchProjectCreate,
     ResearchRun,
+    ResearchRunDiff,
     RiskComponent,
     RiskOverview,
     RiskPoint,
@@ -267,6 +269,104 @@ def project_run_detail(project_id: str, run_id: str) -> ProjectDetail:
     return get_project_detail(project_id, run_id=run_id)
 
 
+def edit_project_graph(project_id: str, payload: GraphEditRequest) -> ProjectDetail:
+    _get_project(project_id)
+    run = _run_by_id(project_id, payload.run_id) if payload.run_id else _latest_run(project_id)
+    if run is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="Project has no research run to edit")
+    graph = _graph_for_run(project_id, run.run_id)
+    if graph is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail=f"Graph not found for run: {run.run_id}")
+
+    nodes = payload.nodes if payload.nodes is not None else graph.nodes
+    edges = payload.edges if payload.edges is not None else graph.edges
+    confidence = graph.confidence if payload.confidence is None else max(0.0, min(float(payload.confidence), 100.0))
+    evidence_sources = payload.evidence_sources if payload.evidence_sources is not None else graph.evidence_sources
+    note = (payload.note or "").strip()
+    if note and "Manual analyst edit" not in evidence_sources:
+        evidence_sources = [*evidence_sources, "Manual analyst edit"]
+    nodes, edges = _validate_graph_payload(nodes, edges)
+
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE causal_graph_snapshots
+            SET nodes = ?, edges = ?, confidence = ?, evidence_sources = ?, generated_at = ?
+            WHERE project_id = ? AND run_id = ?
+            """,
+            (dumps(nodes), dumps(edges), confidence, dumps(evidence_sources), _now(), project_id, run.run_id),
+        )
+        run_data = run.data_snapshot
+        workflow = list(run_data.get("workflow_events") or [])
+        _append_workflow_event(workflow, "graph_edit", "人工图谱校正", "completed", note or "已保存图谱节点、边或置信度调整。")
+        run_data["workflow_events"] = workflow
+        run_data["last_graph_edit"] = {"timestamp": _now(), "note": note or "graph updated"}
+        conn.execute("UPDATE research_runs SET data_snapshot = ? WHERE project_id = ? AND run_id = ?", (dumps(run_data), project_id, run.run_id))
+    return get_project_detail(project_id, run_id=run.run_id)
+
+
+def compare_project_runs(project_id: str, base_run_id: str, target_run_id: str) -> ResearchRunDiff:
+    _get_project(project_id)
+    base = _run_by_id(project_id, base_run_id)
+    target = _run_by_id(project_id, target_run_id)
+    assert base is not None and target is not None
+    base_graph = _graph_for_run(project_id, base.run_id)
+    target_graph = _graph_for_run(project_id, target.run_id)
+
+    base_risk = _risk_score(base)
+    target_risk = _risk_score(target)
+    base_events = _event_names(base)
+    target_events = _event_names(target)
+    base_sources = set(base.data_snapshot.get("sources") or [])
+    target_sources = set(target.data_snapshot.get("sources") or [])
+    base_confidence = base_graph.confidence if base_graph else None
+    target_confidence = target_graph.confidence if target_graph else None
+
+    risk_delta = None if base_risk is None or target_risk is None else round(target_risk - base_risk, 2)
+    confidence_delta = None if base_confidence is None or target_confidence is None else round(target_confidence - base_confidence, 2)
+    summary_parts = []
+    if risk_delta is not None:
+        summary_parts.append(f"综合风险变化 {risk_delta:+.1f} 点")
+    if confidence_delta is not None:
+        summary_parts.append(f"图谱置信度变化 {confidence_delta:+.1f} 点")
+    if not summary_parts:
+        summary_parts.append("两次运行可对比的数据不足")
+    return ResearchRunDiff(
+        project_id=project_id,
+        base_run_id=base.run_id,
+        target_run_id=target.run_id,
+        summary="；".join(summary_parts) + "。",
+        risk_delta=risk_delta,
+        confidence_delta=confidence_delta,
+        event_count_delta=len(target.event_snapshot) - len(base.event_snapshot),
+        evidence_source_delta=len(target_sources) - len(base_sources),
+        added_events=sorted(target_events - base_events),
+        removed_events=sorted(base_events - target_events),
+        added_sources=sorted(target_sources - base_sources),
+        removed_sources=sorted(base_sources - target_sources),
+        changed_metrics={
+            "base": {
+                "risk_score": base_risk,
+                "graph_confidence": base_confidence,
+                "event_count": len(base.event_snapshot),
+                "source_count": len(base_sources),
+                "completed_at": base.completed_at,
+            },
+            "target": {
+                "risk_score": target_risk,
+                "graph_confidence": target_confidence,
+                "event_count": len(target.event_snapshot),
+                "source_count": len(target_sources),
+                "completed_at": target.completed_at,
+            },
+        },
+    )
+
+
 def chat_with_project(project_id: str, payload: ProjectChatRequest) -> ProjectChatMessage:
     detail = get_project_detail(project_id)
     now = _now()
@@ -483,6 +583,67 @@ def _run_from_row(row) -> ResearchRun:
         simulation_snapshot=loads(row["simulation_snapshot"], {}),
         backtest_snapshot=loads(row["backtest_snapshot"], {}),
     )
+
+
+def _validate_graph_payload(nodes: list[dict], edges: list[dict]) -> tuple[list[dict], list[dict]]:
+    from fastapi import HTTPException
+
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        raise HTTPException(status_code=422, detail="Graph nodes and edges must be arrays")
+    normalized_nodes: list[dict] = []
+    node_ids: set[str] = set()
+    for raw in nodes:
+        if not isinstance(raw, dict):
+            raise HTTPException(status_code=422, detail="Each graph node must be an object")
+        node_id = str(raw.get("id") or "").strip()
+        label = str(raw.get("label") or node_id).strip()
+        if not node_id or not label:
+            raise HTTPException(status_code=422, detail="Each graph node requires id and label")
+        if node_id in node_ids:
+            raise HTTPException(status_code=422, detail=f"Duplicate graph node id: {node_id}")
+        node_ids.add(node_id)
+        normalized_nodes.append(
+            {
+                **raw,
+                "id": node_id,
+                "label": label[:80],
+                "kind": str(raw.get("kind") or "custom")[:32],
+                "score": max(0.0, min(float(raw.get("score", 50)), 100.0)),
+            }
+        )
+    normalized_edges: list[dict] = []
+    for raw in edges:
+        if not isinstance(raw, dict):
+            raise HTTPException(status_code=422, detail="Each graph edge must be an object")
+        source = str(raw.get("source") or "").strip()
+        target = str(raw.get("target") or "").strip()
+        if source not in node_ids or target not in node_ids:
+            raise HTTPException(status_code=422, detail=f"Graph edge references unknown node: {source}->{target}")
+        normalized_edges.append(
+            {
+                **raw,
+                "source": source,
+                "target": target,
+                "relation": str(raw.get("relation") or "analyst link")[:80],
+                "weight": max(0.0, min(float(raw.get("weight", 0.5)), 1.0)),
+                "confidence": max(0.0, min(float(raw.get("confidence", 50)), 100.0)),
+                "explanation": str(raw.get("explanation") or "人工校正的因果关系。")[:280],
+            }
+        )
+    return normalized_nodes, normalized_edges
+
+
+def _risk_score(run: ResearchRun) -> float | None:
+    score = (run.risk_snapshot.get("latest") or {}).get("score")
+    return float(score) if isinstance(score, int | float) else None
+
+
+def _event_names(run: ResearchRun) -> set[str]:
+    names: set[str] = set()
+    for event in run.event_snapshot:
+        if isinstance(event, dict):
+            names.add(str(event.get("name") or event.get("event_type") or "unknown"))
+    return names
 
 
 def _preferred_event_type(project: ResearchProject, events) -> str | None:

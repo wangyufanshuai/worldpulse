@@ -191,6 +191,44 @@ def test_project_api_lifecycle(monkeypatch, tmp_path):
     assert historical.json()["graph"]["run_id"] == first_run_id
     assert historical.json()["report"]["run_id"] == first_run_id
 
+    latest_run_id = second_detail["latest_run"]["run_id"]
+    diff = client.get(
+        f"/api/projects/{project_id}/runs/compare",
+        params={"base_run_id": first_run_id, "target_run_id": latest_run_id},
+    )
+    assert diff.status_code == 200
+    assert diff.json()["base_run_id"] == first_run_id
+    assert "changed_metrics" in diff.json()
+
+    graph_payload = second_detail["graph"]
+    graph_payload["nodes"][0]["label"] = "人工校正冲突事件"
+    graph_payload["confidence"] = 81
+    edited = client.patch(
+        f"/api/projects/{project_id}/graph",
+        json={
+            "run_id": latest_run_id,
+            "nodes": graph_payload["nodes"],
+            "edges": graph_payload["edges"],
+            "confidence": graph_payload["confidence"],
+            "evidence_sources": graph_payload["evidence_sources"],
+            "note": "测试校正",
+        },
+    )
+    assert edited.status_code == 200
+    assert edited.json()["graph"]["nodes"][0]["label"] == "人工校正冲突事件"
+    assert edited.json()["graph"]["confidence"] == 81
+    assert "Manual analyst edit" in edited.json()["graph"]["evidence_sources"]
+
+    invalid = client.patch(
+        f"/api/projects/{project_id}/graph",
+        json={
+            "run_id": latest_run_id,
+            "nodes": graph_payload["nodes"],
+            "edges": [{"source": "missing", "target": "event", "relation": "bad"}],
+        },
+    )
+    assert invalid.status_code == 422
+
     graph = client.get(f"/api/projects/{project_id}/graph")
     assert graph.status_code == 200
     assert graph.json()["confidence"] > 0

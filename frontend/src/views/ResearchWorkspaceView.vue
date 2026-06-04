@@ -44,14 +44,28 @@
             <p class="eyebrow">Causal Graph</p>
             <h2>事件到市场的推理路径</h2>
           </div>
-          <span v-if="detail.graph" class="quality-pill">置信度 {{ detail.graph.confidence.toFixed(1) }}</span>
+          <div class="graph-actions" v-if="detail.graph">
+            <span class="quality-pill">置信度 {{ graphConfidence.toFixed(1) }}</span>
+            <button @click="toggleGraphEdit">{{ graphEditMode ? '退出编辑' : '编辑图谱' }}</button>
+            <label v-if="graphEditMode" class="inline-edit">置信度<input v-model.number="editableGraph.confidence" type="number" min="0" max="100" /></label>
+            <button v-if="graphEditMode" @click="addGraphNode">添加节点</button>
+            <button v-if="graphEditMode" @click="addGraphEdge">添加边</button>
+            <button v-if="graphEditMode" :disabled="savingGraph" @click="saveGraph">{{ savingGraph ? '保存中...' : '保存校正' }}</button>
+          </div>
         </div>
         <div ref="graphEl" class="graph-canvas"></div>
         <div v-if="selected" class="detail-drawer">
           <button @click="selected = null">关闭</button>
           <p class="eyebrow">{{ selected.kind || selected.relation || 'Evidence' }}</p>
           <h3>{{ selected.label || `${selected.source} -> ${selected.target}` }}</h3>
-          <p>{{ selected.explanation || selected.id }}</p>
+          <template v-if="graphEditMode">
+            <label>标签/关系<input v-model="selectedEdit.label" /></label>
+            <label>类型/说明<input v-model="selectedEdit.kind" /></label>
+            <label>分数/权重<input v-model.number="selectedEdit.score" type="number" min="0" max="100" /></label>
+            <label>解释<textarea v-model="selectedEdit.explanation" rows="3"></textarea></label>
+            <button class="drawer-action" @click="applySelectedEdit">应用到图谱</button>
+          </template>
+          <p v-else>{{ selected.explanation || selected.id }}</p>
           <ul v-if="selected.evidence">
             <li v-for="item in selected.evidence" :key="item">{{ item }}</li>
           </ul>
@@ -74,7 +88,7 @@
         <p class="summary-box">{{ detail.latest_run?.summary || '尚未运行。点击“运行研究”生成数据快照、因果图谱和报告。' }}</p>
         <div class="timeline-list" v-if="workflowEvents.length">
           <article v-for="event in workflowEvents" :key="`${event.key}-${event.timestamp}`">
-            <span>{{ event.status }}</span>
+          <span>{{ event.status }}</span>
             <strong>{{ event.title }}</strong>
             <p>{{ event.detail }}</p>
             <small>{{ event.timestamp }}</small>
@@ -97,6 +111,22 @@
           <div><span>风险读数</span><code>{{ riskScoreText }}</code></div>
           <div><span>数据源</span><code>{{ sourceCount }} 个</code></div>
         </div>
+        <div class="trace-panel" v-if="runVersions.length > 1">
+          <strong>历史运行对比</strong>
+          <label class="compact-field">
+            <span>对比基准</span>
+            <select v-model="compareBaseRunId" @change="loadRunDiff">
+              <option v-for="run in compareCandidates" :key="run.run_id" :value="run.run_id">{{ versionLabel(run) }}</option>
+            </select>
+          </label>
+          <template v-if="runDiff">
+            <p class="diff-summary">{{ runDiff.summary }}</p>
+            <div><span>风险变化</span><code>{{ signed(runDiff.risk_delta) }}</code></div>
+            <div><span>置信度变化</span><code>{{ signed(runDiff.confidence_delta) }}</code></div>
+            <div><span>事件变化</span><code>{{ signed(runDiff.event_count_delta) }}</code></div>
+            <div><span>证据源变化</span><code>{{ signed(runDiff.evidence_source_delta) }}</code></div>
+          </template>
+        </div>
       </aside>
     </section>
 
@@ -112,7 +142,11 @@
         <template v-if="detail.report">
           <p class="report-summary">{{ detail.report.summary }}</p>
           <h3>核心结论</h3>
-          <ul><li v-for="item in detail.report.key_findings" :key="item">{{ item }}</li></ul>
+          <ul class="finding-list">
+            <li v-for="item in detail.report.key_findings" :key="item">
+              <button @click="openEvidenceDrawer(item)">{{ item }}</button>
+            </li>
+          </ul>
           <h3>证据链</h3>
           <div class="evidence-list">
             <div v-for="item in detail.report.evidence" :key="item.title">
@@ -150,6 +184,28 @@
         </div>
       </aside>
     </section>
+    <aside v-if="evidenceDrawer" class="evidence-drawer">
+      <button @click="evidenceDrawer = null">关闭</button>
+      <p class="eyebrow">Evidence Drawer</p>
+      <h2>{{ evidenceDrawer.finding }}</h2>
+      <p>{{ evidenceDrawer.summary }}</p>
+      <h3>直接证据</h3>
+      <div class="evidence-list">
+        <div v-for="item in evidenceDrawer.evidence" :key="`${item.title}-${item.source}`">
+          <strong>{{ item.title }}</strong>
+          <span>{{ item.source }} · {{ item.value }}</span>
+          <p>{{ item.interpretation }}</p>
+        </div>
+      </div>
+      <h3>相关因果边</h3>
+      <ul>
+        <li v-for="edge in evidenceDrawer.edges" :key="`${edge.source}-${edge.target}-${edge.relation}`">
+          {{ edge.source }} → {{ edge.target }} · {{ edge.relation }} · 置信度 {{ Math.round(edge.confidence || 0) }}
+        </li>
+      </ul>
+      <h3>结论边界</h3>
+      <ul><li v-for="item in evidenceDrawer.uncertainties" :key="item">{{ item }}</li></ul>
+    </aside>
   </main>
   <main v-else class="loading-page">加载研究工作台...</main>
 </template>
@@ -157,7 +213,7 @@
 <script setup>
 import * as d3 from 'd3'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { chatWithProject, getProject, getProjectRun, runProject } from '../api'
+import { chatWithProject, compareProjectRuns, getProject, getProjectRun, runProject, updateProjectGraph } from '../api'
 
 const props = defineProps({ projectId: String })
 const detail = ref(null)
@@ -165,14 +221,24 @@ const graphEl = ref(null)
 const selected = ref(null)
 const running = ref(false)
 const chatting = ref(false)
+const savingGraph = ref(false)
 const message = ref('')
 const runMode = ref('fast')
 const selectedRunId = ref('')
+const compareBaseRunId = ref('')
+const runDiff = ref(null)
+const graphEditMode = ref(false)
+const editableGraph = ref(null)
+const selectedType = ref('')
+const selectedEdit = ref({ label: '', kind: '', score: 50, explanation: '' })
+const evidenceDrawer = ref(null)
 const prompts = ['证据链最弱的一环是什么？', '有没有历史反例？', '如果能源冲击减弱，结论怎么变？', '哪些指标最值得未来7天观察？']
 
 const runVersions = computed(() => detail.value?.runs || [])
+const compareCandidates = computed(() => runVersions.value.filter(run => run.run_id !== selectedRunId.value))
 const workflowEvents = computed(() => detail.value?.latest_run?.data_snapshot?.workflow_events || [])
 const sourceCount = computed(() => detail.value?.latest_run?.data_snapshot?.sources?.length || detail.value?.graph?.evidence_sources?.length || 0)
+const graphConfidence = computed(() => editableGraph.value?.confidence ?? detail.value?.graph?.confidence ?? 0)
 const riskScoreText = computed(() => {
   const score = detail.value?.latest_run?.risk_snapshot?.latest?.score
   return typeof score === 'number' ? `${score.toFixed(1)}/100` : '--'
@@ -199,6 +265,9 @@ async function load(runId = selectedRunId.value) {
   detail.value = runId ? await getProjectRun(props.projectId, runId) : await getProject(props.projectId)
   selectedRunId.value = detail.value?.latest_run?.run_id || ''
   runMode.value = detail.value?.latest_run?.data_snapshot?.run_mode || runMode.value
+  prepareGraphDraft()
+  prepareCompareBase()
+  await loadRunDiff()
   await nextTick()
   renderGraph()
 }
@@ -208,6 +277,9 @@ async function run() {
   try {
     detail.value = await runProject(props.projectId, runMode.value)
     selectedRunId.value = detail.value?.latest_run?.run_id || ''
+    prepareGraphDraft()
+    prepareCompareBase()
+    await loadRunDiff()
     await nextTick()
     renderGraph()
   } finally {
@@ -216,6 +288,8 @@ async function run() {
 }
 
 async function selectRun() {
+  selected.value = null
+  evidenceDrawer.value = null
   await load(selectedRunId.value)
 }
 
@@ -236,8 +310,129 @@ function versionLabel(run) {
   return `${mode} · ${time}`
 }
 
+function prepareGraphDraft() {
+  editableGraph.value = detail.value?.graph ? JSON.parse(JSON.stringify(detail.value.graph)) : null
+}
+
+function prepareCompareBase() {
+  if (!compareBaseRunId.value || compareBaseRunId.value === selectedRunId.value) {
+    compareBaseRunId.value = compareCandidates.value[0]?.run_id || ''
+  }
+}
+
+async function loadRunDiff() {
+  if (!selectedRunId.value || !compareBaseRunId.value || selectedRunId.value === compareBaseRunId.value) {
+    runDiff.value = null
+    return
+  }
+  runDiff.value = await compareProjectRuns(props.projectId, compareBaseRunId.value, selectedRunId.value)
+}
+
+function signed(value) {
+  if (value === null || value === undefined) return '--'
+  const num = Number(value)
+  return `${num >= 0 ? '+' : ''}${Number.isInteger(num) ? num : num.toFixed(1)}`
+}
+
+function toggleGraphEdit() {
+  graphEditMode.value = !graphEditMode.value
+  if (graphEditMode.value) prepareGraphDraft()
+}
+
+function selectGraphItem(item, type) {
+  selected.value = item
+  selectedType.value = type
+  selectedEdit.value = {
+    label: item.label || item.relation || '',
+    kind: item.kind || item.explanation || '',
+    score: item.score ?? Math.round((item.weight || 0.5) * 100),
+    explanation: item.explanation || ''
+  }
+}
+
+function applySelectedEdit() {
+  if (!editableGraph.value || !selected.value) return
+  if (selectedType.value === 'node') {
+    const node = editableGraph.value.nodes.find(item => item.id === selected.value.id)
+    if (!node) return
+    node.label = selectedEdit.value.label || node.label
+    node.kind = selectedEdit.value.kind || node.kind
+    node.score = clamp(Number(selectedEdit.value.score), 0, 100)
+  } else {
+    const edge = editableGraph.value.edges.find(item => item.source === selected.value.source && item.target === selected.value.target)
+    if (!edge) return
+    edge.relation = selectedEdit.value.label || edge.relation
+    edge.explanation = selectedEdit.value.explanation || selectedEdit.value.kind || edge.explanation
+    edge.weight = clamp(Number(selectedEdit.value.score) / 100, 0, 1)
+    edge.confidence = clamp(Number(selectedEdit.value.score), 0, 100)
+  }
+  renderGraph()
+}
+
+function addGraphNode() {
+  if (!editableGraph.value) return
+  const id = `analyst_${Date.now()}`
+  editableGraph.value.nodes.push({ id, label: '人工节点', kind: 'analyst', score: 50 })
+  renderGraph()
+}
+
+function addGraphEdge() {
+  if (!editableGraph.value || editableGraph.value.nodes.length < 2) return
+  const [source, target] = editableGraph.value.nodes.slice(-2)
+  editableGraph.value.edges.push({
+    source: source.id,
+    target: target.id,
+    relation: '人工假设',
+    weight: 0.5,
+    confidence: 50,
+    explanation: '由研究者手动加入，需通过后续数据和回测验证。'
+  })
+  renderGraph()
+}
+
+async function saveGraph() {
+  if (!editableGraph.value || !detail.value?.latest_run) return
+  savingGraph.value = true
+  try {
+    detail.value = await updateProjectGraph(props.projectId, {
+      run_id: detail.value.latest_run.run_id,
+      nodes: editableGraph.value.nodes,
+      edges: editableGraph.value.edges,
+      confidence: editableGraph.value.confidence,
+      evidence_sources: editableGraph.value.evidence_sources,
+      note: '研究者在工作台中校正因果图谱。'
+    })
+    selectedRunId.value = detail.value?.latest_run?.run_id || selectedRunId.value
+    prepareGraphDraft()
+    await loadRunDiff()
+    graphEditMode.value = false
+    await nextTick()
+    renderGraph()
+  } finally {
+    savingGraph.value = false
+  }
+}
+
+function openEvidenceDrawer(finding) {
+  const evidence = detail.value?.report?.evidence || []
+  const edges = detail.value?.graph?.edges || []
+  const uncertainties = detail.value?.report?.uncertainties || []
+  evidenceDrawer.value = {
+    finding,
+    summary: '该结论由报告证据、因果边和不确定性共同支撑。若证据不足，应降低置信度或运行完整真实数据模式复核。',
+    evidence,
+    edges: edges.slice(0, 5),
+    uncertainties
+  }
+}
+
+function clamp(value, min, max) {
+  if (!Number.isFinite(value)) return min
+  return Math.max(min, Math.min(max, value))
+}
+
 function renderGraph() {
-  const graph = detail.value?.graph
+  const graph = graphEditMode.value ? editableGraph.value : detail.value?.graph
   const el = graphEl.value
   if (!graph || !el) return
   el.innerHTML = ''
@@ -255,7 +450,9 @@ function renderGraph() {
   const link = svg.append('g').selectAll('line').data(edges).enter().append('line')
     .attr('class', 'edge-line')
     .attr('stroke-width', d => 1 + d.weight * 2)
-    .on('click', (_, d) => { selected.value = d })
+    .on('click', (_, d) => {
+      selectGraphItem({ ...d, source: d.source.id || d.source, target: d.target.id || d.target }, 'edge')
+    })
 
   const node = svg.append('g').selectAll('g').data(nodes).enter().append('g')
     .attr('class', d => `node node-${d.kind}`)
@@ -263,7 +460,7 @@ function renderGraph() {
       .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y })
       .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y })
       .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null }))
-    .on('click', (_, d) => { selected.value = d })
+    .on('click', (_, d) => { selectGraphItem(d, 'node') })
 
   node.append('circle').attr('r', d => 18 + d.score / 8)
   node.append('text').text(d => d.label).attr('dy', 44).attr('text-anchor', 'middle')

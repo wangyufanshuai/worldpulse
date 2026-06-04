@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -35,6 +35,12 @@ if studio_assets.exists():
     app.mount("/studio/assets", StaticFiles(directory=studio_assets), name="studio_assets")
 templates = Jinja2Templates(directory="app/templates")
 app.include_router(router, prefix="/api")
+
+
+@app.get("/favicon.ico")
+def favicon() -> Response:
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#05070a"/><path d="M14 35c9-18 27-18 36 0" fill="none" stroke="#5ce1e6" stroke-width="5" stroke-linecap="round"/><circle cx="32" cy="34" r="8" fill="#f5b85f"/></svg>'
+    return Response(content=svg, media_type="image/svg+xml")
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -30,6 +30,13 @@ export async function getProjectRun(projectId, runId) {
   return data
 }
 
+export async function compareProjectRuns(projectId, baseRunId, targetRunId) {
+  const { data } = await api.get(`/projects/${projectId}/runs/compare`, {
+    params: { base_run_id: baseRunId, target_run_id: targetRunId }
+  })
+  return data
+}
+
 export async function listProjectRuns(projectId) {
   const { data } = await api.get(`/projects/${projectId}/runs`)
   return data
@@ -37,6 +44,11 @@ export async function listProjectRuns(projectId) {
 
 export async function runProject(projectId, mode = 'fast') {
   const { data } = await api.post(`/projects/${projectId}/run`, null, { params: { mode } })
+  return data
+}
+
+export async function updateProjectGraph(projectId, payload) {
+  const { data } = await api.patch(`/projects/${projectId}/graph`, payload)
   return data
 }
 

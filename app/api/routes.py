@@ -13,6 +13,7 @@ from app.core.models import (
     CountryAgent,
     EventDigest,
     CausalGraphSnapshot,
+    GraphEditRequest,
     ProjectAIReport,
     ProjectChatMessage,
     ProjectChatRequest,
@@ -23,6 +24,7 @@ from app.core.models import (
     ResearchProject,
     ResearchProjectCreate,
     ResearchRun,
+    ResearchRunDiff,
     RiskAnalysis,
     RiskOverview,
     RiskPoint,
@@ -45,7 +47,9 @@ from app.services.event_digest import build_agent_event_digest, build_event_dige
 from app.services.exports import alerts_csv, indicators_csv, replay_csv, risk_history_csv, species_occurrences_csv
 from app.services.projects import (
     chat_with_project,
+    compare_project_runs,
     create_project,
+    edit_project_graph,
     get_project_detail,
     latest_project_graph,
     latest_project_report,
@@ -95,6 +99,11 @@ def research_project_runs(project_id: str) -> list[ResearchRun]:
     return project_runs(project_id)
 
 
+@router.get("/projects/{project_id}/runs/compare", response_model=ResearchRunDiff)
+def research_project_run_compare(project_id: str, base_run_id: str, target_run_id: str) -> ResearchRunDiff:
+    return compare_project_runs(project_id, base_run_id=base_run_id, target_run_id=target_run_id)
+
+
 @router.get("/projects/{project_id}/runs/{run_id}", response_model=ProjectDetail)
 def research_project_run_detail(project_id: str, run_id: str) -> ProjectDetail:
     return project_run_detail(project_id, run_id)
@@ -103,6 +112,11 @@ def research_project_run_detail(project_id: str, run_id: str) -> ProjectDetail:
 @router.get("/projects/{project_id}/graph", response_model=CausalGraphSnapshot)
 def research_project_graph(project_id: str) -> CausalGraphSnapshot:
     return latest_project_graph(project_id)
+
+
+@router.patch("/projects/{project_id}/graph", response_model=ProjectDetail)
+def research_project_graph_edit(project_id: str, request: GraphEditRequest) -> ProjectDetail:
+    return edit_project_graph(project_id, request)
 
 
 @router.get("/projects/{project_id}/report", response_model=ProjectAIReport)

@@ -518,6 +518,31 @@ class CausalGraphSnapshot(BaseModel):
     evidence_sources: list[str]
 
 
+class GraphEditRequest(BaseModel):
+    run_id: str | None = None
+    nodes: list[dict] | None = None
+    edges: list[dict] | None = None
+    confidence: float | None = None
+    evidence_sources: list[str] | None = None
+    note: str | None = None
+
+
+class ResearchRunDiff(BaseModel):
+    project_id: str
+    base_run_id: str
+    target_run_id: str
+    summary: str
+    risk_delta: float | None = None
+    confidence_delta: float | None = None
+    event_count_delta: int = 0
+    evidence_source_delta: int = 0
+    added_events: list[str] = []
+    removed_events: list[str] = []
+    added_sources: list[str] = []
+    removed_sources: list[str] = []
+    changed_metrics: dict = {}
+
+
 class ProjectAIReport(BaseModel):
     report_id: str
     project_id: str
