@@ -12,9 +12,16 @@ from app.core.models import (
     CompositeRisk,
     CountryAgent,
     EventDigest,
+    CausalGraphSnapshot,
+    ProjectAIReport,
+    ProjectChatMessage,
+    ProjectChatRequest,
+    ProjectDetail,
     ReplayResult,
     ReportExport,
     ReportTemplate,
+    ResearchProject,
+    ResearchProjectCreate,
     RiskAnalysis,
     RiskOverview,
     RiskPoint,
@@ -35,6 +42,7 @@ from app.services.causal_data import build_causal_events, select_event
 from app.services.causal_graph import build_causal_chain
 from app.services.event_digest import build_agent_event_digest, build_event_digest
 from app.services.exports import alerts_csv, indicators_csv, replay_csv, risk_history_csv, species_occurrences_csv
+from app.services.projects import chat_with_project, create_project, get_project_detail, latest_project_graph, latest_project_report, list_projects, run_project
 from app.services.report import export_report, render_report
 from app.services.risk_engine import build_latest_risk, build_replay, build_risk_analysis, build_risk_history, build_risk_overview
 from app.services.simulation_engine import list_agents, list_scenarios, run_simulation
@@ -49,6 +57,41 @@ router = APIRouter()
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "worldpulse"}
+
+
+@router.post("/projects", response_model=ResearchProject)
+def research_project_create(request: ResearchProjectCreate) -> ResearchProject:
+    return create_project(request)
+
+
+@router.get("/projects", response_model=list[ResearchProject])
+def research_project_list(limit: int = 50) -> list[ResearchProject]:
+    return list_projects(limit=limit)
+
+
+@router.get("/projects/{project_id}", response_model=ProjectDetail)
+def research_project_detail(project_id: str) -> ProjectDetail:
+    return get_project_detail(project_id)
+
+
+@router.post("/projects/{project_id}/run", response_model=ProjectDetail)
+def research_project_run(project_id: str) -> ProjectDetail:
+    return run_project(project_id)
+
+
+@router.get("/projects/{project_id}/graph", response_model=CausalGraphSnapshot)
+def research_project_graph(project_id: str) -> CausalGraphSnapshot:
+    return latest_project_graph(project_id)
+
+
+@router.get("/projects/{project_id}/report", response_model=ProjectAIReport)
+def research_project_report(project_id: str) -> ProjectAIReport:
+    return latest_project_report(project_id)
+
+
+@router.post("/projects/{project_id}/chat", response_model=ProjectChatMessage)
+def research_project_chat(project_id: str, request: ProjectChatRequest) -> ProjectChatMessage:
+    return chat_with_project(project_id, request)
 
 
 @router.get("/risk/latest", response_model=CompositeRisk)

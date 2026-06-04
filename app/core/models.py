@@ -469,3 +469,88 @@ class CausalAnalysisResult(BaseModel):
     reasoning_path: list[str]
     ai_explanation: str
     disclaimer: str
+
+
+class ResearchProjectCreate(BaseModel):
+    title: str
+    question: str
+    region: str = "global"
+    asset_scope: list[str] = ["sp500", "nasdaq", "oil", "gold", "dollar", "vix"]
+    event_window_days: int = 30
+    event_types: list[str] = ["conflict", "sanctions", "energy", "food", "rates", "trade", "climate"]
+
+
+class ResearchProject(BaseModel):
+    project_id: str
+    title: str
+    question: str
+    region: str
+    asset_scope: list[str]
+    event_window_days: int
+    event_types: list[str]
+    status: str
+    created_at: str
+    updated_at: str
+
+
+class ResearchRun(BaseModel):
+    run_id: str
+    project_id: str
+    status: str
+    started_at: str
+    completed_at: str | None = None
+    summary: str
+    data_snapshot: dict
+    risk_snapshot: dict
+    event_snapshot: list[dict]
+    simulation_snapshot: dict
+    backtest_snapshot: dict
+
+
+class CausalGraphSnapshot(BaseModel):
+    graph_id: str
+    project_id: str
+    run_id: str
+    generated_at: str
+    nodes: list[dict]
+    edges: list[dict]
+    confidence: float
+    evidence_sources: list[str]
+
+
+class ProjectAIReport(BaseModel):
+    report_id: str
+    project_id: str
+    run_id: str
+    generated_at: str
+    mode: str
+    title: str
+    summary: str
+    key_findings: list[str]
+    evidence: list[EvidenceItem]
+    uncertainties: list[str]
+    watch_signals: list[WatchSignal]
+    scenario_suggestions: list[ScenarioSuggestion]
+    markdown: str
+    disclaimer: str
+
+
+class ProjectChatRequest(BaseModel):
+    message: str
+
+
+class ProjectChatMessage(BaseModel):
+    message_id: str
+    project_id: str
+    role: str
+    content: str
+    created_at: str
+    mode: str = "local"
+
+
+class ProjectDetail(BaseModel):
+    project: ResearchProject
+    latest_run: ResearchRun | None = None
+    graph: CausalGraphSnapshot | None = None
+    report: ProjectAIReport | None = None
+    chat_messages: list[ProjectChatMessage] = []

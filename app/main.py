@@ -1,6 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -27,6 +29,10 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+studio_dist = Path("frontend/dist")
+studio_assets = studio_dist / "assets"
+if studio_assets.exists():
+    app.mount("/studio/assets", StaticFiles(directory=studio_assets), name="studio_assets")
 templates = Jinja2Templates(directory="app/templates")
 app.include_router(router, prefix="/api")
 
@@ -34,3 +40,12 @@ app.include_router(router, prefix="/api")
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "dashboard.html")
+
+
+@app.get("/studio", response_class=HTMLResponse)
+@app.get("/studio/{path:path}", response_class=HTMLResponse)
+def studio(path: str = "") -> FileResponse:
+    index = studio_dist / "index.html"
+    if not index.exists():
+        return FileResponse("app/templates/dashboard.html")
+    return FileResponse(index)

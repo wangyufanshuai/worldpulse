@@ -8,3 +8,5 @@ data/*.db
 data/*.log
 data/cache/
 data/reports/
+frontend/node_modules/
+frontend/dist/

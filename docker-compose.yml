@@ -1,0 +1,8 @@
+services:
+  worldpulse:
+    build: .
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

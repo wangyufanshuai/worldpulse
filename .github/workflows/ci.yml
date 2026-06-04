@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Python compile
+        run: python -m compileall app
+      - name: Python tests
+        run: python -m pytest -q
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+      - name: Secret scan
+        run: |
+          ! grep -R -E "sk-[A-Za-z0-9_-]{24,}|DEEPSEEK_API_KEY=sk-|SILICONFLOW_API_KEY=sk-" . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=data
