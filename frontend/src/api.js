@@ -47,6 +47,26 @@ export async function runProject(projectId, mode = 'fast') {
   return data
 }
 
+export async function getWarRoomPresets() {
+  const { data } = await api.get('/war-room/presets')
+  return data
+}
+
+export async function runProjectWarRoom(projectId, payload) {
+  const { data } = await api.post(`/projects/${projectId}/war-room/run`, payload)
+  return data
+}
+
+export async function getWarRoomReplayPack(projectId, params = {}) {
+  const { data } = await api.get(`/projects/${projectId}/war-room/replay-pack`, { params })
+  return data
+}
+
+export async function getWarRoomWorkspace(projectId, params = {}) {
+  const { data } = await api.get(`/projects/${projectId}/war-room/workspace`, { params })
+  return data
+}
+
 export async function updateProjectGraph(projectId, payload) {
   const { data } = await api.patch(`/projects/${projectId}/graph`, payload)
   return data

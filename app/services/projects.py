@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime
+import json
 import os
 from uuid import uuid4
 
@@ -38,6 +40,10 @@ from app.core.models import (
     SimulationPropagationEdge,
     SimulationResult,
     SimulationRequest,
+    WarRoomRun,
+    WarRoomReplayPack,
+    WarRoomScenarioRequest,
+    WarRoomWorkspaceState,
     WatchSignal,
 )
 from app.services.ai_analysis import analyze_current_risk, render_ai_markdown
@@ -49,11 +55,13 @@ from app.services.causal_graph import build_causal_chain
 from app.services.project_store import connect, dumps, init_db, loads
 from app.services.risk_engine import build_risk_overview
 from app.services.simulation_engine import run_simulation
+from app.services.war_room_engine import WAR_ROOM_DISCLAIMER, run_war_room
 
 
 def create_project(payload: ResearchProjectCreate) -> ResearchProject:
     init_db()
     now = _now()
+    project_mode = "war_room" if str(payload.mode).lower() == "war_room" else "research"
     project = ResearchProject(
         project_id=f"proj_{uuid4().hex[:12]}",
         title=payload.title.strip() or "未命名研究",
@@ -62,6 +70,8 @@ def create_project(payload: ResearchProjectCreate) -> ResearchProject:
         asset_scope=payload.asset_scope,
         event_window_days=max(7, min(payload.event_window_days, 90)),
         event_types=payload.event_types,
+        mode=project_mode,
+        scenario_config=payload.scenario_config or {},
         status="created",
         created_at=now,
         updated_at=now,
@@ -70,8 +80,8 @@ def create_project(payload: ResearchProjectCreate) -> ResearchProject:
         conn.execute(
             """
             INSERT INTO research_projects
-            (project_id, title, question, region, asset_scope, event_window_days, event_types, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (project_id, title, question, region, asset_scope, event_window_days, event_types, mode, scenario_config, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 project.project_id,
@@ -81,6 +91,8 @@ def create_project(payload: ResearchProjectCreate) -> ResearchProject:
                 dumps(project.asset_scope),
                 project.event_window_days,
                 dumps(project.event_types),
+                project.mode,
+                dumps(project.scenario_config),
                 project.status,
                 project.created_at,
                 project.updated_at,
@@ -113,8 +125,53 @@ def get_project_detail(project_id: str, run_id: str | None = None) -> ProjectDet
     )
 
 
+def war_room_workspace(project_id: str, run_id: str | None = None) -> WarRoomWorkspaceState:
+    project = _get_project(project_id)
+    runs = _project_runs(project_id)
+    war_room_runs = [run for run in runs if _is_war_room_run(run)]
+    selected_run = _run_by_id(project_id, run_id) if run_id else (war_room_runs[0] if war_room_runs else None)
+    if selected_run and not _is_war_room_run(selected_run):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="Workspace requires a War Room run")
+
+    previous_run = next((run for run in war_room_runs if selected_run and run.run_id != selected_run.run_id), None)
+    sim = deepcopy(selected_run.simulation_snapshot or {}) if selected_run else {}
+    ui_state = _workspace_ui_state(sim)
+    entity_index = _workspace_entity_index(ui_state, sim)
+    entity_details = _workspace_entity_details(ui_state, sim, entity_index)
+    command_actions = _workspace_command_actions(selected_run, previous_run)
+    run_control = _workspace_run_control(selected_run, previous_run, war_room_runs, sim)
+    insight_cards = ui_state.get("insight_cards") or _workspace_insight_cards(ui_state, sim)
+    ui_state.update(
+        {
+            "entity_index": entity_index,
+            "entity_details": entity_details,
+            "command_actions": command_actions,
+            "run_control": run_control,
+            "insight_cards": insight_cards,
+        }
+    )
+    return WarRoomWorkspaceState(
+        project_id=project_id,
+        run_id=selected_run.run_id if selected_run else None,
+        project={"project_id": project.project_id, "title": project.title, "mode": project.mode, "status": project.status},
+        run_control=run_control,
+        ui_state=ui_state,
+        entity_index=entity_index,
+        command_actions=command_actions,
+        insight_cards=insight_cards,
+        entity_details=entity_details,
+        compare_ready=bool(selected_run and previous_run),
+        replay_ready=bool(selected_run and sim.get("scenario")),
+        disclaimer=sim.get("disclaimer") or WAR_ROOM_DISCLAIMER,
+    )
+
+
 def run_project(project_id: str, mode: str = "fast") -> ProjectDetail:
     project = _get_project(project_id)
+    if project.mode == "war_room":
+        return run_project_war_room(project_id, WarRoomScenarioRequest(**(project.scenario_config or {})))
     started = _now()
     run_id = f"run_{uuid4().hex[:12]}"
     run_mode = _resolve_run_mode(mode)
@@ -244,6 +301,120 @@ def run_project(project_id: str, mode: str = "fast") -> ProjectDetail:
     return get_project_detail(project.project_id, run_id=run_id)
 
 
+def run_project_war_room(project_id: str, request: WarRoomScenarioRequest | None = None) -> ProjectDetail:
+    project = _get_project(project_id)
+    scenario_request = request or WarRoomScenarioRequest(**(project.scenario_config or {}))
+    result = run_war_room(scenario_request)
+    started = _now()
+    completed = _now()
+    run_id = f"run_{uuid4().hex[:12]}"
+    workflow_events: list[dict] = []
+    _append_workflow_event(workflow_events, "project", "War Room scenario", "completed", "Loaded scenario parameters, country agents, supply chains, and strategy-sandbox disclaimer.")
+    _append_workflow_event(workflow_events, "scenario", "Scenario Sandbox", "completed", f"{result.scenario.name} for {result.scenario.duration_days} days at intensity {result.scenario.intensity:.2f}.")
+    _append_workflow_event(workflow_events, "agents", "Agent Decisions", "completed", f"Generated {len(result.agent_decisions)} deterministic country-agent decisions.")
+    _append_workflow_event(workflow_events, "graph", "Causal Chain", "completed", f"Generated {len(result.impact_graph.nodes)} nodes and {len(result.impact_graph.edges)} causal edges.")
+    _append_workflow_event(workflow_events, "heatmap", "Risk Heatmap", "completed", f"Generated {len(result.risk_heatmap)} country heatmap cells.")
+    _append_workflow_event(workflow_events, "report", "War Room Report", "completed", "Generated a local strategy-sandbox report with citation hooks and disclaimer.")
+
+    risk = _war_room_risk_overview(result)
+    run = ResearchRun(
+        run_id=run_id,
+        project_id=project.project_id,
+        status="completed",
+        started_at=started,
+        completed_at=completed,
+        summary=result.summary,
+        data_snapshot={
+            "question": project.question,
+            "region": project.region,
+            "asset_scope": project.asset_scope,
+            "event_types": project.event_types,
+            "run_mode": "war_room",
+            "project_mode": "war_room",
+            "scenario_config": result.scenario.model_dump(),
+            "war_room": result.model_dump(),
+            "assumptions": result.assumptions,
+            "workflow_events": workflow_events,
+            "sources": ["WorldPulse War Room deterministic sandbox", "WorldPulse built-in country agents", "WorldPulse supply-chain rules"],
+            "disclaimer": result.disclaimer,
+        },
+        risk_snapshot=risk.model_dump(),
+        event_snapshot=[_war_room_event_snapshot(result)],
+        simulation_snapshot=_war_room_simulation_snapshot(result),
+        backtest_snapshot={"event_type": result.scenario.key, "sample_count": 0, "hit_rate": 0, "max_error": 0, "error_attribution": [WAR_ROOM_DISCLAIMER]},
+    )
+    graph = _war_room_graph_snapshot(project.project_id, run_id, result)
+    report = _war_room_project_report(project, run, graph, result)
+
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO research_runs
+            (run_id, project_id, status, started_at, completed_at, summary, data_snapshot, risk_snapshot, event_snapshot, simulation_snapshot, backtest_snapshot)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run.run_id,
+                run.project_id,
+                run.status,
+                run.started_at,
+                run.completed_at,
+                run.summary,
+                dumps(run.data_snapshot),
+                dumps(run.risk_snapshot),
+                dumps(run.event_snapshot),
+                dumps(run.simulation_snapshot),
+                dumps(run.backtest_snapshot),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO causal_graph_snapshots
+            (graph_id, project_id, run_id, generated_at, nodes, edges, confidence, evidence_sources)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                graph.graph_id,
+                graph.project_id,
+                graph.run_id,
+                graph.generated_at,
+                dumps(graph.nodes),
+                dumps(graph.edges),
+                graph.confidence,
+                dumps(graph.evidence_sources),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO ai_reports
+            (report_id, project_id, run_id, generated_at, mode, title, summary, key_findings, evidence, uncertainties, watch_signals, scenario_suggestions, citations, markdown, disclaimer)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                report.report_id,
+                report.project_id,
+                report.run_id,
+                report.generated_at,
+                report.mode,
+                report.title,
+                report.summary,
+                dumps(report.key_findings),
+                dumps([item.model_dump() for item in report.evidence]),
+                dumps(report.uncertainties),
+                dumps([item.model_dump() for item in report.watch_signals]),
+                dumps([item.model_dump() for item in report.scenario_suggestions]),
+                dumps([item.model_dump() for item in report.citations]),
+                report.markdown,
+                report.disclaimer,
+            ),
+        )
+        conn.execute(
+            "UPDATE research_projects SET status = ?, updated_at = ?, scenario_config = ? WHERE project_id = ?",
+            ("completed", completed, dumps(result.scenario.model_dump()), project.project_id),
+        )
+    return get_project_detail(project.project_id, run_id=run_id)
+
+
 def latest_project_graph(project_id: str) -> CausalGraphSnapshot:
     graph = _latest_graph(project_id)
     if graph is None:
@@ -346,6 +517,25 @@ def compare_project_runs(project_id: str, base_run_id: str, target_run_id: str) 
         summary_parts.append(f"图谱置信度变化 {confidence_delta:+.1f} 点")
     if not summary_parts:
         summary_parts.append("两次运行可对比的数据不足")
+    changed_metrics = {
+        "base": {
+            "risk_score": base_risk,
+            "graph_confidence": base_confidence,
+            "event_count": len(base.event_snapshot),
+            "source_count": len(base_sources),
+            "completed_at": base.completed_at,
+        },
+        "target": {
+            "risk_score": target_risk,
+            "graph_confidence": target_confidence,
+            "event_count": len(target.event_snapshot),
+            "source_count": len(target_sources),
+            "completed_at": target.completed_at,
+        },
+    }
+    war_room_diff = _war_room_run_diff(base, target, base_graph, target_graph)
+    if war_room_diff:
+        changed_metrics["war_room"] = war_room_diff
     return ResearchRunDiff(
         project_id=project_id,
         base_run_id=base.run_id,
@@ -359,23 +549,465 @@ def compare_project_runs(project_id: str, base_run_id: str, target_run_id: str) 
         removed_events=sorted(base_events - target_events),
         added_sources=sorted(target_sources - base_sources),
         removed_sources=sorted(base_sources - target_sources),
-        changed_metrics={
-            "base": {
-                "risk_score": base_risk,
-                "graph_confidence": base_confidence,
-                "event_count": len(base.event_snapshot),
-                "source_count": len(base_sources),
-                "completed_at": base.completed_at,
-            },
-            "target": {
-                "risk_score": target_risk,
-                "graph_confidence": target_confidence,
-                "event_count": len(target.event_snapshot),
-                "source_count": len(target_sources),
-                "completed_at": target.completed_at,
-            },
-        },
+        changed_metrics=changed_metrics,
     )
+
+
+def war_room_replay_pack(project_id: str, run_id: str | None = None, base_run_id: str | None = None, target_run_id: str | None = None) -> WarRoomReplayPack:
+    project = _get_project(project_id)
+    target = _run_by_id(project_id, target_run_id or run_id) if (target_run_id or run_id) else _latest_run(project_id)
+    if target is None:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="No run available for replay pack")
+    target_graph = _graph_for_run(project_id, target.run_id)
+    target_sim = target.simulation_snapshot or {}
+    if not target_sim.get("scenario"):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="Replay Pack requires a War Room run")
+
+    base = _run_by_id(project_id, base_run_id) if base_run_id else None
+    base_graph = _graph_for_run(project_id, base.run_id) if base else None
+    diff = _war_room_run_diff(base, target, base_graph, target_graph) if base else None
+    summary = _replay_pack_summary(target, diff)
+    generated_at = _now()
+    manifest = _replay_pack_manifest(project_id, project.title, target, base, diff, generated_at)
+    model_inputs = _replay_pack_model_inputs(target_sim)
+    model_outputs = _replay_pack_model_outputs(target_sim, target_graph, diff)
+    audit_trail = _replay_pack_audit_trail(base, target, diff)
+    markdown = _render_war_room_replay_markdown(project.title, target, target_graph, diff, summary, manifest, model_inputs, audit_trail)
+    json_manifest = json.dumps(
+        {
+            "manifest": manifest,
+            "model_inputs": model_inputs,
+            "model_outputs": model_outputs,
+            "audit_trail": audit_trail,
+            "summary": summary,
+            "counterfactual_observations": diff.get("counterfactual_observations", []) if diff else [],
+            "disclaimer": WAR_ROOM_DISCLAIMER,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    return WarRoomReplayPack(
+        project_id=project_id,
+        run_id=target.run_id,
+        base_run_id=base.run_id if base else None,
+        target_run_id=target.run_id if base else None,
+        title=f"{project.title} Replay Pack",
+        scenario=target_sim.get("scenario", {}),
+        policy_actions=target_sim.get("scenario", {}).get("policy_actions", []),
+        risk_heatmap=target_sim.get("risk_heatmap", []),
+        supply_chain_delta=diff.get("supply_chain_delta", []) if diff else [],
+        agent_decisions=target_sim.get("agent_decisions", []),
+        timeline=target_sim.get("timeline", []),
+        timeline_delta=diff.get("timeline_delta", {}) if diff else {},
+        impact_graph=target_sim.get("impact_graph", target_graph.model_dump() if target_graph else {}),
+        assumptions=target_sim.get("assumptions", []),
+        counterfactual_observations=diff.get("counterfactual_observations", []) if diff else [],
+        summary=summary,
+        manifest=manifest,
+        model_inputs=model_inputs,
+        model_outputs=model_outputs,
+        audit_trail=audit_trail,
+        artifacts={"markdown": markdown, "json_manifest": json_manifest},
+        markdown=markdown,
+        disclaimer=WAR_ROOM_DISCLAIMER,
+    )
+
+
+def _replay_pack_manifest(project_id: str, project_title: str, target: ResearchRun, base: ResearchRun | None, diff: dict | None, generated_at: str) -> dict:
+    return {
+        "pack_version": "war-room-replay-pack.audit.v1",
+        "project_id": project_id,
+        "project_title": project_title,
+        "run_id": target.run_id,
+        "base_run_id": base.run_id if base else None,
+        "target_run_id": target.run_id if base else None,
+        "generated_at": generated_at,
+        "run_started_at": target.started_at,
+        "run_completed_at": target.completed_at,
+        "is_counterfactual": bool(diff),
+        "artifact_types": ["markdown", "json_manifest"],
+        "disclaimer": WAR_ROOM_DISCLAIMER,
+    }
+
+
+def _replay_pack_model_inputs(sim: dict) -> dict:
+    scenario = sim.get("scenario", {}) or {}
+    return {
+        "scenario": {
+            "key": scenario.get("key") or scenario.get("scenario_key"),
+            "name": scenario.get("name"),
+            "description": scenario.get("description"),
+        },
+        "duration_days": scenario.get("duration_days"),
+        "intensity": scenario.get("intensity"),
+        "propagation": scenario.get("propagation"),
+        "target_countries": scenario.get("target_countries", []),
+        "target_chains": scenario.get("target_chains", []),
+        "policy_actions": scenario.get("policy_actions", []),
+        "country_overrides": scenario.get("country_overrides", {}),
+        "chain_overrides": scenario.get("chain_overrides", {}),
+    }
+
+
+def _replay_pack_model_outputs(sim: dict, graph: CausalGraphSnapshot | None, diff: dict | None) -> dict:
+    return {
+        "risk_heatmap": sim.get("risk_heatmap", []),
+        "supply_chains": sim.get("supply_chains", []),
+        "agent_decisions": sim.get("agent_decisions", []),
+        "timeline": sim.get("timeline", []),
+        "impact_graph": sim.get("impact_graph", graph.model_dump() if graph else {}),
+        "ui_state": sim.get("ui_state", {}),
+        "diff_metrics": diff or {},
+    }
+
+
+def _replay_pack_audit_trail(base: ResearchRun | None, target: ResearchRun, diff: dict | None) -> list[dict]:
+    return [
+        {
+            "step": "stored_run_snapshot",
+            "source": "research_runs.simulation_snapshot",
+            "detail": f"Loaded target War Room run {target.run_id} from existing project storage.",
+        },
+        {
+            "step": "user_controls",
+            "source": "scenario_config",
+            "detail": "Scenario builder inputs were copied from the stored run snapshot; no live intelligence or market feed was used.",
+        },
+        {
+            "step": "deterministic_rules",
+            "source": "war_room_engine.py",
+            "detail": "Country risk, supply-chain pressure, timeline, and agent decisions were produced by local deterministic rules.",
+        },
+        {
+            "step": "counterfactual_diff" if diff else "single_run_export",
+            "source": "compare API" if diff else "target run only",
+            "detail": f"Compared base run {base.run_id} with target run {target.run_id}." if diff and base else "No base run was selected; the pack audits one run only.",
+        },
+        {
+            "step": "template_generated_artifacts",
+            "source": "Replay Pack renderer",
+            "detail": "Markdown and JSON manifest were generated from stored snapshots and deterministic diff data.",
+        },
+        {
+            "step": "boundary",
+            "source": "WorldPulse disclaimer",
+            "detail": WAR_ROOM_DISCLAIMER,
+        },
+    ]
+
+
+def _war_room_run_diff(base: ResearchRun, target: ResearchRun, base_graph: CausalGraphSnapshot | None, target_graph: CausalGraphSnapshot | None) -> dict | None:
+    base_sim = base.simulation_snapshot or {}
+    target_sim = target.simulation_snapshot or {}
+    if not base_sim.get("risk_heatmap") or not target_sim.get("risk_heatmap"):
+        return None
+
+    country_risk_delta = _country_risk_delta(base_sim, target_sim)
+    supply_chain_delta = _supply_chain_delta(base_sim, target_sim)
+    agent_decision_changes = _agent_decision_changes(base_sim, target_sim)
+    timeline_delta = _timeline_delta(base_sim, target_sim)
+    causal_edge_delta = _causal_edge_delta(base_graph, target_graph)
+    top_country = country_risk_delta[0] if country_risk_delta else None
+    top_chain = supply_chain_delta[0] if supply_chain_delta else None
+    base_peak = timeline_delta.get("base_peak_global_risk")
+    target_peak = timeline_delta.get("target_peak_global_risk")
+    confidence_delta = None
+    if base_graph and target_graph:
+        confidence_delta = round((target_graph.confidence or 0) - (base_graph.confidence or 0), 2)
+
+    observations = []
+    if top_chain:
+        direction = "increased" if top_chain["delta"] > 0 else "decreased"
+        observations.append(f"{top_chain['name']} pressure {direction} by {top_chain['delta']:+.1f} points.")
+    if top_country:
+        direction = "increased" if top_country["delta"] > 0 else "decreased"
+        observations.append(f"{top_country['country_name']} country-agent risk {direction} by {top_country['delta']:+.1f} points.")
+    if base_peak is not None and target_peak is not None:
+        observations.append(f"Peak global risk changed by {target_peak - base_peak:+.1f} points across the timeline.")
+    if not observations:
+        observations.append("No material War Room counterfactual deltas were detected.")
+
+    return {
+        "base_run_id": base.run_id,
+        "target_run_id": target.run_id,
+        "base_policy_actions": base_sim.get("scenario", {}).get("policy_actions", []),
+        "target_policy_actions": target_sim.get("scenario", {}).get("policy_actions", []),
+        "global_risk_delta": _round_delta(target.simulation_snapshot.get("timeline", [])[-1].get("global_risk") if target.simulation_snapshot.get("timeline") else None, base.simulation_snapshot.get("timeline", [])[-1].get("global_risk") if base.simulation_snapshot.get("timeline") else None),
+        "top_country_risk_delta": top_country,
+        "top_chain_pressure_delta": top_chain,
+        "graph_confidence_delta": confidence_delta,
+        "country_risk_delta": country_risk_delta,
+        "supply_chain_delta": supply_chain_delta,
+        "agent_decision_changes": agent_decision_changes,
+        "timeline_delta": timeline_delta,
+        "causal_edge_delta": causal_edge_delta,
+        "counterfactual_observations": observations,
+        "disclaimer": WAR_ROOM_DISCLAIMER,
+    }
+
+
+def _country_risk_delta(base_sim: dict, target_sim: dict) -> list[dict]:
+    base_items = {item.get("country_code"): item for item in base_sim.get("risk_heatmap", [])}
+    rows = []
+    for target_item in target_sim.get("risk_heatmap", []):
+        code = target_item.get("country_code")
+        base_item = base_items.get(code, {})
+        base_risk = float(base_item.get("risk") or 0)
+        target_risk = float(target_item.get("risk") or 0)
+        rows.append({
+            "country_code": code,
+            "country_name": target_item.get("country_name"),
+            "base": round(base_risk, 1),
+            "target": round(target_risk, 1),
+            "delta": round(target_risk - base_risk, 1),
+            "base_dominant_channel": base_item.get("dominant_channel"),
+            "target_dominant_channel": target_item.get("dominant_channel"),
+        })
+    return sorted(rows, key=lambda item: abs(item["delta"]), reverse=True)
+
+
+def _supply_chain_delta(base_sim: dict, target_sim: dict) -> list[dict]:
+    base_items = {item.get("key"): item for item in base_sim.get("supply_chains", [])}
+    rows = []
+    for target_item in target_sim.get("supply_chains", []):
+        key = target_item.get("key")
+        base_item = base_items.get(key, {})
+        base_pressure = float(base_item.get("pressure_score") or 0)
+        target_pressure = float(target_item.get("pressure_score") or 0)
+        rows.append({
+            "key": key,
+            "name": target_item.get("name"),
+            "base_pressure": round(base_pressure, 1),
+            "target_pressure": round(target_pressure, 1),
+            "delta": round(target_pressure - base_pressure, 1),
+            "base_capacity": base_item.get("capacity"),
+            "target_capacity": target_item.get("capacity"),
+        })
+    return sorted(rows, key=lambda item: abs(item["delta"]), reverse=True)
+
+
+def _agent_decision_changes(base_sim: dict, target_sim: dict) -> list[dict]:
+    base_items = {item.get("country_code"): item for item in base_sim.get("agent_decisions", [])}
+    rows = []
+    for target_item in target_sim.get("agent_decisions", []):
+        code = target_item.get("country_code")
+        base_item = base_items.get(code)
+        if base_item is None:
+            status = "new"
+            base_action = None
+        else:
+            base_action = base_item.get("action")
+            status = "changed" if base_action != target_item.get("action") else "unchanged"
+        rows.append({
+            "country_code": code,
+            "country_name": target_item.get("country_name"),
+            "status": status,
+            "base_action": base_action,
+            "target_action": target_item.get("action"),
+            "base_risk_delta": base_item.get("risk_delta") if base_item else None,
+            "target_risk_delta": target_item.get("risk_delta"),
+            "drivers": target_item.get("drivers", []),
+        })
+    return sorted(rows, key=lambda item: {"changed": 0, "new": 1, "unchanged": 2}.get(item["status"], 3))
+
+
+def _timeline_delta(base_sim: dict, target_sim: dict) -> dict:
+    base_items = {item.get("day"): item for item in base_sim.get("timeline", [])}
+    points = []
+    for target_item in target_sim.get("timeline", []):
+        day = target_item.get("day")
+        base_item = base_items.get(day, {})
+        base_risk = float(base_item.get("global_risk") or 0)
+        target_risk = float(target_item.get("global_risk") or 0)
+        points.append({
+            "day": day,
+            "base_global_risk": round(base_risk, 1),
+            "target_global_risk": round(target_risk, 1),
+            "delta": round(target_risk - base_risk, 1),
+            "turning_point": bool(target_item.get("turning_point") or base_item.get("turning_point")),
+        })
+    base_peak = max((float(item.get("global_risk") or 0) for item in base_sim.get("timeline", [])), default=None)
+    target_peak = max((float(item.get("global_risk") or 0) for item in target_sim.get("timeline", [])), default=None)
+    return {
+        "base_peak_global_risk": round(base_peak, 1) if base_peak is not None else None,
+        "target_peak_global_risk": round(target_peak, 1) if target_peak is not None else None,
+        "peak_delta": _round_delta(target_peak, base_peak),
+        "points": points,
+    }
+
+
+def _causal_edge_delta(base_graph: CausalGraphSnapshot | None, target_graph: CausalGraphSnapshot | None) -> list[dict]:
+    if not base_graph or not target_graph:
+        return []
+    base_edges = {_edge_signature(edge): edge for edge in base_graph.edges or []}
+    rows = []
+    for edge in target_graph.edges or []:
+        signature = _edge_signature(edge)
+        base_edge = base_edges.get(signature, {})
+        base_weight = float(base_edge.get("weight") or 0)
+        target_weight = float(edge.get("weight") or 0)
+        rows.append({
+            "source": edge.get("source"),
+            "target": edge.get("target"),
+            "relation": edge.get("relation"),
+            "base_weight": round(base_weight, 3),
+            "target_weight": round(target_weight, 3),
+            "delta": round(target_weight - base_weight, 3),
+            "mechanism": edge.get("mechanism") or edge.get("explanation"),
+        })
+    return sorted(rows, key=lambda item: abs(item["delta"]), reverse=True)[:8]
+
+
+def _edge_signature(edge: dict) -> str:
+    return f"{edge.get('source')}->{edge.get('target')}:{edge.get('relation')}"
+
+
+def _round_delta(target_value: float | None, base_value: float | None) -> float | None:
+    if target_value is None or base_value is None:
+        return None
+    return round(float(target_value) - float(base_value), 1)
+
+
+def _replay_pack_summary(target: ResearchRun, diff: dict | None) -> dict:
+    sim = target.simulation_snapshot or {}
+    heatmap = sim.get("risk_heatmap", [])
+    chains = sim.get("supply_chains", [])
+    timeline = sim.get("timeline", [])
+    top_country = max(heatmap, key=lambda item: float(item.get("risk") or 0), default={})
+    top_chain = max(chains, key=lambda item: float(item.get("pressure_score") or 0), default={})
+    peak = max((float(item.get("global_risk") or 0) for item in timeline), default=None)
+    return {
+        "run_id": target.run_id,
+        "policy_actions": sim.get("scenario", {}).get("policy_actions", []),
+        "top_risk_country": top_country,
+        "top_chain": top_chain,
+        "timeline_peak_global_risk": round(peak, 1) if peak is not None else None,
+        "top_chain_delta": diff.get("top_chain_pressure_delta") if diff else None,
+        "timeline_peak_delta": diff.get("timeline_delta", {}).get("peak_delta") if diff else None,
+        "is_counterfactual": bool(diff),
+    }
+
+
+def _render_war_room_replay_markdown(project_title: str, target: ResearchRun, graph: CausalGraphSnapshot | None, diff: dict | None, summary: dict, manifest: dict, model_inputs: dict, audit_trail: list[dict]) -> str:
+    sim = target.simulation_snapshot or {}
+    scenario = sim.get("scenario", {})
+    policy_actions = scenario.get("policy_actions", [])
+    heatmap = sim.get("risk_heatmap", [])
+    chains = diff.get("supply_chain_delta", []) if diff else sim.get("supply_chains", [])
+    decisions = sim.get("agent_decisions", [])
+    timeline = sim.get("timeline", [])
+    assumptions = sim.get("assumptions", [])
+    edges = (graph.edges if graph else sim.get("impact_graph", {}).get("edges", [])) or []
+    observations = diff.get("counterfactual_observations", []) if diff else ["Single-run Replay Pack; no base run was selected for counterfactual comparison."]
+
+    lines = [
+        f"# {project_title} War Room Replay Pack",
+        "",
+        f"> {WAR_ROOM_DISCLAIMER}",
+        "",
+        "## Replay Pack Manifest",
+        f"- Pack version: `{manifest.get('pack_version')}`",
+        f"- Project ID: `{manifest.get('project_id')}`",
+        f"- Run ID: `{manifest.get('run_id')}`",
+        f"- Base run ID: `{manifest.get('base_run_id') or 'none'}`",
+        f"- Target run ID: `{manifest.get('target_run_id') or manifest.get('run_id')}`",
+        f"- Generated at: {manifest.get('generated_at')}",
+        f"- Counterfactual: {manifest.get('is_counterfactual')}",
+        "",
+        "## Scenario Setup",
+        f"- Run ID: `{target.run_id}`",
+        f"- Scenario: {scenario.get('name') or scenario.get('key') or 'War Room scenario'}",
+        f"- Duration: {scenario.get('duration_days')} days",
+        f"- Intensity: {scenario.get('intensity')}",
+        f"- Propagation: {scenario.get('propagation')}",
+        f"- Target countries: {', '.join(scenario.get('target_countries') or []) or 'none'}",
+        f"- Target chains: {', '.join(scenario.get('target_chains') or []) or 'none'}",
+        "",
+        "## Policy Actions",
+        *(f"- {item}" for item in (policy_actions or ["none"])),
+        "",
+        "## Model Inputs",
+        f"- Duration: {model_inputs.get('duration_days')} days",
+        f"- Intensity: {model_inputs.get('intensity')}",
+        f"- Propagation: {model_inputs.get('propagation')}",
+        f"- Target countries: {', '.join(model_inputs.get('target_countries') or []) or 'none'}",
+        f"- Target chains: {', '.join(model_inputs.get('target_chains') or []) or 'none'}",
+        f"- Policy actions: {', '.join(model_inputs.get('policy_actions') or []) or 'none'}",
+        "",
+        "## User Overrides",
+        f"- Country overrides: `{json.dumps(model_inputs.get('country_overrides') or {}, ensure_ascii=False)}`",
+        f"- Chain overrides: `{json.dumps(model_inputs.get('chain_overrides') or {}, ensure_ascii=False)}`",
+        "",
+        "## Risk Hotspots",
+        *[
+            f"- {item.get('country_name')} ({item.get('country_code')}): {float(item.get('risk') or 0):.1f}/100, dominant channel `{item.get('dominant_channel')}`"
+            for item in heatmap[:8]
+        ],
+        "",
+        "## Supply Chain Bottlenecks",
+    ]
+    if diff:
+        lines.extend(
+            f"- {item.get('name')}: {item.get('base_pressure')} -> {item.get('target_pressure')} ({float(item.get('delta') or 0):+.1f})"
+            for item in chains[:8]
+        )
+    else:
+        lines.extend(
+            f"- {item.get('name')}: pressure {float(item.get('pressure_score') or 0):.1f}/100, capacity {item.get('capacity')}"
+            for item in chains[:8]
+        )
+    lines.extend(
+        [
+            "",
+            "## Agent Decisions",
+            *[
+                f"- {item.get('country_name')} ({item.get('country_code')}): {item.get('action')} | drivers: {', '.join(item.get('drivers') or []) or 'none'}"
+                for item in decisions[:8]
+            ],
+            "",
+            "## Timeline Turning Points",
+            *[
+                f"- D+{item.get('day')}: global risk {float(item.get('global_risk') or 0):.1f}/100 - {item.get('key_development')}"
+                for item in timeline
+                if item.get("turning_point") or item.get("day") in {0, scenario.get("duration_days")}
+            ],
+            "",
+            "## Causal Mechanisms",
+            *[
+                f"- {edge.get('source')} -> {edge.get('target')}: {edge.get('relation')} | weight {edge.get('weight')} | {edge.get('mechanism') or edge.get('explanation')}"
+                for edge in edges[:10]
+            ],
+            "",
+            "## Deterministic Rule Trace",
+            "- Scenario inputs were normalized before simulation.",
+            "- Policy actions adjusted supply-chain pressure and country-agent risk through local rule deltas.",
+            "- Risk heatmap, agent decisions, timeline, and causal edges were rendered from stored deterministic outputs.",
+            "- AI text, when present elsewhere in the project, is explanatory and does not determine core numeric results.",
+            "",
+            "## Counterfactual Observations",
+            *(f"- {item}" for item in observations),
+            "",
+            "## Audit Trail",
+            *[f"- `{item.get('step')}` ({item.get('source')}): {item.get('detail')}" for item in audit_trail],
+            "",
+            "## Model Assumptions",
+            *(f"- {item}" for item in assumptions),
+            "",
+            "## Replay Summary",
+            f"- Top risk country: {summary.get('top_risk_country', {}).get('country_name')} ({summary.get('top_risk_country', {}).get('risk')})",
+            f"- Top chain: {summary.get('top_chain', {}).get('name')} ({summary.get('top_chain', {}).get('pressure_score')})",
+            f"- Timeline peak global risk: {summary.get('timeline_peak_global_risk')}",
+            f"- Timeline peak delta: {summary.get('timeline_peak_delta')}",
+            "",
+            f"_{WAR_ROOM_DISCLAIMER}_",
+            "",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def chat_with_project(project_id: str, payload: ProjectChatRequest) -> ProjectChatMessage:
@@ -456,6 +1088,217 @@ def _run_by_id(project_id: str, run_id: str | None) -> ResearchRun | None:
 
         raise HTTPException(status_code=404, detail=f"Unknown run for project: {run_id}")
     return _run_from_row(row)
+
+
+def _is_war_room_run(run: ResearchRun) -> bool:
+    return bool((run.simulation_snapshot or {}).get("scenario") or (run.data_snapshot or {}).get("run_mode") == "war_room")
+
+
+def _workspace_ui_state(sim: dict) -> dict:
+    ui_state = deepcopy(sim.get("ui_state") or {})
+    ui_state.setdefault("display", {"title_zh": "War Room 指挥沙盘", "subtitle_zh": "等待运行或选择历史 run", "disclaimer_zh": WAR_ROOM_DISCLAIMER})
+    ui_state.setdefault("kpis", [])
+    ui_state.setdefault("map_layers", [])
+    ui_state.setdefault("map_entities", [])
+    ui_state.setdefault("timeline_events", [])
+    ui_state.setdefault("agent_panels", {})
+    return ui_state
+
+
+def _workspace_run_control(selected: ResearchRun | None, previous: ResearchRun | None, runs: list[ResearchRun], sim: dict) -> dict:
+    scenario = sim.get("scenario") or {}
+    policy_actions = scenario.get("policy_actions") or []
+    return {
+        "current_run_id": selected.run_id if selected else None,
+        "current_completed_at": selected.completed_at if selected else None,
+        "previous_run_id": previous.run_id if previous else None,
+        "compare_ready": bool(selected and previous),
+        "replay_ready": bool(selected and scenario),
+        "run_count": len(runs),
+        "scenario_title_zh": scenario.get("name") or "War Room 沙盘",
+        "duration_days": scenario.get("duration_days"),
+        "policy_actions": policy_actions,
+        "policy_actions_zh": [_workspace_policy_label(action) for action in policy_actions],
+        "status_zh": "可对比复盘" if selected and previous else ("可导出复盘" if selected else "等待首次运行"),
+    }
+
+
+def _workspace_command_actions(selected: ResearchRun | None, previous: ResearchRun | None) -> list[dict]:
+    has_run = selected is not None
+    has_compare = selected is not None and previous is not None
+    return [
+        {"key": "command_search", "label_zh": "指挥搜索", "action_type": "panel", "enabled": True, "status": "active"},
+        {"key": "run_scenario", "label_zh": "运行沙盘", "action_type": "run", "enabled": True, "status": "active"},
+        {"key": "clone_run", "label_zh": "克隆本次运行", "action_type": "clone", "enabled": has_run, "status": "active" if has_run else "disabled"},
+        {"key": "compare_runs", "label_zh": "反事实对比", "action_type": "compare", "enabled": has_compare, "status": "active" if has_compare else "disabled"},
+        {"key": "export_replay", "label_zh": "导出复盘包", "action_type": "replay", "enabled": has_run, "status": "active" if has_run else "disabled"},
+        {"key": "delta_overlay", "label_zh": "反事实图层", "action_type": "toggle", "enabled": has_compare, "status": "active" if has_compare else "disabled"},
+        {"key": "three_d", "label_zh": "3D 地球视图", "action_type": "upcoming", "enabled": False, "status": "upcoming"},
+    ]
+
+
+def _workspace_entity_index(ui_state: dict, sim: dict) -> list[dict]:
+    existing = ui_state.get("entity_index")
+    if isinstance(existing, list) and existing:
+        return existing
+    index: list[dict] = []
+    for entity in ui_state.get("map_entities") or []:
+        entity_id = str(entity.get("id") or "")
+        entity_type = str(entity.get("type") or "entity")
+        title = entity.get("title_zh") or entity.get("label_zh") or entity.get("label") or entity_id
+        subtitle = entity.get("detail_zh") or entity.get("mechanism_zh") or _workspace_entity_subtitle(entity)
+        index.append(
+            {
+                "id": entity_id,
+                "type": entity_type,
+                "title_zh": title,
+                "subtitle_zh": subtitle,
+                "section": _workspace_section_for_entity(entity_type),
+                "layer": entity.get("layer", ""),
+                "day": entity.get("day"),
+                "ref": entity_id,
+                "tokens": [entity_id, str(entity.get("key", "")), str(entity.get("layer", "")), title, subtitle, *(entity.get("related_countries") or []), *(entity.get("related_chains") or [])],
+            }
+        )
+    for event in ui_state.get("timeline_events") or []:
+        key = str(event.get("key") or event.get("day") or "")
+        index.append(
+            {
+                "id": f"timeline:{key}",
+                "type": "timeline",
+                "title_zh": event.get("title_zh") or "时间线事件",
+                "subtitle_zh": event.get("detail_zh") or "",
+                "section": "overview",
+                "layer": "events",
+                "day": event.get("day"),
+                "ref": key,
+                "tokens": [key, str(event.get("time", "")), str(event.get("day", "")), *(event.get("related_countries") or []), *(event.get("related_chains") or [])],
+            }
+        )
+    for decision in sim.get("agent_decisions") or []:
+        code = decision.get("country_code") or ""
+        index.append(
+            {
+                "id": f"decision:{code}",
+                "type": "decision",
+                "title_zh": _workspace_decision_label(decision.get("action")),
+                "subtitle_zh": f"{_workspace_country_label(code)} · 置信度 {round(float(decision.get('confidence') or 0))}/100",
+                "section": "analysis",
+                "layer": "risk",
+                "day": None,
+                "ref": f"country:{code}",
+                "tokens": [code, decision.get("country_name", ""), decision.get("action", ""), *(decision.get("drivers") or [])],
+            }
+        )
+    return index
+
+
+def _workspace_entity_details(ui_state: dict, sim: dict, entity_index: list[dict]) -> dict:
+    existing = ui_state.get("entity_details")
+    if isinstance(existing, dict) and existing:
+        return existing
+    entities = {str(entity.get("id") or ""): entity for entity in ui_state.get("map_entities") or []}
+    details: dict[str, dict] = {}
+    for item in entity_index:
+        entity_id = item.get("ref") if str(item.get("id", "")).startswith("timeline:") else item.get("id")
+        entity = entities.get(str(entity_id), {})
+        details[item["id"]] = {
+            "id": item["id"],
+            "type": item.get("type", "entity"),
+            "title_zh": item.get("title_zh", item["id"]),
+            "summary_zh": item.get("subtitle_zh", ""),
+            "metrics": _workspace_detail_metrics(entity, item),
+            "related_events": _workspace_related_events(entity, ui_state.get("timeline_events") or []),
+            "related_countries": [_workspace_country_label(code) for code in entity.get("related_countries", [])],
+            "related_chains": [_workspace_chain_label(key) for key in entity.get("related_chains", [])],
+            "actions": _workspace_detail_actions(item.get("type", "entity")),
+        }
+    for code, panel in (ui_state.get("agent_panels") or {}).items():
+        details.setdefault(f"country:{code}", {}).update({"agent_panel": panel, "decision_basis_zh": panel.get("decision_basis_zh", ""), "expected_tradeoff_zh": panel.get("expected_tradeoff_zh", "")})
+    return details
+
+
+def _workspace_insight_cards(ui_state: dict, sim: dict) -> list[dict]:
+    heatmap = sim.get("risk_heatmap") or []
+    chains = sim.get("supply_chains") or []
+    top_country = max(heatmap, key=lambda item: float(item.get("risk") or 0), default={})
+    top_chain = max(chains, key=lambda item: float(item.get("pressure_score") or item.get("pressure") or item.get("disruption") or 0), default={})
+    turning = [event for event in ui_state.get("timeline_events") or [] if event.get("turning_point")]
+    return [
+        {"key": "top_country", "label_zh": "最高风险国家", "value_zh": f"{_workspace_country_label(top_country.get('country_code'))} {round(float(top_country.get('risk') or 0))}/100", "tone": "red", "detail_zh": "点击国家节点查看 Agent 决策。"},
+        {"key": "top_chain", "label_zh": "供应链瓶颈", "value_zh": f"{_workspace_chain_label(top_chain.get('key'))} {round(float(top_chain.get('pressure_score') or top_chain.get('pressure') or top_chain.get('disruption') or 0))}/100", "tone": "orange", "detail_zh": "压力由替代率、容量和滞后天数共同决定。"},
+        {"key": "turning", "label_zh": "关键拐点", "value_zh": f"{len(turning)} 个", "tone": "blue", "detail_zh": "可用事件筛选聚焦关键拐点。"},
+    ]
+
+
+def _workspace_entity_subtitle(entity: dict) -> str:
+    entity_type = entity.get("type")
+    if entity_type == "country":
+        return f"风险 {entity.get('risk', '--')}/100"
+    if entity_type == "supply_chain":
+        return f"压力 {entity.get('pressure', '--')}/100 · 滞后 {entity.get('lag_days', 0)} 天"
+    if entity_type == "causal_edge":
+        return f"权重 {entity.get('weight', '--')} · 滞后 {entity.get('lag_days', 0)} 天"
+    if entity_type == "event":
+        return f"D+{entity.get('day', 0)} · 事件热点"
+    return "War Room 实体"
+
+
+def _workspace_section_for_entity(entity_type: str) -> str:
+    return {"country": "analysis", "supply_chain": "sandbox", "causal_edge": "graph", "event": "overview", "timeline": "overview", "decision": "analysis"}.get(entity_type, "overview")
+
+
+def _workspace_detail_metrics(entity: dict, item: dict) -> list[dict]:
+    entity_type = item.get("type")
+    if entity_type == "country":
+        return [{"label_zh": "风险分值", "value": f"{entity.get('risk', '--')}/100"}, {"label_zh": "主导通道", "value": entity.get("dominant_channel_zh") or entity.get("dominant_channel") or "--"}]
+    if entity_type == "supply_chain":
+        return [{"label_zh": "链路压力", "value": f"{entity.get('pressure', '--')}/100"}, {"label_zh": "替代率", "value": f"{entity.get('substitution', '--')}%"}, {"label_zh": "滞后", "value": f"{entity.get('lag_days', 0)} 天"}]
+    if entity_type == "causal_edge":
+        return [{"label_zh": "边权重", "value": entity.get("weight", "--")}, {"label_zh": "滞后", "value": f"{entity.get('lag_days', 0)} 天"}]
+    return [{"label_zh": "类型", "value": item.get("type", "entity")}]
+
+
+def _workspace_related_events(entity: dict, timeline_events: list[dict]) -> list[str]:
+    countries = set(entity.get("related_countries") or [])
+    chains = set(entity.get("related_chains") or [])
+    matches = []
+    for event in timeline_events:
+        if countries.intersection(event.get("related_countries") or []) or chains.intersection(event.get("related_chains") or []):
+            matches.append(f"D+{event.get('day')} {event.get('title_zh') or event.get('title')}")
+    return matches[:4]
+
+
+def _workspace_detail_actions(entity_type: str) -> list[dict]:
+    actions = [{"key": "focus", "label_zh": "在地图中定位", "action_type": "focus", "enabled": True}]
+    if entity_type == "country":
+        actions.append({"key": "analysis", "label_zh": "进入智能分析", "action_type": "section", "section": "analysis", "enabled": True})
+    if entity_type == "causal_edge":
+        actions.append({"key": "graph", "label_zh": "查看因果链路", "action_type": "section", "section": "graph", "enabled": True})
+    actions.append({"key": "replay", "label_zh": "导出复盘包", "action_type": "replay", "enabled": True})
+    return actions
+
+
+def _workspace_country_label(code: str | None) -> str:
+    return {"USA": "美国", "CHN": "中国", "JPN": "日本", "KOR": "韩国", "TWN": "台湾", "IND": "印度", "EU": "欧盟", "RUS": "俄罗斯", "SAU": "中东", "BRA": "巴西"}.get(str(code or ""), str(code or "--"))
+
+
+def _workspace_chain_label(key: str | None) -> str:
+    return {"energy": "能源", "food": "粮食", "chips": "关键芯片", "shipping": "海运贸易", "settlement": "金融结算"}.get(str(key or ""), str(key or "--"))
+
+
+def _workspace_policy_label(key: str) -> str:
+    return {"sanctions": "制裁", "counter_sanctions": "反制裁", "energy_reroute": "能源改道", "food_export_limit": "粮食出口限制", "alliance_deterrence": "联盟威慑", "liquidity_support": "流动性支持", "public_messaging": "舆论沟通"}.get(str(key or ""), str(key or ""))
+
+
+def _workspace_decision_label(action: str | None) -> str:
+    return {
+        "Diversify emergency energy cargoes": "分散能源应急货源",
+        "Prioritize chip allocation and export controls": "优先保障芯片分配与出口管制",
+        "Signal deterrence while opening crisis channel": "释放威慑信号并开启危机沟通",
+        "Coordinate liquidity and settlement safeguards": "协调流动性与结算保护",
+        "Monitor alliances and prepare substitution": "监测联盟变化并准备替代方案",
+    }.get(str(action or ""), str(action or "观察态势"))
 
 
 def _latest_graph(project_id: str) -> CausalGraphSnapshot | None:
@@ -576,6 +1419,8 @@ def _project_from_row(row) -> ResearchProject:
         asset_scope=loads(row["asset_scope"], []),
         event_window_days=int(row["event_window_days"]),
         event_types=loads(row["event_types"], []),
+        mode=row["mode"] if "mode" in row.keys() else "research",
+        scenario_config=loads(row["scenario_config"] if "scenario_config" in row.keys() else None, {}),
         status=row["status"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
@@ -687,6 +1532,179 @@ def _simulation_snapshot(simulation: dict) -> dict:
         "drivers": simulation.get("drivers") or [],
         "propagation_edges": (simulation.get("propagation_edges") or [])[:10],
     }
+
+
+def _war_room_risk_overview(result: WarRoomRun) -> RiskOverview:
+    latest_score = result.timeline[-1].global_risk if result.timeline else 50.0
+    component_specs = [
+        ("geopolitical", "Geopolitical", latest_score, ["deterrence", "alliances", "sanctions"]),
+        ("energy", "Energy", _chain_pressure(result, "energy"), ["energy imports", "rerouting", "substitution"]),
+        ("food", "Food", _chain_pressure(result, "food"), ["food availability", "export restrictions", "social stability"]),
+        ("financial", "Financial", result.timeline[-1].financial_pressure if result.timeline else 40.0, ["settlement", "liquidity", "risk appetite"]),
+    ]
+    components = [
+        RiskComponent(
+            key=key,
+            name=key,
+            display_name=name,
+            score=round(score, 1),
+            weight=0.25,
+            trend="up",
+            display_trend="up",
+            source="WorldPulse War Room",
+            drivers=drivers,
+        )
+        for key, name, score, drivers in component_specs
+    ]
+    return RiskOverview(
+        latest=CompositeRisk(
+            date=datetime.now().strftime("%Y-%m-%d"),
+            score=round(latest_score, 1),
+            level="scenario",
+            display_level="Strategy sandbox",
+            trend="up",
+            display_trend="scenario stress",
+            forecast_30d=round(min(95, latest_score), 1),
+            forecast_label="sandbox",
+            display_forecast_label="Not a prediction",
+            components=components,
+            summary=result.summary,
+        ),
+        history=[
+            RiskPoint(
+                date=f"D+{point.day}",
+                score=point.global_risk,
+                financial=point.financial_pressure,
+                climate=0,
+                geopolitical=point.trade_pressure,
+                ecology=point.food_pressure,
+                macro=point.energy_pressure,
+            )
+            for point in result.timeline
+        ],
+    )
+
+
+def _war_room_event_snapshot(result: WarRoomRun) -> dict:
+    return {
+        "event_type": "war_room",
+        "name": result.scenario.name,
+        "region": "global",
+        "window_days": result.scenario.duration_days,
+        "intensity": round(result.scenario.intensity * 100, 1),
+        "event_count": len(result.timeline),
+        "source": "WorldPulse War Room deterministic sandbox",
+        "summary": result.scenario.description,
+        "confidence": result.impact_graph.confidence,
+    }
+
+
+def _war_room_simulation_snapshot(result: WarRoomRun) -> dict:
+    return {
+        "summary": result.summary,
+        "scenario": result.scenario.model_dump(),
+        "timeline": [item.model_dump() for item in result.timeline],
+        "country_agents": [item.model_dump() for item in result.country_agents],
+        "supply_chains": [item.model_dump() for item in result.supply_chains],
+        "risk_heatmap": [item.model_dump() for item in result.risk_heatmap],
+        "agent_decisions": [item.model_dump() for item in result.agent_decisions],
+        "impact_graph": result.impact_graph.model_dump(),
+        "disclaimer": result.disclaimer,
+        "assumptions": result.assumptions,
+        "ui_state": result.ui_state,
+    }
+
+
+def _war_room_graph_snapshot(project_id: str, run_id: str, result: WarRoomRun) -> CausalGraphSnapshot:
+    return CausalGraphSnapshot(
+        graph_id=f"graph_{uuid4().hex[:12]}",
+        project_id=project_id,
+        run_id=run_id,
+        generated_at=_now(),
+        nodes=result.impact_graph.nodes,
+        edges=[
+            {
+                **edge,
+                "evidence": [
+                    "WorldPulse deterministic War Room rules",
+                    f"Scenario intensity: {result.scenario.intensity:.2f}",
+                    WAR_ROOM_DISCLAIMER,
+                ],
+                "backtest": {"sample_count": 0, "hit_rate": 0, "max_error": 0},
+            }
+            for edge in result.impact_graph.edges
+        ],
+        confidence=result.impact_graph.confidence,
+        evidence_sources=["WorldPulse War Room deterministic sandbox", "WorldPulse supply-chain rules", "WorldPulse country-agent rules"],
+    )
+
+
+def _war_room_project_report(project: ResearchProject, run: ResearchRun, graph: CausalGraphSnapshot, result: WarRoomRun) -> ProjectAIReport:
+    top_agents = result.country_agents[:3]
+    top_chains = result.supply_chains[:3]
+    key_findings = [
+        f"Scenario setting: {result.scenario.name}, {result.scenario.duration_days} days, intensity {result.scenario.intensity:.2f}.",
+        f"User controls: target countries {', '.join(result.scenario.target_countries)}; target chains {', '.join(result.scenario.target_chains)}; policy actions {', '.join(result.scenario.policy_actions) if result.scenario.policy_actions else 'none'}.",
+        f"Primary causal chain: {top_chains[0].name} pressure reaches {top_chains[0].pressure_score:.1f}/100 and propagates to {top_agents[0].name}.",
+        f"Highest-risk country agent: {top_agents[0].name} at {top_agents[0].risk_score:.1f}/100.",
+        f"Agent decision focus: {result.agent_decisions[0].country_name} should {result.agent_decisions[0].action.lower()} because of {', '.join(result.agent_decisions[0].drivers)}.",
+        f"Risk heatmap: {len(result.risk_heatmap)} countries scored; dominant channel for the top cell is {result.risk_heatmap[0].dominant_channel} with breakdown {result.risk_heatmap[0].risk_breakdown}.",
+        f"Boundary condition: {WAR_ROOM_DISCLAIMER}",
+    ]
+    evidence = [
+        EvidenceItem(title="Scenario Sandbox", source="WorldPulse War Room", value=result.scenario.name, interpretation=result.scenario.description),
+        EvidenceItem(title="Supply Chain Bottleneck", source="WorldPulse supply-chain rules", value=f"{top_chains[0].pressure_score:.1f}/100", interpretation=f"{top_chains[0].name} is the highest-pressure chain after substitution and lag effects."),
+        EvidenceItem(title="Policy Actions", source="WorldPulse scenario builder", value=", ".join(result.scenario.policy_actions) or "none", interpretation="User-selected actions are deterministic inputs that shift supply-chain and agent pressure."),
+        EvidenceItem(title="Agent Decisions", source="WorldPulse country-agent rules", value=str(len(result.agent_decisions)), interpretation="Country-agent decisions are deterministic rule outputs based on dependency, stress channels, drivers, and expected tradeoffs."),
+        EvidenceItem(title="Model Assumptions", source="WorldPulse War Room", value=str(len(result.assumptions)), interpretation="Assumptions separate deterministic rules, user controls, and non-prediction boundaries."),
+    ]
+    citations = _build_report_citations(key_findings, evidence, graph, run.backtest_snapshot)
+    ai = AIAnalysisResult(
+        enabled=False,
+        mode="war-room-local",
+        title=f"{project.title} War Room Report",
+        summary=result.summary,
+        key_findings=key_findings,
+        evidence=evidence,
+        uncertainties=[
+            "The model is a strategy sandbox with local rules, not live intelligence or a predictive forecast.",
+            "Agent decisions are rule-based and should be treated as inspectable assumptions.",
+            "Supply-chain substitution, escalation, and public opinion are simplified for MVP use.",
+            "User overrides can stress-test assumptions but do not represent verified real-world intelligence.",
+        ],
+        watch_signals=[
+            WatchSignal(name="Energy pressure", direction="scenario", why_it_matters="Energy is a first-order inflation and stability channel.", current_status=f"{_chain_pressure(result, 'energy'):.1f}/100"),
+            WatchSignal(name="Critical chips", direction="scenario", why_it_matters="Chip disruption connects trade, industry, and alliance response.", current_status=f"{_chain_pressure(result, 'chips'):.1f}/100"),
+            WatchSignal(name="Public opinion", direction="scenario", why_it_matters="Opinion pressure affects stability and diplomatic room for maneuver.", current_status=f"{result.timeline[-1].public_opinion_pressure:.1f}/100"),
+        ],
+        scenario_suggestions=[
+            ScenarioSuggestion(name="Lower intensity de-escalation", shock_type="war_room", target_codes=result.scenario.target_countries, rationale="Compare whether lower intensity changes bottleneck ranking."),
+            ScenarioSuggestion(name="Higher propagation sanctions case", shock_type="war_room", target_codes=result.scenario.target_countries, rationale="Stress-test countermeasure and financial-settlement propagation."),
+        ],
+        disclaimer=WAR_ROOM_DISCLAIMER,
+    )
+    markdown = _render_project_markdown(ai, citations)
+    return ProjectAIReport(
+        report_id=f"report_{uuid4().hex[:12]}",
+        project_id=project.project_id,
+        run_id=run.run_id,
+        generated_at=_now(),
+        mode=ai.mode,
+        title=ai.title,
+        summary=ai.summary,
+        key_findings=ai.key_findings,
+        evidence=ai.evidence,
+        uncertainties=ai.uncertainties,
+        watch_signals=ai.watch_signals,
+        scenario_suggestions=ai.scenario_suggestions,
+        citations=citations,
+        markdown=markdown,
+        disclaimer=ai.disclaimer,
+    )
+
+
+def _chain_pressure(result: WarRoomRun, key: str) -> float:
+    return next((chain.pressure_score for chain in result.supply_chains if chain.key == key), 0.0)
 
 
 def _graph_snapshot(project_id: str, run_id: str, chain, backtest) -> CausalGraphSnapshot:

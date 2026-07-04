@@ -24,6 +24,8 @@ def init_db() -> None:
                 asset_scope TEXT NOT NULL,
                 event_window_days INTEGER NOT NULL,
                 event_types TEXT NOT NULL,
+                mode TEXT NOT NULL DEFAULT 'research',
+                scenario_config TEXT NOT NULL DEFAULT '{}',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -89,6 +91,8 @@ def init_db() -> None:
             """
         )
         _ensure_column(conn, "ai_reports", "citations", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_column(conn, "research_projects", "mode", "TEXT NOT NULL DEFAULT 'research'")
+        _ensure_column(conn, "research_projects", "scenario_config", "TEXT NOT NULL DEFAULT '{}'")
 
 
 @contextmanager

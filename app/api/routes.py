@@ -36,6 +36,11 @@ from app.core.models import (
     SimulationScenario,
     SpeciesPreset,
     SpeciesProfile,
+    WarRoomPresetBundle,
+    WarRoomReplayPack,
+    WarRoomRun,
+    WarRoomScenarioRequest,
+    WarRoomWorkspaceState,
     WorkbenchStatus,
 )
 from app.services.ai_analysis import analyze_current_risk, analyze_simulation, export_ai_report
@@ -58,6 +63,9 @@ from app.services.projects import (
     project_run_detail,
     project_run_citations,
     project_runs,
+    run_project_war_room,
+    war_room_replay_pack,
+    war_room_workspace,
     run_project,
 )
 from app.services.report import export_report, render_report
@@ -67,6 +75,7 @@ from app.services.simulation_data import agent_state_explanations, get_country_a
 from app.services.simulation_health import build_simulation_data_health
 from app.services.species_service import build_species_profile, list_species_presets
 from app.services.workbench import build_workbench_status, render_analysis_report, render_system_report, report_templates
+from app.services.war_room_engine import run_war_room, war_room_presets
 
 router = APIRouter()
 
@@ -94,6 +103,21 @@ def research_project_detail(project_id: str) -> ProjectDetail:
 @router.post("/projects/{project_id}/run", response_model=ProjectDetail)
 def research_project_run(project_id: str, mode: str = "fast") -> ProjectDetail:
     return run_project(project_id, mode=mode)
+
+
+@router.post("/projects/{project_id}/war-room/run", response_model=ProjectDetail)
+def research_project_war_room_run(project_id: str, request: WarRoomScenarioRequest) -> ProjectDetail:
+    return run_project_war_room(project_id, request)
+
+
+@router.get("/projects/{project_id}/war-room/replay-pack", response_model=WarRoomReplayPack)
+def research_project_war_room_replay_pack(project_id: str, run_id: str | None = None, base_run_id: str | None = None, target_run_id: str | None = None) -> WarRoomReplayPack:
+    return war_room_replay_pack(project_id, run_id=run_id, base_run_id=base_run_id, target_run_id=target_run_id)
+
+
+@router.get("/projects/{project_id}/war-room/workspace", response_model=WarRoomWorkspaceState)
+def research_project_war_room_workspace(project_id: str, run_id: str | None = None) -> WarRoomWorkspaceState:
+    return war_room_workspace(project_id, run_id=run_id)
 
 
 @router.get("/projects/{project_id}/runs", response_model=list[ResearchRun])
@@ -272,6 +296,16 @@ def simulation_agent_detail(code: str) -> SimulationAgentDetail:
 @router.post("/simulation/run", response_model=SimulationResult)
 def simulation_run(request: SimulationRequest) -> SimulationResult:
     return run_simulation(request)
+
+
+@router.get("/war-room/presets", response_model=WarRoomPresetBundle)
+def war_room_preset_bundle() -> WarRoomPresetBundle:
+    return war_room_presets()
+
+
+@router.post("/war-room/run", response_model=WarRoomRun)
+def war_room_sandbox_run(request: WarRoomScenarioRequest) -> WarRoomRun:
+    return run_war_room(request)
 
 
 @router.get("/exports/risk-history.csv")

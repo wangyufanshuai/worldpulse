@@ -9,7 +9,8 @@ const router = createRouter({
   history: createWebHistory('/studio/'),
   routes: [
     { path: '/', name: 'home', component: ProjectHomeView },
-    { path: '/projects/:projectId', name: 'workspace', component: ResearchWorkspaceView, props: true }
+    { path: '/projects/:projectId', name: 'workspace', component: ResearchWorkspaceView, props: true },
+    { path: '/projects/:projectId/war-room/:section', name: 'workspace-section', component: ResearchWorkspaceView, props: true }
   ]
 })
 

@@ -478,6 +478,8 @@ class ResearchProjectCreate(BaseModel):
     asset_scope: list[str] = ["sp500", "nasdaq", "oil", "gold", "dollar", "vix"]
     event_window_days: int = 30
     event_types: list[str] = ["conflict", "sanctions", "energy", "food", "rates", "trade", "climate"]
+    mode: str = "research"
+    scenario_config: dict = {}
 
 
 class ResearchProject(BaseModel):
@@ -488,6 +490,8 @@ class ResearchProject(BaseModel):
     asset_scope: list[str]
     event_window_days: int
     event_types: list[str]
+    mode: str = "research"
+    scenario_config: dict = {}
     status: str
     created_at: str
     updated_at: str
@@ -592,3 +596,171 @@ class ProjectDetail(BaseModel):
     graph: CausalGraphSnapshot | None = None
     report: ProjectAIReport | None = None
     chat_messages: list[ProjectChatMessage] = []
+
+
+class WarRoomWorkspaceState(BaseModel):
+    project_id: str
+    run_id: str | None = None
+    project: dict = {}
+    run_control: dict = {}
+    ui_state: dict = {}
+    entity_index: list[dict] = []
+    command_actions: list[dict] = []
+    insight_cards: list[dict] = []
+    entity_details: dict = {}
+    compare_ready: bool = False
+    replay_ready: bool = False
+    disclaimer: str
+
+
+class WarRoomCountryAgent(BaseModel):
+    code: str
+    name: str
+    region: str
+    latitude: float
+    longitude: float
+    alliance: str
+    energy_dependency: float
+    food_dependency: float
+    trade_exposure: float
+    chip_dependency: float
+    military_pressure: float
+    public_opinion_pressure: float
+    financial_stress: float
+    stability: float
+    risk_score: float
+
+
+class SupplyChainLink(BaseModel):
+    key: str
+    name: str
+    capacity: float
+    disruption: float
+    substitution: float
+    lag_days: int
+    affected_countries: list[str]
+    pressure_score: float
+
+
+class ConflictEvent(BaseModel):
+    key: str
+    name: str
+    description: str
+    default_duration_days: int
+    target_chains: list[str]
+    target_countries: list[str]
+
+
+class WarRoomScenario(BaseModel):
+    key: str
+    name: str
+    description: str
+    duration_days: int = 30
+    intensity: float = 0.65
+    propagation: float = 0.42
+    target_countries: list[str] = []
+    target_chains: list[str] = []
+    policy_actions: list[str] = []
+    country_overrides: dict[str, dict[str, float]] = {}
+    chain_overrides: dict[str, dict[str, float]] = {}
+
+
+class WarRoomScenarioRequest(BaseModel):
+    scenario_key: str = "strait_blockade_30d"
+    duration_days: int = 30
+    intensity: float = 0.65
+    propagation: float = 0.42
+    target_countries: list[str] = []
+    target_chains: list[str] = []
+    policy_actions: list[str] = []
+    country_overrides: dict[str, dict[str, float]] = {}
+    chain_overrides: dict[str, dict[str, float]] = {}
+    seed: int | None = 42
+
+
+class AgentDecision(BaseModel):
+    country_code: str
+    country_name: str
+    action: str
+    rationale: str
+    drivers: list[str] = []
+    confidence: float
+    risk_delta: float
+    expected_tradeoff: str = ""
+
+
+class WarRoomTimelinePoint(BaseModel):
+    day: int
+    global_risk: float
+    energy_pressure: float
+    food_pressure: float
+    trade_pressure: float
+    financial_pressure: float
+    public_opinion_pressure: float
+    key_development: str
+    turning_point: bool = False
+
+
+class WarRoomHeatmapCell(BaseModel):
+    country_code: str
+    country_name: str
+    region: str
+    latitude: float
+    longitude: float
+    risk: float
+    dominant_channel: str
+    risk_breakdown: dict[str, float] = {}
+
+
+class WarRoomImpactGraph(BaseModel):
+    nodes: list[dict]
+    edges: list[dict]
+    confidence: float
+
+
+class WarRoomPresetBundle(BaseModel):
+    countries: list[WarRoomCountryAgent]
+    supply_chains: list[SupplyChainLink]
+    conflict_events: list[ConflictEvent]
+    scenarios: list[WarRoomScenario]
+    disclaimer: str
+
+
+class WarRoomRun(BaseModel):
+    scenario: WarRoomScenario
+    timeline: list[WarRoomTimelinePoint]
+    country_agents: list[WarRoomCountryAgent]
+    supply_chains: list[SupplyChainLink]
+    impact_graph: WarRoomImpactGraph
+    risk_heatmap: list[WarRoomHeatmapCell]
+    agent_decisions: list[AgentDecision]
+    summary: str
+    disclaimer: str
+    assumptions: list[str] = []
+    ui_state: dict = {}
+
+
+class WarRoomReplayPack(BaseModel):
+    project_id: str
+    run_id: str
+    base_run_id: str | None = None
+    target_run_id: str | None = None
+    title: str
+    scenario: dict
+    policy_actions: list[str] = []
+    risk_heatmap: list[dict] = []
+    supply_chain_delta: list[dict] = []
+    agent_decisions: list[dict] = []
+    timeline: list[dict] = []
+    timeline_delta: dict = {}
+    impact_graph: dict = {}
+    assumptions: list[str] = []
+    counterfactual_observations: list[str] = []
+    summary: dict = {}
+    manifest: dict = {}
+    model_inputs: dict = {}
+    model_outputs: dict = {}
+    audit_trail: list[dict] = []
+    artifacts: dict = {}
+    markdown: str
+    disclaimer: str
