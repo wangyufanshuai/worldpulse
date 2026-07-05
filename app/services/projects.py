@@ -305,9 +305,22 @@ def run_project_war_room(project_id: str, request: WarRoomScenarioRequest | None
     project = _get_project(project_id)
     scenario_request = request or WarRoomScenarioRequest(**(project.scenario_config or {}))
     result = run_war_room(scenario_request)
-    started = _now()
-    completed = _now()
-    run_id = f"run_{uuid4().hex[:12]}"
+    return persist_war_room_result(project_id, result)
+
+
+def persist_war_room_result(
+    project_id: str,
+    result: WarRoomRun,
+    *,
+    run_id: str | None = None,
+    started: str | None = None,
+    completed: str | None = None,
+    lifecycle_job_id: str | None = None,
+) -> ProjectDetail:
+    project = _get_project(project_id)
+    started = started or _now()
+    completed = completed or _now()
+    run_id = run_id or f"run_{uuid4().hex[:12]}"
     workflow_events: list[dict] = []
     _append_workflow_event(workflow_events, "project", "War Room scenario", "completed", "Loaded scenario parameters, country agents, supply chains, and strategy-sandbox disclaimer.")
     _append_workflow_event(workflow_events, "scenario", "Scenario Sandbox", "completed", f"{result.scenario.name} for {result.scenario.duration_days} days at intensity {result.scenario.intensity:.2f}.")
@@ -337,6 +350,7 @@ def run_project_war_room(project_id: str, request: WarRoomScenarioRequest | None
             "workflow_events": workflow_events,
             "sources": ["WorldPulse War Room deterministic sandbox", "WorldPulse built-in country agents", "WorldPulse supply-chain rules"],
             "disclaimer": result.disclaimer,
+            "lifecycle_job_id": lifecycle_job_id,
         },
         risk_snapshot=risk.model_dump(),
         event_snapshot=[_war_room_event_snapshot(result)],

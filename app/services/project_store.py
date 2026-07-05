@@ -88,17 +88,69 @@ def init_db() -> None:
                 mode TEXT NOT NULL,
                 FOREIGN KEY(project_id) REFERENCES research_projects(project_id)
             );
+
+            CREATE TABLE IF NOT EXISTS run_jobs (
+                run_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                engine_mode TEXT NOT NULL,
+                status TEXT NOT NULL,
+                current_phase TEXT NOT NULL,
+                progress REAL NOT NULL DEFAULT 0,
+                seed INTEGER,
+                parent_run_id TEXT,
+                scenario_json TEXT NOT NULL,
+                result_run_id TEXT,
+                error_code TEXT,
+                error_message TEXT,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT,
+                cancel_requested_at TEXT,
+                pause_requested_at TEXT,
+                FOREIGN KEY(project_id) REFERENCES research_projects(project_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS run_events (
+                run_id TEXT NOT NULL,
+                seq INTEGER NOT NULL,
+                event_type TEXT NOT NULL,
+                phase TEXT NOT NULL,
+                tick INTEGER,
+                title TEXT NOT NULL,
+                detail TEXT NOT NULL,
+                payload TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(run_id, seq),
+                FOREIGN KEY(run_id) REFERENCES run_jobs(run_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS run_artifacts (
+                artifact_id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                artifact_type TEXT NOT NULL,
+                schema_version TEXT NOT NULL,
+                content_json TEXT NOT NULL,
+                sha256 TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(run_id) REFERENCES run_jobs(run_id)
+            );
             """
         )
         _ensure_column(conn, "ai_reports", "citations", "TEXT NOT NULL DEFAULT '[]'")
         _ensure_column(conn, "research_projects", "mode", "TEXT NOT NULL DEFAULT 'research'")
         _ensure_column(conn, "research_projects", "scenario_config", "TEXT NOT NULL DEFAULT '{}'")
+        _ensure_column(conn, "run_jobs", "result_run_id", "TEXT")
+        _ensure_column(conn, "run_jobs", "pause_requested_at", "TEXT")
 
 
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA journal_mode = WAL")
     try:
         yield conn
         conn.commit()

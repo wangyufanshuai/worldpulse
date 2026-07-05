@@ -1,5 +1,10 @@
-from fastapi import APIRouter
-from fastapi.responses import PlainTextResponse, Response
+from __future__ import annotations
+
+import json
+import time
+
+from fastapi import APIRouter, Request
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 
 from app.core.models import (
     AIAnalysisRequest,
@@ -29,6 +34,11 @@ from app.core.models import (
     RiskAnalysis,
     RiskOverview,
     RiskPoint,
+    RunArtifactSummary,
+    RunControlResponse,
+    RunJobCreateRequest,
+    RunJobStatus,
+    RunLifecycleEvent,
     SimulationRequest,
     SimulationAgentDetail,
     SimulationDataHealth,
@@ -69,6 +79,7 @@ from app.services.projects import (
     run_project,
 )
 from app.services.report import export_report, render_report
+from app.services.run_lifecycle import repository as run_lifecycle
 from app.services.risk_engine import build_latest_risk, build_replay, build_risk_analysis, build_risk_history, build_risk_overview
 from app.services.simulation_engine import list_agents, list_scenarios, run_simulation
 from app.services.simulation_data import agent_state_explanations, get_country_agent
@@ -108,6 +119,63 @@ def research_project_run(project_id: str, mode: str = "fast") -> ProjectDetail:
 @router.post("/projects/{project_id}/war-room/run", response_model=ProjectDetail)
 def research_project_war_room_run(project_id: str, request: WarRoomScenarioRequest) -> ProjectDetail:
     return run_project_war_room(project_id, request)
+
+
+@router.post("/v2/projects/{project_id}/runs", response_model=RunJobStatus)
+def lifecycle_run_create(project_id: str, request: RunJobCreateRequest) -> RunJobStatus:
+    return run_lifecycle.create_job(project_id, request)
+
+
+@router.get("/v2/runs/{run_id}", response_model=RunJobStatus)
+def lifecycle_run_status(run_id: str) -> RunJobStatus:
+    return run_lifecycle.get_job(run_id)
+
+
+@router.get("/v2/runs/{run_id}/events", response_model=list[RunLifecycleEvent])
+def lifecycle_run_events(run_id: str, after_seq: int = 0) -> list[RunLifecycleEvent]:
+    return run_lifecycle.get_events(run_id, after_seq=after_seq)
+
+
+@router.get("/v2/runs/{run_id}/events/stream")
+def lifecycle_run_events_stream(request: Request, run_id: str, after_seq: int = 0) -> StreamingResponse:
+    last_event_id = request.headers.get("last-event-id")
+    if last_event_id and str(last_event_id).isdigit():
+        after_seq = max(after_seq, int(last_event_id))
+    return StreamingResponse(_sse_events(run_id, after_seq), media_type="text/event-stream")
+
+
+@router.post("/v2/runs/{run_id}/pause", response_model=RunControlResponse)
+def lifecycle_run_pause(run_id: str) -> RunControlResponse:
+    run = run_lifecycle.pause_job(run_id)
+    return RunControlResponse(run=run, events=run_lifecycle.get_events(run_id))
+
+
+@router.post("/v2/runs/{run_id}/resume", response_model=RunControlResponse)
+def lifecycle_run_resume(run_id: str) -> RunControlResponse:
+    run = run_lifecycle.resume_job(run_id)
+    return RunControlResponse(run=run, events=run_lifecycle.get_events(run_id))
+
+
+@router.post("/v2/runs/{run_id}/cancel", response_model=RunControlResponse)
+def lifecycle_run_cancel(run_id: str) -> RunControlResponse:
+    run = run_lifecycle.cancel_job(run_id)
+    return RunControlResponse(run=run, events=run_lifecycle.get_events(run_id))
+
+
+@router.post("/v2/runs/{run_id}/retry", response_model=RunControlResponse)
+def lifecycle_run_retry(run_id: str) -> RunControlResponse:
+    run = run_lifecycle.retry_job(run_id)
+    return RunControlResponse(run=run, events=run_lifecycle.get_events(run.run_id))
+
+
+@router.get("/v2/runs/{run_id}/artifacts", response_model=list[RunArtifactSummary])
+def lifecycle_run_artifacts(run_id: str) -> list[RunArtifactSummary]:
+    return run_lifecycle.get_artifacts(run_id)
+
+
+@router.get("/v2/runs/{run_id}/audit")
+def lifecycle_run_audit(run_id: str) -> dict:
+    return run_lifecycle.get_audit(run_id)
 
 
 @router.get("/projects/{project_id}/war-room/replay-pack", response_model=WarRoomReplayPack)
@@ -373,3 +441,22 @@ def _csv_response(content: str, filename: str) -> Response:
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _sse_events(run_id: str, after_seq: int):
+    cursor = max(0, int(after_seq or 0))
+    idle_count = 0
+    while idle_count < 20:
+        events = run_lifecycle.get_events(run_id, after_seq=cursor)
+        for event in events:
+            cursor = max(cursor, event.seq)
+            yield f"id: {event.seq}\nevent: {event.event_type}\ndata: {json.dumps(event.model_dump(), ensure_ascii=False)}\n\n"
+        status = run_lifecycle.get_job(run_id).status
+        if status in {"completed", "cancelled", "failed"} and not events:
+            return
+        if not events:
+            idle_count += 1
+            yield ": keepalive\n\n"
+            time.sleep(0.5)
+        else:
+            idle_count = 0

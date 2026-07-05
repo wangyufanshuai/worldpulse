@@ -10,19 +10,50 @@
           @show-upcoming="showUpcoming"
         />
 
-        <WarRoomRunControl
-          :active-run-control-items="activeRunControlItems"
-          :run-control="runControl"
-          :scenario-title="scenarioTitle"
-          :show-delta-overlay="showDeltaOverlay"
-          @clone="cloneFromCurrentRun"
-          @compare="openCompareShortcut"
-          @replay="openReplayShortcut"
-          @run="run"
-          @toggle-delta="toggleDeltaOverlay"
-        />
+        <WarRoomLifecycleRail :stages="lifecycleStages" />
 
-        <div v-if="activeSection === 'overview'" class="war-room-console">
+        <div v-if="activeSection === 'overview'" class="war-room-lifecycle-console">
+          <WarRoomLifecycleControl
+            :control="lifecycleControl"
+            :show-delta-overlay="showDeltaOverlay"
+            @cancel="cancelLifecycleRun"
+            @clone="cloneFromCurrentRun"
+            @compare="openCompareShortcut"
+            @pause="pauseLifecycleRun"
+            @replay="openReplayShortcut"
+            @resume="resumeLifecycleRun"
+            @retry="retryLifecycleRun"
+            @run="run"
+            @show-upcoming="showUpcoming"
+            @toggle-delta="toggleDeltaOverlay"
+          />
+
+          <WarRoomLifecycleMap
+            :active-agents="`${Math.min(20, Math.max(0, warRoom?.agent_decisions?.length || 0) + 8)}/20`"
+            :active-replay-day="activeReplayDay"
+            :causal-edges="mapCausalEdges"
+            :countries="mapCountries"
+            :current-replay-time="currentReplayTime"
+            :events="mapEvents"
+            :image-src="worldMapCommand"
+            :processed-events="Math.max(0, timelineEvents.length * 208)"
+            :replay-speed="replaySpeed"
+            :routes="supplyRoutes"
+            @open-country-analysis="openEntityAnalysis"
+            @select-causal-edge="selectCausalEdge"
+            @select-country="selectMapCountry"
+            @select-day="selectReplayDay"
+            @select-event="selectMapEvent"
+            @select-supply-chain="selectSupplyChain"
+            @show-causal="navigateSection('graph')"
+          />
+
+          <WarRoomEventStream :events="lifecycleEventsForDisplay" :mode="lifecycleEventMode" />
+
+          <WarRoomLifecycleKpis :kpis="lifecycleProjection.kpis" />
+        </div>
+
+        <div v-if="false && activeSection === 'overview'" class="war-room-console">
           <aside class="war-room-rail">
             <RouterLink v-for="item in railSections" :key="item.key" :to="sectionPath(item.key)" :class="{ active: activeSection === item.key }" :aria-label="item.label">
               <component :is="item.icon" :size="18" />
@@ -552,14 +583,14 @@
             </aside>
           </div>
 
-          <div v-else-if="activeSection === 'settings'" class="section-card-grid settings-grid">
+          <div v-else-if="activeSection === 'settings'" class="section-card-grid settings-grid" data-testid="war-room-settings-module">
             <article><span>策略边界</span><strong>策略沙盘</strong><p>不是现实战争预测、投资建议或政策建议。</p></article>
             <article><span>显示设置</span><strong>{{ visibleMapLayers.length }} 个图层</strong><p>当前可见：{{ visibleMapLayers.map(layerLabel).join('、') }}</p></article>
             <article class="upcoming-card"><span>待上线</span><strong>3D 地球</strong><p>后续接入独立 3D 视图，本版不做伪交互。</p></article>
             <article class="upcoming-card"><span>待上线</span><strong>告警订阅</strong><p>通知中心和团队协作将作为后续能力。</p></article>
           </div>
 
-          <div v-else-if="activeSection === 'replay'" class="section-card-grid replay-route-grid">
+          <div v-else-if="activeSection === 'replay'" class="section-card-grid replay-route-grid" data-testid="war-room-replay-module">
             <article><span>当前运行</span><strong>{{ selectedRunId || '--' }}</strong><p>导出后可预览 Markdown 与 JSON 审计清单。</p></article>
             <article><span>复盘包</span><strong>{{ replayPack ? '已生成' : '未生成' }}</strong><p>{{ replayPack?.title || '点击下方导出复盘包生成审计材料。' }}</p></article>
             <article><span>反事实</span><strong>{{ warRoomDiff ? '可用' : '未选择' }}</strong><p>有 base/target 对比时会导出反事实复盘包。</p></article>
@@ -634,7 +665,7 @@
         </dl>
       </aside>
 
-      <section v-if="runVersions.length > 1" ref="comparePanelEl" class="compare-panel immersive-compare">
+      <section v-if="activeSection === 'replay' && runVersions.length > 1" ref="comparePanelEl" class="compare-panel immersive-compare">
         <div class="section-title">
           <div>
             <div class="section-kicker"><GitCompareArrows :size="16" /> 反事实对比</div>
@@ -655,7 +686,7 @@
         </div>
       </section>
 
-      <section v-if="detail.latest_run" class="replay-pack-panel">
+      <section v-if="activeSection === 'replay' && detail.latest_run" class="replay-pack-panel">
         <div class="section-title">
           <div>
             <div class="section-kicker"><PackageCheck :size="16" /> 复盘包</div>
@@ -824,14 +855,20 @@ import {
 } from 'lucide-vue-next'
 import { chatWithProject, getProject, getProjectRun, runProject } from '../api'
 import worldMapCommand from '../assets/war-room/world-map-command.png'
-import WarRoomRunControl from '../components/war-room/WarRoomRunControl.vue'
+import WarRoomEventStream from '../components/war-room/WarRoomEventStream.vue'
+import WarRoomLifecycleControl from '../components/war-room/WarRoomLifecycleControl.vue'
+import WarRoomLifecycleKpis from '../components/war-room/WarRoomLifecycleKpis.vue'
+import WarRoomLifecycleMap from '../components/war-room/WarRoomLifecycleMap.vue'
+import WarRoomLifecycleRail from '../components/war-room/WarRoomLifecycleRail.vue'
 import WarRoomTopNav from '../components/war-room/WarRoomTopNav.vue'
+import { useRunLifecycle } from '../composables/useRunLifecycle'
 import { useWarRoomData } from '../composables/useWarRoomData'
 
 const props = defineProps({ projectId: String, section: String })
 const route = useRoute()
 const router = useRouter()
 const warRoomData = useWarRoomData(() => props.projectId)
+const runLifecycle = useRunLifecycle(() => props.projectId)
 const detail = ref(null)
 const workspaceState = ref(null)
 const graphEl = ref(null)
@@ -998,6 +1035,94 @@ const uiMapEntities = computed(() => Array.isArray(warRoomUi.value?.map_entities
 const entityIndex = computed(() => Array.isArray(workspaceState.value?.entity_index) && workspaceState.value.entity_index.length ? workspaceState.value.entity_index : (Array.isArray(warRoomUi.value?.entity_index) ? warRoomUi.value.entity_index : []))
 const commandActions = computed(() => Array.isArray(workspaceState.value?.command_actions) && workspaceState.value.command_actions.length ? workspaceState.value.command_actions : (Array.isArray(warRoomUi.value?.command_actions) ? warRoomUi.value.command_actions : []))
 const runControl = computed(() => workspaceState.value?.run_control || warRoomUi.value?.run_control || {})
+const lifecycleProjection = computed(() => warRoomData.buildLifecycleProjection(detail.value, workspaceState.value, runDiff.value, replayPack.value))
+const activeLifecycleRun = computed(() => runLifecycle.activeRun.value)
+const lifecycleStages = computed(() => {
+  const job = activeLifecycleRun.value
+  if (!job) return lifecycleProjection.value.stages
+  const order = ['scenario_compile', 'environment_prepare', 'deterministic_run', 'consistency_audit', 'report_generate', 'replay_archive']
+  const index = Math.max(0, order.indexOf(job.current_phase))
+  const titles = {
+    scenario_compile: ['01', '场景编译', '解析剧本与约束'],
+    environment_prepare: ['02', '环境准备', '加载数据与初始化'],
+    deterministic_run: ['03', '混合推演', '确定性规则推演中'],
+    consistency_audit: ['04', '一致性审计', '规则校验与修正'],
+    report_generate: ['05', '报告生成', '汇总洞察与图表'],
+    replay_archive: ['06', '复盘归档', '固化结果与溯源'],
+  }
+  return order.map((phase, phaseIndex) => {
+    const [stageIndex, title, desc] = titles[phase]
+    const terminalDone = job.status === 'completed'
+    const stopped = ['failed', 'cancelled', 'paused'].includes(job.status)
+    return {
+      key: phase,
+      index: stageIndex,
+      title,
+      desc,
+      status: terminalDone || phaseIndex < index ? 'done' : phaseIndex === index && !stopped ? 'current' : 'pending',
+    }
+  })
+})
+const lifecycleControl = computed(() => {
+  const base = lifecycleProjection.value.control
+  const job = activeLifecycleRun.value
+  if (!job) {
+    const historicalStatus = base.replayReady ? 'completed' : 'ready'
+    return {
+      ...base,
+      statusZh: historicalStatus,
+      runStatus: historicalStatus,
+      currentPhaseZh: base.replayReady ? '历史完成' : '等待运行',
+      progress: base.replayReady ? 100 : 0,
+      resultRunId: base.runId,
+      canPause: false,
+      canCancel: false,
+      canResume: false,
+      canRetry: false,
+      busy: running.value,
+      disclaimer: base.replayReady
+        ? '历史 v1 run：可复盘/对比；新运行将进入 v2 生命周期队列。'
+        : base.disclaimer,
+    }
+  }
+  const status = job.status
+  const resultRunId = job.result_run_id
+  const phaseZh = {
+    scenario_compile: '场景编译',
+    environment_prepare: '环境准备',
+    deterministic_run: '确定性推演',
+    consistency_audit: '一致性审计',
+    report_generate: '报告生成',
+    replay_archive: '复盘归档',
+  }[job.current_phase] || job.current_phase
+  return {
+    ...base,
+    runId: job.run_id,
+    resultRunId,
+    runStatus: status,
+    statusZh: status,
+    currentPhase: job.current_phase,
+    currentPhaseZh: phaseZh,
+    progress: job.progress,
+    engineMode: job.engine_mode,
+    startedAt: job.started_at || job.created_at,
+    checkpointAt: job.updated_at,
+    checkpointId: resultRunId ? `SNAP-${String(resultRunId).slice(-8)}` : `JOB-${String(job.run_id).slice(-8)}`,
+    checkpointStatus: status,
+    replayReady: status === 'completed' && !!resultRunId,
+    compareReady: base.compareReady || (status === 'completed' && !!resultRunId && runVersions.value.length > 0),
+    canPause: ['queued', 'preparing', 'running'].includes(status),
+    canCancel: ['queued', 'preparing', 'running', 'pausing', 'paused'].includes(status),
+    canResume: ['paused', 'pausing'].includes(status),
+    canRetry: ['failed', 'cancelled'].includes(status),
+    busy: ['queued', 'preparing', 'running', 'pausing', 'cancelling'].includes(status),
+    disclaimer: status === 'completed'
+      ? '真实生命周期任务已完成；结果已投影回 v1 workspace / Run Diff / Replay Pack。'
+      : '当前为真实本地 Run Lifecycle：状态、事件、检查点来自 SQLite + 独立 worker。',
+  }
+})
+const lifecycleEventsForDisplay = computed(() => runLifecycle.events.value.length ? runLifecycle.events.value : lifecycleProjection.value.events)
+const lifecycleEventMode = computed(() => runLifecycle.events.value.length ? 'live' : 'projection')
 const insightCards = computed(() => Array.isArray(workspaceState.value?.insight_cards) && workspaceState.value.insight_cards.length ? workspaceState.value.insight_cards : (Array.isArray(warRoomUi.value?.insight_cards) ? warRoomUi.value.insight_cards : []))
 const entityDetails = computed(() => workspaceState.value?.entity_details || warRoomUi.value?.entity_details || {})
 const warRoomDiff = computed(() => runDiff.value?.changed_metrics?.war_room || null)
@@ -1169,7 +1294,14 @@ const supplyRoutes = computed(() => {
     const [startCode, endCode] = chainRouteEndpoints(chain, index)
     const start = coordinateForCode(startCode, index)
     const end = coordinateForCode(endCode, index + 2)
-    return { key: chain.key, chain, path: arcPath(start, end, index % 2 === 0 ? -1 : 1) }
+    return {
+      key: chain.key,
+      chain,
+      start,
+      end,
+      mid: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 },
+      path: arcPath(start, end, index % 2 === 0 ? -1 : 1)
+    }
   })
 })
 const mapCausalEdges = computed(() => {
@@ -1577,19 +1709,21 @@ function cloneFromCurrentRun() {
   showToast('已克隆当前运行参数到场景构建器')
 }
 function openCompareShortcut() {
-  if (!runControl.value.compare_ready) {
+  if (!lifecycleControl.value.compareReady && !runControl.value.compare_ready) {
     showToast('需要至少两次 War Room 运行才能对比')
     return
   }
   loadRunDiff()
-  comparePanelEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  navigateSection('replay')
+  nextTick(() => comparePanelEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   showToast('已打开反事实对比')
 }
 async function openReplayShortcut() {
-  if (!runControl.value.replay_ready) {
+  if (!lifecycleControl.value.replayReady && !runControl.value.replay_ready) {
     showToast('请先运行一次 War Room 沙盘')
     return
   }
+  navigateSection('replay')
   await exportReplayPack()
   showToast('复盘包已生成')
 }
@@ -1686,6 +1820,12 @@ function relatedEventLabels(countryCode) {
     .slice(0, 3)
     .map(event => `${event.time} ${event.title}`)
   return labels.length ? labels : [`D+${activeReplayDay.value} ${activeTimelineEvent.value?.title || '态势更新'}`]
+}
+function selectReplayDay(day) {
+  const target = timelineEvents.value.findIndex(event => Number(event.day) >= Number(day))
+  activeReplayIndex.value = target >= 0 ? target : Math.max(0, timelineEvents.value.length - 1)
+  replayPlaying.value = false
+  showToast(`已切换到 D+${day} 阶段`)
 }
 function toggleReplay() { replayPlaying.value = !replayPlaying.value }
 function cycleReplaySpeed() {
@@ -1809,7 +1949,12 @@ async function loadPresets() {
 async function run() {
   running.value = true
   try {
-    detail.value = isWarRoom.value ? await warRoomData.runScenario(scenarioPayload()) : await runProject(props.projectId, runMode.value)
+    if (isWarRoom.value) {
+      await runLifecycle.create({ engine_mode: 'deterministic', scenario: scenarioPayload(), seed: scenarioDraft.seed || 42 })
+      showToast('生命周期任务已排队；请启动或保持 worker 运行')
+      return
+    }
+    detail.value = await runProject(props.projectId, runMode.value)
     selectedRunId.value = detail.value?.latest_run?.run_id || ''
     await loadWorkspaceState(selectedRunId.value)
     replayPack.value = null
@@ -1822,6 +1967,26 @@ async function run() {
   } finally {
     running.value = false
   }
+}
+
+async function pauseLifecycleRun() {
+  await runLifecycle.pause()
+  showToast('暂停请求已写入生命周期状态')
+}
+
+async function resumeLifecycleRun() {
+  await runLifecycle.resume()
+  showToast('生命周期任务已恢复排队')
+}
+
+async function cancelLifecycleRun() {
+  await runLifecycle.cancel()
+  showToast('取消请求已写入生命周期状态')
+}
+
+async function retryLifecycleRun() {
+  await runLifecycle.retry()
+  showToast('已创建 retry 生命周期任务')
 }
 async function loadRunDiff() {
   if (!isWarRoom.value || !compareBaseRunId.value || !compareTargetRunId.value || compareBaseRunId.value === compareTargetRunId.value) {
@@ -2160,6 +2325,13 @@ function downloadUiState() {
 }
 
 watch(() => detail.value?.graph?.graph_id, () => nextTick(renderGraph))
+watch(() => activeLifecycleRun.value?.status, async (status, previous) => {
+  const job = activeLifecycleRun.value
+  if (status === 'completed' && previous !== 'completed' && job?.result_run_id) {
+    await load(job.result_run_id)
+    showToast('生命周期任务已完成，workspace 已刷新')
+  }
+})
 watch(activeSection, section => {
   if (!sectionKeys.includes(section)) router.replace(sectionPath('overview'))
   if (section === 'graph') nextTick(renderSectionGraph)
@@ -2186,6 +2358,7 @@ watch(() => timelineEvents.value.length, length => {
 onMounted(load)
 onUnmounted(() => {
   stopReplayTimer()
+  runLifecycle.stop()
   if (toastTimer) window.clearTimeout(toastTimer)
 })
 </script>

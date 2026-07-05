@@ -57,6 +57,45 @@ export async function runProjectWarRoom(projectId, payload) {
   return data
 }
 
+export async function createLifecycleRun(projectId, payload) {
+  const { data } = await api.post(`/v2/projects/${projectId}/runs`, payload)
+  return data
+}
+
+export async function getLifecycleRun(runId) {
+  const { data } = await api.get(`/v2/runs/${runId}`)
+  return data
+}
+
+export async function getLifecycleEvents(runId, afterSeq = 0) {
+  const { data } = await api.get(`/v2/runs/${runId}/events`, { params: { after_seq: afterSeq } })
+  return data
+}
+
+export async function pauseLifecycleRun(runId) {
+  const { data } = await api.post(`/v2/runs/${runId}/pause`)
+  return data
+}
+
+export async function resumeLifecycleRun(runId) {
+  const { data } = await api.post(`/v2/runs/${runId}/resume`)
+  return data
+}
+
+export async function cancelLifecycleRun(runId) {
+  const { data } = await api.post(`/v2/runs/${runId}/cancel`)
+  return data
+}
+
+export async function retryLifecycleRun(runId) {
+  const { data } = await api.post(`/v2/runs/${runId}/retry`)
+  return data
+}
+
+export function lifecycleEventStreamUrl(runId, afterSeq = 0) {
+  return `/api/v2/runs/${runId}/events/stream?after_seq=${encodeURIComponent(afterSeq)}`
+}
+
 export async function getWarRoomReplayPack(projectId, params = {}) {
   const { data } = await api.get(`/projects/${projectId}/war-room/replay-pack`, { params })
   return data

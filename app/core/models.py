@@ -678,6 +678,60 @@ class WarRoomScenarioRequest(BaseModel):
     seed: int | None = 42
 
 
+class RunJobCreateRequest(BaseModel):
+    engine_mode: str = "deterministic"
+    scenario: WarRoomScenarioRequest | dict = {}
+    seed: int | None = 42
+    parent_run_id: str | None = None
+
+
+class RunLifecycleEvent(BaseModel):
+    run_id: str
+    seq: int
+    event_type: str
+    phase: str
+    tick: int | None = None
+    title: str
+    detail: str
+    payload: dict = {}
+    created_at: str
+
+
+class RunArtifactSummary(BaseModel):
+    artifact_id: str
+    run_id: str
+    artifact_type: str
+    schema_version: str
+    sha256: str
+    created_at: str
+
+
+class RunJobStatus(BaseModel):
+    run_id: str
+    project_id: str
+    engine_mode: str
+    status: str
+    current_phase: str
+    progress: float = 0
+    seed: int | None = None
+    parent_run_id: str | None = None
+    result_run_id: str | None = None
+    scenario: dict = {}
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: str
+    started_at: str | None = None
+    updated_at: str
+    completed_at: str | None = None
+    cancel_requested_at: str | None = None
+    pause_requested_at: str | None = None
+
+
+class RunControlResponse(BaseModel):
+    run: RunJobStatus
+    events: list[RunLifecycleEvent] = []
+
+
 class AgentDecision(BaseModel):
     country_code: str
     country_name: str
