@@ -2656,6 +2656,109 @@
         "title": "RunLifecycleEvent",
         "type": "object"
       },
+      "RunStepRecord": {
+        "properties": {
+          "artifact_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Artifact Refs",
+            "type": "array"
+          },
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "duration_ms": {
+            "default": 0,
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "input": {
+            "additionalProperties": true,
+            "title": "Input",
+            "type": "object"
+          },
+          "input_hash": {
+            "title": "Input Hash",
+            "type": "string"
+          },
+          "output": {
+            "additionalProperties": true,
+            "title": "Output",
+            "type": "object"
+          },
+          "output_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Hash"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          },
+          "step_key": {
+            "title": "Step Key",
+            "type": "string"
+          },
+          "step_version": {
+            "title": "Step Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_id",
+          "run_id",
+          "step_key",
+          "step_version",
+          "attempt_id",
+          "input_hash",
+          "status",
+          "started_at"
+        ],
+        "title": "RunStepRecord",
+        "type": "object"
+      },
       "ScenarioSuggestion": {
         "properties": {
           "name": {
@@ -6655,6 +6758,49 @@
           }
         },
         "summary": "Lifecycle Run Retry"
+      }
+    },
+    "/api/v2/runs/{run_id}/steps": {
+      "get": {
+        "operationId": "lifecycle_run_steps_api_v2_runs__run_id__steps_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunStepRecord"
+                  },
+                  "title": "Response Lifecycle Run Steps Api V2 Runs  Run Id  Steps Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lifecycle Run Steps"
       }
     },
     "/api/version": {

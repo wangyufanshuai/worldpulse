@@ -39,6 +39,7 @@ from app.core.models import (
     RunJobCreateRequest,
     RunJobStatus,
     RunLifecycleEvent,
+    RunStepRecord,
     SimulationRequest,
     SimulationAgentDetail,
     SimulationDataHealth,
@@ -177,6 +178,11 @@ def lifecycle_run_retry(run_id: str) -> RunControlResponse:
 @router.get("/v2/runs/{run_id}/artifacts", response_model=list[RunArtifactSummary])
 def lifecycle_run_artifacts(run_id: str) -> list[RunArtifactSummary]:
     return run_lifecycle.get_artifacts(run_id)
+
+
+@router.get("/v2/runs/{run_id}/steps", response_model=list[RunStepRecord])
+def lifecycle_run_steps(run_id: str) -> list[RunStepRecord]:
+    return run_lifecycle.get_steps(run_id)
 
 
 @router.get("/v2/runs/{run_id}/audit")

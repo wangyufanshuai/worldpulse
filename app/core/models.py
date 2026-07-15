@@ -711,6 +711,24 @@ class RunArtifactSummary(BaseModel):
     integrity_status: str = "verified"
 
 
+class RunStepRecord(BaseModel):
+    step_id: str
+    run_id: str
+    step_key: str
+    step_version: str
+    attempt_id: str
+    input_hash: str
+    output_hash: str | None = None
+    status: str
+    started_at: str
+    completed_at: str | None = None
+    duration_ms: int = 0
+    error_code: str | None = None
+    artifact_refs: list[str] = Field(default_factory=list)
+    input: dict = Field(default_factory=dict)
+    output: dict = Field(default_factory=dict)
+
+
 class RunJobStatus(BaseModel):
     run_id: str
     project_id: str

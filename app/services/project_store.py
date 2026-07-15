@@ -135,6 +135,26 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(run_id) REFERENCES run_jobs(run_id)
             );
+
+            CREATE TABLE IF NOT EXISTS run_steps (
+                step_id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                step_key TEXT NOT NULL,
+                step_version TEXT NOT NULL,
+                attempt_id TEXT NOT NULL,
+                input_hash TEXT NOT NULL,
+                output_hash TEXT,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                error_code TEXT,
+                artifact_refs TEXT NOT NULL DEFAULT '[]',
+                input_json TEXT NOT NULL DEFAULT '{}',
+                output_json TEXT NOT NULL DEFAULT '{}',
+                FOREIGN KEY(run_id) REFERENCES run_jobs(run_id),
+                UNIQUE(run_id, step_key, attempt_id)
+            );
             """
         )
         _ensure_column(conn, "ai_reports", "citations", "TEXT NOT NULL DEFAULT '[]'")

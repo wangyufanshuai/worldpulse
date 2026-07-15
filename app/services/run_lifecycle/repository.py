@@ -346,6 +346,13 @@ def get_artifacts(run_id: str) -> list[RunArtifactSummary]:
     return [_artifact_from_row(row) for row in rows]
 
 
+def get_steps(run_id: str):
+    _ensure_job_exists(run_id)
+    from .steps import get_steps as query_steps
+
+    return query_steps(run_id)
+
+
 def get_latest_artifact_content(run_id: str, artifact_type: str) -> dict | None:
     init_db()
     _ensure_job_exists(run_id)
@@ -395,6 +402,7 @@ def get_audit(run_id: str) -> dict:
         "run": get_job(run_id).model_dump(),
         "events": [event.model_dump() for event in get_events(run_id)],
         "artifacts": [artifact.model_dump() for artifact in get_artifacts(run_id)],
+        "steps": [step.model_dump() for step in get_steps(run_id)],
         "integrity": verify_artifacts(run_id),
         "consistency_audit": get_latest_artifact_content(run_id, "consistency_audit"),
         "agent_runtime": get_latest_artifact_content(run_id, "agent_runtime_audit"),

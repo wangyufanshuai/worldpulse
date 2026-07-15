@@ -5,6 +5,7 @@ from app.services import project_store
 from app.services.hybrid_simulation import replay_hybrid_from_artifacts
 from app.services.run_lifecycle import process_one_queued_job
 from app.services.run_lifecycle import repository as lifecycle_repository
+from app.services.run_lifecycle import executor as lifecycle_executor
 
 
 def _setup_tmp_db(monkeypatch, tmp_path):
@@ -93,6 +94,56 @@ def test_worker_once_completes_and_projects_to_v1_war_room(monkeypatch, tmp_path
     assert report["audit_hash"]
     consistency_events = [event for event in audit.json()["events"] if event["event_type"] == "CONSISTENCY"]
     assert consistency_events[-1]["payload"]["audit_hash"] == report["audit_hash"]
+
+    steps = client.get(f"/api/v2/runs/{created['run_id']}/steps").json()
+    assert [item["step_key"] for item in steps] == [
+        "scenario_compile",
+        "environment_prepare",
+        "deterministic_run",
+        "consistency_audit",
+        "report_generate",
+        "replay_archive",
+    ]
+    assert {item["status"] for item in steps} == {"completed"}
+    assert all(item["step_version"] and item["attempt_id"] for item in steps)
+    assert all(item["input_hash"] and item["output_hash"] for item in steps)
+    assert all(item["completed_at"] is not None and item["duration_ms"] >= 0 for item in steps)
+    for previous, current in zip(steps, steps[1:], strict=False):
+        assert current["input"]["previous_step_id"] == previous["step_id"]
+        assert current["input"]["previous_output_hash"] == previous["output_hash"]
+
+
+def test_queued_legacy_compatible_job_has_no_invented_steps(monkeypatch, tmp_path):
+    _setup_tmp_db(monkeypatch, tmp_path)
+    client = TestClient(app)
+    project_id = _create_war_room_project(client)
+    created = client.post(
+        f"/api/v2/projects/{project_id}/runs",
+        json={"engine_mode": "deterministic", "scenario": {"scenario_key": "food_shortfall"}},
+    ).json()
+
+    assert client.get(f"/api/v2/runs/{created['run_id']}/steps").json() == []
+    assert client.get(f"/api/v2/runs/{created['run_id']}/audit").json()["steps"] == []
+
+
+def test_failed_phase_is_recorded_in_step_contract(monkeypatch, tmp_path):
+    _setup_tmp_db(monkeypatch, tmp_path)
+    client = TestClient(app)
+    project_id = _create_war_room_project(client)
+    created = client.post(
+        f"/api/v2/projects/{project_id}/runs",
+        json={"engine_mode": "deterministic", "scenario": {"scenario_key": "food_shortfall"}},
+    ).json()
+    monkeypatch.setattr(lifecycle_executor, "run_war_room", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("synthetic step failure")))
+
+    failed = process_one_queued_job()
+    assert failed.status == "failed"
+    steps = client.get(f"/api/v2/runs/{created['run_id']}/steps").json()
+    failed_step = steps[-1]
+    assert failed_step["step_key"] == "deterministic_run"
+    assert failed_step["status"] == "failed"
+    assert failed_step["error_code"] == "RuntimeError"
+    assert failed_step["output_hash"]
 
 
 def test_cancel_queued_and_retry_creates_child_job(monkeypatch, tmp_path):

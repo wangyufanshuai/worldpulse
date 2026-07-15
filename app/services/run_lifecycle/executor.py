@@ -8,13 +8,14 @@ from app.core.models import RunJobStatus, WarRoomScenarioRequest
 from app.services.agent_contract import build_mock_agent_batch
 from app.services.agent_runtime import run_agent_runtime, runtime_config_from_env
 from app.services.consistency import evaluate_war_room_result
+from app.services.consistency.hashing import stable_hash
 from app.services.consistency.projector import project_consistency_audit
 from app.services.hybrid_simulation import run_hybrid_simulation
 from app.services.projects import persist_war_room_result
 from app.services.security import redact_secrets
 from app.services.war_room_engine import run_war_room
 
-from . import repository
+from . import repository, steps
 
 
 PHASES = [
@@ -34,6 +35,7 @@ def process_one_queued_job(worker_id: str | None = None) -> RunJobStatus | None:
     try:
         return process_job(job.run_id)
     except Exception as exc:  # pragma: no cover - defensive audit path
+        steps.fail_active_step(job.run_id, exc)
         safe_error = redact_secrets(str(exc)) or "Lifecycle execution failed"
         repository.append_event(job.run_id, "WORKER", job.current_phase, "Run failed", safe_error, payload={"error": type(exc).__name__})
         return repository.update_job_status(
@@ -78,19 +80,47 @@ def process_job(run_id: str) -> RunJobStatus:
     lifecycle_started = perf_counter()
     phase_durations_ms: dict[str, int] = {}
     scenario = WarRoomScenarioRequest(**job.scenario)
-    repository.add_artifact(run_id, "scenario", "scenario.v1", scenario.model_dump())
+    attempt_id = steps.attempt_id_for(run_id, job.attempt_count)
 
     result = None
     proposals = []
     constraint_context = None
+    report = None
+    result_run_id = None
+    previous_step = None
     for index, (phase, progress, event_type, title, detail) in enumerate(PHASES):
         phase_started = perf_counter()
         repository.heartbeat_job(run_id, worker_id)
         interrupted = _apply_boundary_control(run_id)
         if interrupted:
             return interrupted
+        step_input = {
+            "run_id": run_id,
+            "engine_mode": job.engine_mode,
+            "scenario_hash": stable_hash(scenario.model_dump(mode="json")),
+            "previous_step_id": previous_step.step_id if previous_step else None,
+            "previous_output_hash": previous_step.output_hash if previous_step else None,
+            "previous_artifact_refs": previous_step.artifact_refs if previous_step else [],
+        }
+        step = steps.begin_step(run_id, phase, attempt_id, step_input)
+        artifacts_before = {item.artifact_id for item in repository.get_artifacts(run_id)}
         repository.mark_phase(run_id, phase, progress, event_type, title, detail, payload={"phase_index": index, "progress": progress})
-        if phase == "deterministic_run":
+        if phase == "scenario_compile":
+            repository.add_artifact(run_id, "scenario", "scenario.v1", scenario.model_dump(mode="json"))
+        elif phase == "environment_prepare":
+            repository.add_artifact(
+                run_id,
+                "environment_manifest",
+                "environment-manifest.v1",
+                {
+                    "scenario_hash": stable_hash(scenario.model_dump(mode="json")),
+                    "target_countries": scenario.target_countries,
+                    "target_chains": scenario.target_chains,
+                    "policy_actions": scenario.policy_actions,
+                    "seed": scenario.seed,
+                },
+            )
+        elif phase == "deterministic_run":
             result = run_war_room(scenario)
             repository.add_artifact(run_id, "war_room_result", "war-room-result.v1", result.model_dump())
             if job.engine_mode == "mock_agent":
@@ -204,24 +234,58 @@ def process_job(run_id: str) -> RunJobStatus:
                     },
                 )
                 result = outcome.final_result
+        elif phase == "report_generate":
+            if result is None:
+                raise HTTPException(status_code=500, detail="Report projection requires a deterministic War Room result")
+            repository.add_artifact(
+                run_id,
+                "report_projection_manifest",
+                "report-projection-manifest.v1",
+                {
+                    "result_hash": stable_hash(result.model_dump(mode="json")),
+                    "workspace_compatible": True,
+                    "run_diff_compatible": True,
+                    "replay_pack_compatible": True,
+                },
+            )
+        elif phase == "replay_archive":
+            if result is None:
+                raise HTTPException(status_code=500, detail="Replay archive requires a deterministic War Room result")
+            started = repository.get_job(run_id).started_at
+            persisted = persist_war_room_result(job.project_id, result, started=started, lifecycle_job_id=run_id)
+            result_run_id = persisted.latest_run.run_id if persisted.latest_run else None
+            repository.add_artifact(
+                run_id,
+                "projection",
+                "research-run-projection.v1",
+                {"project_id": job.project_id, "result_run_id": result_run_id, "workspace_compatible": True},
+            )
+            repository.append_event(
+                run_id,
+                "SNAPSHOT",
+                "replay_archive",
+                "Lifecycle run completed",
+                "确定性结果已投影回 research_runs，Run Diff / Replay Pack / workspace 可继续使用。",
+                payload={"result_run_id": result_run_id},
+            )
         phase_durations_ms[phase] = max(0, int((perf_counter() - phase_started) * 1000))
+        new_artifacts = [
+            item.artifact_id for item in repository.get_artifacts(run_id)
+            if item.artifact_id not in artifacts_before
+        ]
+        step_output = {
+            "phase": phase,
+            "progress": progress,
+            "result_hash": stable_hash(result.model_dump(mode="json")) if result is not None else None,
+            "proposal_count": len(proposals),
+            "consistency_audit_hash": report.audit_hash if report is not None else None,
+            "result_run_id": result_run_id,
+            "artifact_refs": new_artifacts,
+        }
+        previous_step = steps.complete_step(step.step_id, step_output, new_artifacts)
 
     if result is None:
         raise HTTPException(status_code=500, detail="Lifecycle executor did not produce a War Room result")
-
-    interrupted = _apply_boundary_control(run_id)
-    if interrupted:
-        return interrupted
-
-    started = repository.get_job(run_id).started_at
-    detail = persist_war_room_result(job.project_id, result, started=started, lifecycle_job_id=run_id)
-    result_run_id = detail.latest_run.run_id if detail.latest_run else None
-    repository.add_artifact(
-        run_id,
-        "projection",
-        "research-run-projection.v1",
-        {"project_id": job.project_id, "result_run_id": result_run_id, "workspace_compatible": True},
-    )
     repository.add_artifact(
         run_id,
         "lifecycle_metrics",
@@ -234,14 +298,6 @@ def process_job(run_id: str) -> RunJobStatus:
             "event_count": len(repository.get_events(run_id)),
             "engine_mode": job.engine_mode,
         },
-    )
-    repository.append_event(
-        run_id,
-        "SNAPSHOT",
-        "replay_archive",
-        "Lifecycle run completed",
-        "确定性结果已投影回 research_runs，Run Diff / Replay Pack / workspace 可继续使用。",
-        payload={"result_run_id": result_run_id},
     )
     return repository.update_job_status(run_id, status="completed", phase="replay_archive", progress=100, result_run_id=result_run_id, completed=True)
 
