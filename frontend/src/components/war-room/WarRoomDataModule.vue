@@ -25,6 +25,24 @@
             </table>
           </div>
         </section>
+        <section v-if="props.lifecycleAudit" data-testid="lifecycle-artifact-table">
+          <h4>Lifecycle 制品与完整性</h4>
+          <div class="data-table">
+            <table>
+              <thead><tr><th>制品</th><th>Schema</th><th>SHA-256</th><th>完整性</th></tr></thead>
+              <tbody><tr v-for="artifact in props.lifecycleAudit.artifacts || []" :key="artifact.artifact_id"><td>{{ artifact.artifact_type }}</td><td>{{ artifact.schema_version }}</td><td><code>{{ shortHash(artifact.sha256) }}</code></td><td :class="artifact.integrity_status === 'verified' ? 'positive' : 'negative'">{{ artifact.integrity_status }}</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+        <section v-if="props.lifecycleAudit?.agent_runtime" data-testid="lifecycle-invocations">
+          <h4>模型调用审计（不保存原始 Prompt / Response）</h4>
+          <div class="data-table">
+            <table>
+              <thead><tr><th>角色</th><th>Provider / Model</th><th>状态</th><th>耗时</th><th>Prompt Hash</th></tr></thead>
+              <tbody><tr v-for="item in props.lifecycleAudit.agent_runtime.invocations || []" :key="item.invocation_id"><td>{{ item.role_id }}</td><td>{{ item.provider }} / {{ item.model }}</td><td>{{ item.status }}</td><td>{{ item.duration_ms }} ms</td><td><code>{{ shortHash(item.prompt_hash) }}</code></td></tr></tbody>
+            </table>
+          </div>
+        </section>
         <section>
           <h4>供应链压力</h4>
           <div class="data-table">
@@ -60,6 +78,8 @@
         <article><strong>用户输入</strong><p>场景、政策动作、国家和供应链参数来自 Scenario Builder。</p></article>
         <article><strong>确定性规则</strong><p>风险、Agent 决策和图谱边权重由本地规则引擎生成。</p></article>
         <article><strong>展示合同</strong><p>前端优先读取 workspace API 与 ui_state，旧字段作为 fallback。</p></article>
+        <article v-if="props.lifecycleAudit?.metrics"><strong>运行可观测性</strong><p>总耗时 {{ props.lifecycleAudit.metrics.total_duration_ms }} ms；Worker 尝试 {{ props.lifecycleAudit.metrics.attempt_count }} 次。</p></article>
+        <article v-if="props.lifecycleAudit?.integrity"><strong>制品完整性</strong><p>{{ props.lifecycleAudit.integrity.verified_count }} 个已验证，{{ props.lifecycleAudit.integrity.invalid_count }} 个异常。</p></article>
       </div>
     </aside>
   </div>
@@ -87,6 +107,9 @@ const props = defineProps({
   onSetActiveDataTab: { type: Function, default: null },
   onCopyRunId: { type: Function, default: null },
   onDownloadUiState: { type: Function, default: null },
-  onOpenReplayShortcut: { type: Function, default: null }
+  onOpenReplayShortcut: { type: Function, default: null },
+  lifecycleAudit: { type: Object, default: null }
 })
+
+const shortHash = value => String(value || '').slice(0, 16)
 </script>

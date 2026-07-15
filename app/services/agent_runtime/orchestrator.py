@@ -24,20 +24,42 @@ def runtime_config_from_env(seed: int | None = None) -> AgentRuntimeConfig:
     provider = str(os.getenv("AGENT_PROVIDER", "mock")).lower()
     if provider not in {"mock", "siliconflow", "deepseek"}:
         provider = "mock"
-    default_model = "mock-deterministic-v1" if provider == "mock" else str(os.getenv("AGENT_MODEL", "configured-provider-default"))
+    default_model = "mock-deterministic-v1" if provider == "mock" else "configured-provider-default"
+    model = str(os.getenv("AGENT_MODEL", default_model)).strip()[:120] or default_model
     return AgentRuntimeConfig(
         provider=provider,
-        model=str(os.getenv("AGENT_MODEL", default_model)),
-        max_turns=int(os.getenv("AGENT_MAX_TURNS", "1")),
-        max_agents=int(os.getenv("AGENT_MAX_AGENTS", "4")),
-        timeout_seconds=float(os.getenv("AGENT_TIMEOUT_SECONDS", "30")),
-        max_calls=int(os.getenv("AGENT_MAX_CALLS", "8")),
-        token_budget=int(os.getenv("AGENT_TOKEN_BUDGET", "12000")),
-        max_input_chars=int(os.getenv("AGENT_MAX_INPUT_CHARS", "16000")),
-        max_output_chars=int(os.getenv("AGENT_MAX_OUTPUT_CHARS", "6000")),
-        fallback_mode=str(os.getenv("AGENT_FALLBACK_MODE", "mock")).lower(),
-        seed=int(seed if seed is not None else os.getenv("AGENT_SEED", "42")),
+        model=model,
+        max_turns=_env_int("AGENT_MAX_TURNS", 1, 1, 5),
+        max_agents=_env_int("AGENT_MAX_AGENTS", 4, 1, 8),
+        timeout_seconds=_env_float("AGENT_TIMEOUT_SECONDS", 30, 0.05, 120),
+        max_calls=_env_int("AGENT_MAX_CALLS", 8, 1, 40),
+        token_budget=_env_int("AGENT_TOKEN_BUDGET", 12000, 100, 200000),
+        max_input_chars=_env_int("AGENT_MAX_INPUT_CHARS", 16000, 1000, 50000),
+        max_output_chars=_env_int("AGENT_MAX_OUTPUT_CHARS", 6000, 500, 20000),
+        fallback_mode=_fallback_mode(),
+        seed=int(seed) if seed is not None else _env_int("AGENT_SEED", 42, -2147483648, 2147483647),
     )
+
+
+def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _env_float(name: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        value = float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _fallback_mode() -> str:
+    value = str(os.getenv("AGENT_FALLBACK_MODE", "mock")).lower()
+    return value if value in {"mock", "skip"} else "mock"
 
 
 def run_agent_runtime(

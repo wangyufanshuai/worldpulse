@@ -39,7 +39,7 @@
 
     <WarRoomConsistencyAudit :report="consistencyAudit" />
 
-    <WarRoomHybridSummary :trace="hybridTrace" />
+    <WarRoomHybridSummary :trace="hybridTrace" :view-mode="hybridViewMode" @set-view="$emit('set-hybrid-view', $event)" />
 
     <WarRoomLifecycleKpis :kpis="kpis" />
   </div>
@@ -70,6 +70,7 @@ defineProps({
   lifecycleEventMode: { type: String, default: 'projection' },
   consistencyAudit: { type: Object, default: null },
   hybridTrace: { type: Object, default: null },
+  hybridViewMode: { type: String, default: 'hybrid' },
   kpis: { type: Array, default: () => [] }
 })
 
@@ -89,6 +90,7 @@ defineEmits([
   'select-event',
   'select-supply-chain',
   'show-causal',
+  'set-hybrid-view',
   'show-upcoming',
   'toggle-delta'
 ])

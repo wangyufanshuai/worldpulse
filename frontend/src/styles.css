@@ -2091,6 +2091,24 @@ body:has(.war-room-page) .studio-header {
 .war-room-hybrid-summary .neutral { color: #9fb3c9; }
 .war-room-hybrid-summary footer { margin-top: 12px; flex-wrap: wrap; color: #8197b0; font-size: 12px; }
 .war-room-hybrid-summary code { color: #58e2a0; }
+.hybrid-view-toggle { display: inline-grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin: 12px 0 4px; border: 1px solid rgba(77, 163, 255, 0.2); border-radius: 9px; padding: 4px; background: rgba(4, 15, 28, 0.74); }
+.hybrid-view-toggle button { border: 0; border-radius: 6px; padding: 7px 12px; color: #8fa6bd; background: transparent; }
+.hybrid-view-toggle button.active { color: #e9f8ff; background: linear-gradient(135deg, rgba(20, 107, 255, 0.72), rgba(20, 161, 164, 0.6)); }
+.agent-negotiation-panel { grid-column: 1 / -1; }
+.agent-negotiation-panel > .module-panel-head > b { color: #58e2a0; }
+.agent-negotiation-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.agent-negotiation-grid article { border: 1px solid rgba(77, 163, 255, 0.16); border-radius: 9px; padding: 11px; background: rgba(8, 24, 42, 0.6); }
+.agent-negotiation-grid header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.agent-negotiation-grid code { color: #8bd5ff; }
+.agent-negotiation-grid header b { border-radius: 999px; padding: 3px 7px; color: #9fb3c9; background: rgba(143, 166, 189, 0.14); font-size: 11px; }
+.agent-negotiation-grid header b.accepted { color: #58e2a0; background: rgba(66, 208, 130, 0.14); }
+.agent-negotiation-grid header b.rejected { color: #ff7d88; background: rgba(255, 111, 124, 0.14); }
+.agent-negotiation-grid header b.needs_revision { color: #ffad45; background: rgba(255, 154, 69, 0.14); }
+.agent-negotiation-grid article > strong { display: block; margin-top: 10px; color: #f2f8ff; }
+.agent-negotiation-grid article p { color: #a9bdd2; line-height: 1.5; }
+.agent-negotiation-grid article small,
+.agent-negotiation-panel > footer { color: #758ba4; }
+.agent-negotiation-panel > footer { margin-top: 12px; }
 .consistency-readonly {
   margin: 12px 0 0;
   border-top: 1px solid rgba(77, 163, 255, 0.14);
@@ -4342,6 +4360,13 @@ body:has(.war-room-page) .studio-header {
   .section-card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .war-room-lifecycle-console {
+    grid-template-columns: 1fr;
+    grid-template-areas: "control" "map" "stream" "audit" "hybrid" "kpis";
+  }
+
+  .war-room-hybrid-summary dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
@@ -4358,6 +4383,11 @@ body:has(.war-room-page) .studio-header {
     min-width: 116px;
     padding: 0 8px;
   }
+
+  .war-room-hybrid-summary dl,
+  .hybrid-change-grid { grid-template-columns: 1fr; }
+
+  .war-room-hybrid-summary header { align-items: flex-start; flex-direction: column; }
 
   .trigger-grid,
   .duration-grid,

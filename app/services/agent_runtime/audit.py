@@ -1,27 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-import re
 
 from app.services.consistency.hashing import stable_hash
+from app.services.security import redact_secrets
 
 from .models import AgentInvocationAudit, AgentProviderRequest
-
-
-SECRET_PATTERNS = (
-    re.compile(r"(?i)bearer\s+[a-z0-9._-]+"),
-    re.compile(r"(?i)(?:api[_-]?key|token|secret)\s*[:=]\s*[^\s,;]+"),
-    re.compile(r"sk-[a-zA-Z0-9_-]{8,}"),
-)
-
-
-def redact_secrets(value: str | None) -> str | None:
-    if value is None:
-        return None
-    text = str(value)
-    for pattern in SECRET_PATTERNS:
-        text = pattern.sub("[REDACTED]", text)
-    return text[:1000]
 
 
 def invocation_audit(

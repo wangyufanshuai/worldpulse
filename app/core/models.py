@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RiskComponent(BaseModel):
@@ -577,7 +577,7 @@ class ProjectAIReport(BaseModel):
 
 
 class ProjectChatRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=8000)
 
 
 class ProjectChatMessage(BaseModel):
@@ -666,23 +666,27 @@ class WarRoomScenario(BaseModel):
 
 
 class WarRoomScenarioRequest(BaseModel):
-    scenario_key: str = "strait_blockade_30d"
-    duration_days: int = 30
-    intensity: float = 0.65
-    propagation: float = 0.42
-    target_countries: list[str] = []
-    target_chains: list[str] = []
-    policy_actions: list[str] = []
-    country_overrides: dict[str, dict[str, float]] = {}
-    chain_overrides: dict[str, dict[str, float]] = {}
+    model_config = ConfigDict(extra="forbid")
+
+    scenario_key: str = Field(default="strait_blockade_30d", min_length=1, max_length=80)
+    duration_days: int = Field(default=30, ge=1, le=365)
+    intensity: float = Field(default=0.65, ge=0, le=1)
+    propagation: float = Field(default=0.42, ge=0, le=1)
+    target_countries: list[str] = Field(default_factory=list, max_length=64)
+    target_chains: list[str] = Field(default_factory=list, max_length=32)
+    policy_actions: list[str] = Field(default_factory=list, max_length=32)
+    country_overrides: dict[str, dict[str, float]] = Field(default_factory=dict)
+    chain_overrides: dict[str, dict[str, float]] = Field(default_factory=dict)
     seed: int | None = 42
 
 
 class RunJobCreateRequest(BaseModel):
-    engine_mode: str = "deterministic"
-    scenario: WarRoomScenarioRequest | dict = {}
+    model_config = ConfigDict(extra="forbid")
+
+    engine_mode: str = Field(default="deterministic", max_length=40)
+    scenario: WarRoomScenarioRequest = Field(default_factory=WarRoomScenarioRequest)
     seed: int | None = 42
-    parent_run_id: str | None = None
+    parent_run_id: str | None = Field(default=None, max_length=80)
 
 
 class RunLifecycleEvent(BaseModel):
@@ -704,6 +708,7 @@ class RunArtifactSummary(BaseModel):
     schema_version: str
     sha256: str
     created_at: str
+    integrity_status: str = "verified"
 
 
 class RunJobStatus(BaseModel):
@@ -725,6 +730,9 @@ class RunJobStatus(BaseModel):
     completed_at: str | None = None
     cancel_requested_at: str | None = None
     pause_requested_at: str | None = None
+    worker_id: str | None = None
+    lease_expires_at: str | None = None
+    attempt_count: int = 0
 
 
 class RunControlResponse(BaseModel):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 
 from app.core.models import (
@@ -132,12 +132,12 @@ def lifecycle_run_status(run_id: str) -> RunJobStatus:
 
 
 @router.get("/v2/runs/{run_id}/events", response_model=list[RunLifecycleEvent])
-def lifecycle_run_events(run_id: str, after_seq: int = 0) -> list[RunLifecycleEvent]:
+def lifecycle_run_events(run_id: str, after_seq: int = Query(default=0, ge=0, le=10_000_000)) -> list[RunLifecycleEvent]:
     return run_lifecycle.get_events(run_id, after_seq=after_seq)
 
 
 @router.get("/v2/runs/{run_id}/events/stream")
-def lifecycle_run_events_stream(request: Request, run_id: str, after_seq: int = 0) -> StreamingResponse:
+def lifecycle_run_events_stream(request: Request, run_id: str, after_seq: int = Query(default=0, ge=0, le=10_000_000)) -> StreamingResponse:
     last_event_id = request.headers.get("last-event-id")
     if last_event_id and str(last_event_id).isdigit():
         after_seq = max(after_seq, int(last_event_id))

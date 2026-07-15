@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from time import perf_counter
+
 from fastapi import HTTPException
 
 from app.core.models import RunJobStatus, WarRoomScenarioRequest
@@ -9,6 +11,7 @@ from app.services.consistency import evaluate_war_room_result
 from app.services.consistency.projector import project_consistency_audit
 from app.services.hybrid_simulation import run_hybrid_simulation
 from app.services.projects import persist_war_room_result
+from app.services.security import redact_secrets
 from app.services.war_room_engine import run_war_room
 
 from . import repository
@@ -24,27 +27,56 @@ PHASES = [
 ]
 
 
-def process_one_queued_job() -> RunJobStatus | None:
-    job = repository.claim_next_job()
+def process_one_queued_job(worker_id: str | None = None) -> RunJobStatus | None:
+    job = repository.claim_next_job(worker_id=worker_id)
     if job is None:
         return None
     try:
         return process_job(job.run_id)
     except Exception as exc:  # pragma: no cover - defensive audit path
-        repository.append_event(job.run_id, "WORKER", job.current_phase, "Run failed", str(exc), payload={"error": type(exc).__name__})
+        safe_error = redact_secrets(str(exc)) or "Lifecycle execution failed"
+        repository.append_event(job.run_id, "WORKER", job.current_phase, "Run failed", safe_error, payload={"error": type(exc).__name__})
         return repository.update_job_status(
             job.run_id,
             status="failed",
             phase=job.current_phase,
             progress=job.progress,
             error_code=type(exc).__name__,
-            error_message=str(exc),
+            error_message=safe_error,
             completed=True,
         )
 
 
 def process_job(run_id: str) -> RunJobStatus:
     job = repository.get_job(run_id)
+    worker_id = job.worker_id
+    projected_run_id = repository.get_projected_result_run_id(run_id)
+    if projected_run_id:
+        if repository.get_latest_artifact_content(run_id, "projection") is None:
+            repository.add_artifact(
+                run_id,
+                "projection",
+                "research-run-projection.v1",
+                {"project_id": job.project_id, "result_run_id": projected_run_id, "workspace_compatible": True, "recovered": True},
+            )
+        repository.append_event(
+            run_id,
+            "SNAPSHOT",
+            "replay_archive",
+            "Completed projection recovered",
+            "检测到该 lifecycle job 已存在完整 v1 投影，已幂等恢复完成状态，未重复写入 research_runs。",
+            payload={"result_run_id": projected_run_id},
+        )
+        return repository.update_job_status(
+            run_id,
+            status="completed",
+            phase="replay_archive",
+            progress=100,
+            result_run_id=projected_run_id,
+            completed=True,
+        )
+    lifecycle_started = perf_counter()
+    phase_durations_ms: dict[str, int] = {}
     scenario = WarRoomScenarioRequest(**job.scenario)
     repository.add_artifact(run_id, "scenario", "scenario.v1", scenario.model_dump())
 
@@ -52,6 +84,8 @@ def process_job(run_id: str) -> RunJobStatus:
     proposals = []
     constraint_context = None
     for index, (phase, progress, event_type, title, detail) in enumerate(PHASES):
+        phase_started = perf_counter()
+        repository.heartbeat_job(run_id, worker_id)
         interrupted = _apply_boundary_control(run_id)
         if interrupted:
             return interrupted
@@ -170,6 +204,7 @@ def process_job(run_id: str) -> RunJobStatus:
                     },
                 )
                 result = outcome.final_result
+        phase_durations_ms[phase] = max(0, int((perf_counter() - phase_started) * 1000))
 
     if result is None:
         raise HTTPException(status_code=500, detail="Lifecycle executor did not produce a War Room result")
@@ -186,6 +221,19 @@ def process_job(run_id: str) -> RunJobStatus:
         "projection",
         "research-run-projection.v1",
         {"project_id": job.project_id, "result_run_id": result_run_id, "workspace_compatible": True},
+    )
+    repository.add_artifact(
+        run_id,
+        "lifecycle_metrics",
+        "lifecycle-metrics.v1",
+        {
+            "worker_id": worker_id,
+            "attempt_count": repository.get_job(run_id).attempt_count,
+            "phase_durations_ms": phase_durations_ms,
+            "total_duration_ms": max(0, int((perf_counter() - lifecycle_started) * 1000)),
+            "event_count": len(repository.get_events(run_id)),
+            "engine_mode": job.engine_mode,
+        },
     )
     repository.append_event(
         run_id,

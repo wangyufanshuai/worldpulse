@@ -52,6 +52,22 @@
         <article><h4>行动倾向</h4><div class="decision-chips"><button v-for="chip in props.activeAgent.decisions" :key="chip" type="button" @click="props.onOpenDecisionDrawer?.(chip)">{{ chip }}</button></div></article>
       </div>
     </section>
+    <section v-if="props.runtimeAudit" class="module-panel agent-negotiation-panel" data-testid="agent-negotiation-panel">
+      <div class="module-panel-head">
+        <div><span>受控协商</span><h3>Agent Action Proposal 审计链</h3></div>
+        <b>{{ props.runtimeAudit.mode }} · {{ props.runtimeAudit.provider }}</b>
+      </div>
+      <p class="sandbox-note">以下内容是结构化行动提案，不是风险数值。最终数值仅由确定性引擎生成。</p>
+      <div class="agent-negotiation-grid">
+        <article v-for="proposal in props.runtimeAudit.proposals || []" :key="proposal.proposal_id" data-testid="agent-negotiation-proposal">
+          <header><code>{{ shortId(proposal.proposal_id) }}</code><b :class="decisionFor(proposal.proposal_id)?.decision">{{ decisionLabel(decisionFor(proposal.proposal_id)?.decision) }}</b></header>
+          <strong>{{ actionLabel(proposal.action_type) }}</strong>
+          <p>{{ proposal.justification }}</p>
+          <small>{{ proposal.actor_id }} → {{ proposal.target_ids?.join(' / ') }}</small>
+        </article>
+      </div>
+      <footer>调用 {{ props.runtimeAudit.total_calls || 0 }} 次 · 估算 {{ props.runtimeAudit.total_estimated_tokens || 0 }} tokens · 失败 {{ props.runtimeAudit.failed_calls || 0 }} 次 · Runtime Hash {{ shortHash(props.runtimeAudit.runtime_hash) }}</footer>
+    </section>
   </div>
 </template>
 
@@ -66,6 +82,14 @@ const props = defineProps({
   riskChannel: { type: Function, default: null },
   onAnalysisFilterChange: { type: Function, default: null },
   onSetAnalysisCountry: { type: Function, default: null },
-  onOpenDecisionDrawer: { type: Function, default: null }
+  onOpenDecisionDrawer: { type: Function, default: null },
+  runtimeAudit: { type: Object, default: null },
+  consistencyAudit: { type: Object, default: null }
 })
+
+const decisionFor = proposalId => (props.consistencyAudit?.proposal_decisions || []).find(item => item.proposal_id === proposalId)
+const decisionLabel = value => ({ accepted: '已接受', rejected: '已拒绝', needs_revision: '需修订', not_evaluated: '未评估' }[value] || '待评估')
+const actionLabel = value => ({ diplomatic_signal: '外交信号', alliance_request: '联盟请求', alliance_response: '联盟回应', sanction_proposal: '制裁提案', trade_reroute_request: '贸易改道', public_narrative: '公共叙事', humanitarian_offer: '人道援助', deescalation_offer: '降级提议', intelligence_request: '情报请求' }[value] || value)
+const shortId = value => String(value || '').replace(/^proposal_/, '#').slice(0, 18)
+const shortHash = value => String(value || '').slice(0, 16)
 </script>

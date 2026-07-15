@@ -7,6 +7,10 @@
       </div>
       <b>规则引擎数值权威</b>
     </header>
+    <div class="hybrid-view-toggle" data-testid="hybrid-view-toggle">
+      <button type="button" :class="{ active: viewMode === 'baseline' }" @click="$emit('set-view', 'baseline')">确定性基线</button>
+      <button type="button" :class="{ active: viewMode === 'hybrid' }" @click="$emit('set-view', 'hybrid')">混合最终结果</button>
+    </div>
     <p>Agent 仅提出结构化动作。只有已接受动作经固定适配器转换后，才由确定性 War Room 引擎重新计算最终数值。</p>
     <dl>
       <div><dt>已接受提案</dt><dd data-testid="hybrid-accepted-count">{{ trace.accepted_proposal_ids?.length || 0 }}</dd></div>
@@ -37,7 +41,11 @@
 <script setup>
 import { computed } from 'vue'
 
-const props = defineProps({ trace: { type: Object, default: null } })
+const props = defineProps({
+  trace: { type: Object, default: null },
+  viewMode: { type: String, default: 'hybrid' }
+})
+defineEmits(['set-view'])
 const diff = computed(() => props.trace?.baseline_diff || {})
 const topChains = computed(() => (diff.value.supply_chain_pressure || []).filter(item => Number(item.delta)).slice(0, 3))
 const topCountries = computed(() => (diff.value.country_risk || []).filter(item => Number(item.delta)).slice(0, 3))

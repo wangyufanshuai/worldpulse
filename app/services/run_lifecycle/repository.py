@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 from uuid import uuid4
 
@@ -14,6 +14,7 @@ from app.core.models import (
     WarRoomScenarioRequest,
 )
 from app.services.project_store import connect, dumps, init_db, loads
+from app.services.security import redact_secrets, redact_structure
 
 
 TERMINAL_STATUSES = {"completed", "cancelled", "failed"}
@@ -100,6 +101,9 @@ def append_event(
 ) -> RunLifecycleEvent:
     init_db()
     created_at = now_iso()
+    safe_title = redact_secrets(title, max_length=240) or "Lifecycle event"
+    safe_detail = redact_secrets(detail, max_length=2000) or ""
+    safe_payload = redact_structure(payload or {})
     with connect() as conn:
         job = conn.execute("SELECT run_id FROM run_jobs WHERE run_id = ?", (run_id,)).fetchone()
         if job is None:
@@ -112,7 +116,7 @@ def append_event(
             (run_id, seq, event_type, phase, tick, title, detail, payload, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (run_id, seq, event_type, phase, tick, title, detail, dumps(payload or {}), created_at),
+            (run_id, seq, event_type, phase, tick, safe_title, safe_detail, dumps(safe_payload), created_at),
         )
     return RunLifecycleEvent(
         run_id=run_id,
@@ -120,16 +124,18 @@ def append_event(
         event_type=event_type,
         phase=phase,
         tick=tick,
-        title=title,
-        detail=detail,
-        payload=payload or {},
+        title=safe_title,
+        detail=safe_detail,
+        payload=safe_payload,
         created_at=created_at,
     )
 
 
-def claim_next_job() -> RunJobStatus | None:
+def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300) -> RunJobStatus | None:
     init_db()
+    worker_id = worker_id or f"worker_{uuid4().hex[:12]}"
     now = now_iso()
+    lease_expires_at = _lease_expiry(lease_seconds)
     with connect() as conn:
         row = conn.execute(
             "SELECT * FROM run_jobs WHERE status = ? ORDER BY created_at ASC LIMIT 1",
@@ -140,15 +146,72 @@ def claim_next_job() -> RunJobStatus | None:
         updated = conn.execute(
             """
             UPDATE run_jobs
-            SET status = ?, current_phase = ?, progress = ?, started_at = COALESCE(started_at, ?), updated_at = ?
+            SET status = ?, current_phase = ?, progress = ?, started_at = COALESCE(started_at, ?), updated_at = ?,
+                worker_id = ?, lease_expires_at = ?, attempt_count = COALESCE(attempt_count, 0) + 1
             WHERE run_id = ? AND status = ?
             """,
-            ("preparing", "scenario_compile", 5, now, now, row["run_id"], CLAIMABLE_STATUS),
+            ("preparing", "scenario_compile", 5, now, now, worker_id, lease_expires_at, row["run_id"], CLAIMABLE_STATUS),
         )
         if updated.rowcount != 1:
             return None
-    append_event(row["run_id"], "WORKER", "scenario_compile", "Worker claimed run", "独立本地 worker 已领取任务。", payload={"status": "preparing"})
+    append_event(row["run_id"], "WORKER", "scenario_compile", "Worker claimed run", "独立本地 worker 已领取任务。", payload={"status": "preparing", "worker_id": worker_id, "lease_expires_at": lease_expires_at})
     return get_job(row["run_id"])
+
+
+def heartbeat_job(run_id: str, worker_id: str | None, *, lease_seconds: int = 300) -> RunJobStatus:
+    job = get_job(run_id)
+    if job.status in TERMINAL_STATUSES:
+        return job
+    if job.worker_id and worker_id and job.worker_id != worker_id:
+        raise HTTPException(status_code=409, detail="Lifecycle run is owned by another worker")
+    now = now_iso()
+    lease_expires_at = _lease_expiry(lease_seconds)
+    with connect() as conn:
+        conn.execute(
+            "UPDATE run_jobs SET worker_id = COALESCE(worker_id, ?), lease_expires_at = ?, updated_at = ? WHERE run_id = ?",
+            (worker_id, lease_expires_at, now, run_id),
+        )
+    return get_job(run_id)
+
+
+def recover_stale_jobs(*, recovered_by: str = "worker-recovery", now: str | None = None) -> list[RunJobStatus]:
+    init_db()
+    cutoff = now or now_iso()
+    recovered: list[tuple[str, str, str]] = []
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT run_id, status, current_phase FROM run_jobs
+            WHERE status IN ('preparing', 'running', 'pausing', 'cancelling')
+              AND lease_expires_at IS NOT NULL AND lease_expires_at < ?
+            ORDER BY updated_at ASC
+            """,
+            (cutoff,),
+        ).fetchall()
+        for row in rows:
+            next_status = "paused" if row["status"] == "pausing" else "cancelled" if row["status"] == "cancelling" else "queued"
+            completed_at = cutoff if next_status == "cancelled" else None
+            conn.execute(
+                """
+                UPDATE run_jobs
+                SET status = ?, worker_id = NULL, lease_expires_at = NULL, updated_at = ?, completed_at = COALESCE(?, completed_at)
+                WHERE run_id = ? AND status = ?
+                """,
+                (next_status, cutoff, completed_at, row["run_id"], row["status"]),
+            )
+            recovered.append((row["run_id"], row["current_phase"], next_status))
+    results = []
+    for run_id, phase, next_status in recovered:
+        append_event(
+            run_id,
+            "WORKER",
+            phase,
+            "Stale worker lease recovered",
+            "检测到 worker 租约过期，任务已按阶段边界语义安全恢复。",
+            payload={"status": next_status, "recovered_by": recovered_by},
+        )
+        results.append(get_job(run_id))
+    return results
 
 
 def update_job_status(
@@ -167,15 +230,18 @@ def update_job_status(
     next_progress = current.progress if progress is None else max(0.0, min(float(progress), 100.0))
     now = now_iso()
     completed_at = now if completed or status in TERMINAL_STATUSES else current.completed_at
+    clear_owner = status in TERMINAL_STATUSES or status in {"paused", "queued"}
     with connect() as conn:
         conn.execute(
             """
             UPDATE run_jobs
             SET status = ?, current_phase = ?, progress = ?, result_run_id = COALESCE(?, result_run_id),
-                error_code = ?, error_message = ?, updated_at = ?, completed_at = ?
+                error_code = ?, error_message = ?, updated_at = ?, completed_at = ?,
+                worker_id = CASE WHEN ? THEN NULL ELSE worker_id END,
+                lease_expires_at = CASE WHEN ? THEN NULL ELSE lease_expires_at END
             WHERE run_id = ?
             """,
-            (status, next_phase, next_progress, result_run_id, error_code, error_message, now, completed_at, run_id),
+            (status, next_phase, next_progress, result_run_id, error_code, redact_secrets(error_message), now, completed_at, clear_owner, clear_owner, run_id),
         )
     return get_job(run_id)
 
@@ -208,7 +274,7 @@ def resume_job(run_id: str) -> RunJobStatus:
     now = now_iso()
     with connect() as conn:
         conn.execute(
-            "UPDATE run_jobs SET status = ?, pause_requested_at = NULL, updated_at = ? WHERE run_id = ?",
+            "UPDATE run_jobs SET status = ?, pause_requested_at = NULL, worker_id = NULL, lease_expires_at = NULL, updated_at = ? WHERE run_id = ?",
             ("queued", now, run_id),
         )
     append_event(run_id, "WORKER", job.current_phase, "Run resumed", "任务已恢复排队，等待 worker 继续处理。", payload={"status": "queued"})
@@ -223,8 +289,8 @@ def cancel_job(run_id: str) -> RunJobStatus:
     next_status = "cancelled" if job.status in {"queued", "paused"} else "cancelling"
     with connect() as conn:
         conn.execute(
-            "UPDATE run_jobs SET status = ?, cancel_requested_at = ?, updated_at = ?, completed_at = CASE WHEN ? = 'cancelled' THEN ? ELSE completed_at END WHERE run_id = ?",
-            (next_status, now, now, next_status, now, run_id),
+            "UPDATE run_jobs SET status = ?, cancel_requested_at = ?, updated_at = ?, completed_at = CASE WHEN ? = 'cancelled' THEN ? ELSE completed_at END, worker_id = CASE WHEN ? = 'cancelled' THEN NULL ELSE worker_id END, lease_expires_at = CASE WHEN ? = 'cancelled' THEN NULL ELSE lease_expires_at END WHERE run_id = ?",
+            (next_status, now, now, next_status, now, next_status, next_status, run_id),
         )
     append_event(run_id, "WORKER", job.current_phase, "Cancel requested", "取消请求已记录；未完成任务不会投影到 research_runs。", payload={"status": next_status})
     return get_job(run_id)
@@ -274,7 +340,7 @@ def get_artifacts(run_id: str) -> list[RunArtifactSummary]:
     _ensure_job_exists(run_id)
     with connect() as conn:
         rows = conn.execute(
-            "SELECT artifact_id, run_id, artifact_type, schema_version, sha256, created_at FROM run_artifacts WHERE run_id = ? ORDER BY created_at ASC",
+            "SELECT artifact_id, run_id, artifact_type, schema_version, content_json, sha256, created_at FROM run_artifacts WHERE run_id = ? ORDER BY created_at ASC",
             (run_id,),
         ).fetchall()
     return [_artifact_from_row(row) for row in rows]
@@ -286,13 +352,41 @@ def get_latest_artifact_content(run_id: str, artifact_type: str) -> dict | None:
     with connect() as conn:
         row = conn.execute(
             """
-            SELECT content_json FROM run_artifacts
+            SELECT content_json, sha256 FROM run_artifacts
             WHERE run_id = ? AND artifact_type = ?
             ORDER BY created_at DESC, rowid DESC LIMIT 1
             """,
             (run_id, artifact_type),
         ).fetchone()
-    return loads(row["content_json"], {}) if row is not None else None
+    if row is None:
+        return None
+    if _artifact_digest(row["content_json"]) != row["sha256"]:
+        raise HTTPException(status_code=409, detail=f"Artifact integrity verification failed: {artifact_type}")
+    return loads(row["content_json"], {})
+
+
+def verify_artifacts(run_id: str) -> dict:
+    artifacts = get_artifacts(run_id)
+    invalid = [item.artifact_type for item in artifacts if item.integrity_status != "verified"]
+    return {
+        "status": "verified" if not invalid else "failed",
+        "verified_count": len(artifacts) - len(invalid),
+        "invalid_count": len(invalid),
+        "invalid_artifact_types": invalid,
+    }
+
+
+def get_projected_result_run_id(run_id: str) -> str | None:
+    job = get_job(run_id)
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT run_id, data_snapshot FROM research_runs WHERE project_id = ? ORDER BY completed_at DESC",
+            (job.project_id,),
+        ).fetchall()
+    for row in rows:
+        if loads(row["data_snapshot"], {}).get("lifecycle_job_id") == run_id:
+            return str(row["run_id"])
+    return None
 
 
 def get_audit(run_id: str) -> dict:
@@ -301,11 +395,15 @@ def get_audit(run_id: str) -> dict:
         "run": get_job(run_id).model_dump(),
         "events": [event.model_dump() for event in get_events(run_id)],
         "artifacts": [artifact.model_dump() for artifact in get_artifacts(run_id)],
+        "integrity": verify_artifacts(run_id),
         "consistency_audit": get_latest_artifact_content(run_id, "consistency_audit"),
         "agent_runtime": get_latest_artifact_content(run_id, "agent_runtime_audit"),
+        "metrics": get_latest_artifact_content(run_id, "lifecycle_metrics"),
         "hybrid": {
             "replay_record": hybrid_record,
             "modifier_bundle": get_latest_artifact_content(run_id, "deterministic_action_modifiers"),
+            "baseline_result": get_latest_artifact_content(run_id, "war_room_result"),
+            "final_result": get_latest_artifact_content(run_id, "hybrid_war_room_result"),
         } if hybrid_record else None,
     }
 
@@ -352,6 +450,9 @@ def _job_from_row(row) -> RunJobStatus:
         completed_at=row["completed_at"],
         cancel_requested_at=row["cancel_requested_at"],
         pause_requested_at=row["pause_requested_at"],
+        worker_id=row["worker_id"],
+        lease_expires_at=row["lease_expires_at"],
+        attempt_count=int(row["attempt_count"] or 0),
     )
 
 
@@ -377,4 +478,14 @@ def _artifact_from_row(row) -> RunArtifactSummary:
         schema_version=row["schema_version"],
         sha256=row["sha256"],
         created_at=row["created_at"],
+        integrity_status="verified" if "content_json" not in row.keys() or _artifact_digest(row["content_json"]) == row["sha256"] else "failed",
     )
+
+
+def _artifact_digest(body: str) -> str:
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _lease_expiry(lease_seconds: int) -> str:
+    seconds = max(10, min(int(lease_seconds), 3600))
+    return (datetime.now() + timedelta(seconds=seconds)).isoformat(timespec="milliseconds")

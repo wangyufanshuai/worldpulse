@@ -59,6 +59,18 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await expect(page.getByTestId('hybrid-result-summary')).toBeVisible()
   await expect(page.getByTestId('hybrid-accepted-count')).toHaveText('4')
   await expect(page.getByTestId('hybrid-final-hash')).toHaveText(/^[a-f0-9]{64}$/)
+  await page.getByTestId('hybrid-view-toggle').getByRole('button', { name: '确定性基线' }).click()
+  await expect(page.getByTestId('hybrid-view-toggle').getByRole('button', { name: '确定性基线' })).toHaveClass(/active/)
+  await page.getByTestId('hybrid-view-toggle').getByRole('button', { name: '混合最终结果' }).click()
+
+  await page.getByRole('link', { name: '智能分析' }).click()
+  await expect(page.getByTestId('agent-negotiation-panel')).toBeVisible()
+  await expect(page.getByTestId('agent-negotiation-proposal')).toHaveCount(4)
+  await page.getByRole('link', { name: '数据中台' }).click()
+  await expect(page.getByTestId('lifecycle-artifact-table')).toBeVisible()
+  await expect(page.getByTestId('lifecycle-invocations')).toBeVisible()
+  await page.getByLabel('设置').click()
+  await expect(page.getByTestId('agent-provider-setting')).toContainText('mock')
 
   const modules = {
     sandbox: 'war-room-sandbox-module', analysis: 'war-room-analysis-module',

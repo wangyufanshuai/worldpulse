@@ -2,6 +2,8 @@
 
 WorldPulse 是一个基于 FastAPI 的全球多源风险监测与预测看板。它不是“预测未来一切”的神秘模型，而是一个可扩展的数据工程项目：
 
+V1.0 同时提供可审计混合推演：确定性规则引擎负责所有风险和供应链数值，受控 Agent 只提交结构化行动提案，一致性评估器负责准入，固定适配器再触发确定性重算。Replay Pack 与离线复盘不会重新调用 LLM。
+
 ```text
 公开数据源 -> 指标标准化 -> 分项风险 -> 综合指数 -> 30天基线预测 -> 看板/Markdown报告
 ```
@@ -47,6 +49,19 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8010
 ```
 
+生命周期任务需要独立 worker：
+
+```powershell
+python -m app.workers.run_worker
+```
+
+前端开发模式：
+
+```powershell
+npm --prefix frontend install
+npm --prefix frontend run dev
+```
+
 打开：
 
 ```text
@@ -54,6 +69,8 @@ http://127.0.0.1:8010
 ```
 
 ## API
+
+V2 生命周期 API 参见 [`docs/api/v2-run-lifecycle.md`](docs/api/v2-run-lifecycle.md)，混合引擎边界参见 [`docs/architecture/v1-hybrid-engine.md`](docs/architecture/v1-hybrid-engine.md)。
 
 - `GET /api/health`：健康检查
 - `GET /api/risk/latest`：最新综合风险

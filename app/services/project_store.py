@@ -142,6 +142,9 @@ def init_db() -> None:
         _ensure_column(conn, "research_projects", "scenario_config", "TEXT NOT NULL DEFAULT '{}'")
         _ensure_column(conn, "run_jobs", "result_run_id", "TEXT")
         _ensure_column(conn, "run_jobs", "pause_requested_at", "TEXT")
+        _ensure_column(conn, "run_jobs", "worker_id", "TEXT")
+        _ensure_column(conn, "run_jobs", "lease_expires_at", "TEXT")
+        _ensure_column(conn, "run_jobs", "attempt_count", "INTEGER NOT NULL DEFAULT 0")
 
 
 @contextmanager

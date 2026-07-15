@@ -24,6 +24,7 @@
           :image-src="worldMapCommand"
           :consistency-audit="consistencyAudit"
           :hybrid-trace="hybridTrace"
+          :hybrid-view-mode="hybridViewMode"
           :kpis="lifecycleKpis"
           :lifecycle-event-mode="lifecycleEventMode"
           :lifecycle-events="lifecycleEventsForDisplay"
@@ -46,6 +47,7 @@
           @select-event="selectMapEvent"
           @select-supply-chain="selectSupplyChain"
           @show-causal="navigateSection('graph')"
+          @set-hybrid-view="hybridViewMode = $event"
           @show-upcoming="showUpcoming"
           @toggle-delta="toggleDeltaOverlay"
         />
@@ -96,6 +98,8 @@
             :on-open-decision-drawer="openDecisionDrawer"
             :on-set-analysis-country="setAnalysisCountry"
             :risk-channel="riskChannel"
+            :runtime-audit="lifecycleAudit?.agent_runtime"
+            :consistency-audit="consistencyAudit"
           />
 
           <WarRoomGraphModule
@@ -135,6 +139,7 @@
             :timeline-events="timelineEvents"
             :ui-map-entities="uiMapEntities"
             :war-room="warRoom"
+            :lifecycle-audit="lifecycleAudit"
           />
 
           <WarRoomSettingsModule
@@ -143,6 +148,7 @@
             :layer-label="layerLabel"
             :on-engine-mode-change="value => lifecycleEngineMode = value"
             :visible-map-layers="visibleMapLayers"
+            :runtime-audit="lifecycleAudit?.agent_runtime"
           />
 
           <WarRoomReplayModule
@@ -445,6 +451,7 @@ const chatting = ref(false)
 const message = ref('')
 const runMode = ref('fast')
 const lifecycleEngineMode = ref('deterministic')
+const hybridViewMode = ref('hybrid')
 const selectedRunId = ref('')
 const evidenceDrawer = ref(null)
 const focusedEdgeKey = ref('')
@@ -489,8 +496,14 @@ const activeSection = computed(() => {
 const activeSectionMeta = computed(() => sectionMeta[activeSection.value] || sectionMeta.overview)
 const runVersions = computed(() => detail.value?.runs || [])
 const workflowEvents = computed(() => detail.value?.latest_run?.data_snapshot?.workflow_events || [])
-const warRoom = computed(() => detail.value?.latest_run?.simulation_snapshot || detail.value?.latest_run?.data_snapshot?.war_room || null)
-const warRoomUi = computed(() => workspaceState.value?.ui_state || warRoom.value?.ui_state || {})
+const persistedWarRoom = computed(() => detail.value?.latest_run?.simulation_snapshot || detail.value?.latest_run?.data_snapshot?.war_room || null)
+const lifecycleAudit = computed(() => runLifecycle.audit.value)
+const warRoom = computed(() => hybridViewMode.value === 'baseline'
+  ? (lifecycleAudit.value?.hybrid?.baseline_result || persistedWarRoom.value)
+  : persistedWarRoom.value)
+const warRoomUi = computed(() => hybridViewMode.value === 'baseline'
+  ? (warRoom.value?.ui_state || {})
+  : (workspaceState.value?.ui_state || warRoom.value?.ui_state || {}))
 const {
   chainLabels,
   countryNames,
@@ -640,6 +653,7 @@ const dataJsonPreview = computed(() => JSON.stringify({
   supply_chains: warRoom.value?.supply_chains || [],
   agent_decisions: warRoom.value?.agent_decisions || [],
   timeline_events: timelineEvents.value,
+  lifecycle_audit: lifecycleAudit.value,
   disclaimer: warRoom.value?.disclaimer || workspaceState.value?.disclaimer
 }, null, 2))
 const {
