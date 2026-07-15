@@ -1387,6 +1387,28 @@
         "title": "LifecycleHealthSummary",
         "type": "object"
       },
+      "LoginRequest": {
+        "properties": {
+          "password": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
       "MarketImpact": {
         "properties": {
           "asset_key": {
@@ -2941,6 +2963,56 @@
         "title": "ScenarioSuggestion",
         "type": "object"
       },
+      "SessionStatus": {
+        "properties": {
+          "absolute_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Expires At"
+          },
+          "authenticated": {
+            "title": "Authenticated",
+            "type": "boolean"
+          },
+          "csrf_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Csrf Token"
+          },
+          "idle_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle Expires At"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserIdentity"
+          }
+        },
+        "required": [
+          "authenticated",
+          "user"
+        ],
+        "title": "SessionStatus",
+        "type": "object"
+      },
       "SimilarEvent": {
         "properties": {
           "date": {
@@ -3691,6 +3763,45 @@
           "pressure_score"
         ],
         "title": "SupplyChainLink",
+        "type": "object"
+      },
+      "UserIdentity": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "analyst",
+              "reviewer",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "username",
+          "display_name",
+          "role"
+        ],
+        "title": "UserIdentity",
         "type": "object"
       },
       "ValidationError": {
@@ -6986,6 +7097,84 @@
           }
         },
         "summary": "Lifecycle Run Steps"
+      }
+    },
+    "/api/v3/auth/login": {
+      "post": {
+        "operationId": "local_login_api_v3_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Local Login"
+      }
+    },
+    "/api/v3/auth/logout": {
+      "post": {
+        "operationId": "local_logout_api_v3_auth_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Local Logout Api V3 Auth Logout Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Local Logout"
+      }
+    },
+    "/api/v3/auth/me": {
+      "get": {
+        "operationId": "local_me_api_v3_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Local Me"
       }
     },
     "/api/version": {
