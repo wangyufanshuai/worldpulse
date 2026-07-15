@@ -82,6 +82,10 @@ export function useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runV
   })
   const lifecycleEventsForDisplay = computed(() => runLifecycle.events.value.length ? runLifecycle.events.value : lifecycleProjection.value.events)
   const lifecycleEventMode = computed(() => runLifecycle.events.value.length ? 'live' : 'projection')
+  const lifecycleAgentStatus = computed(() => {
+    const count = Number(consistencyAudit.value?.summary?.agent_actor_count || 0)
+    return count ? `${count}/${count}` : '0/0'
+  })
   const lifecycleKpis = computed(() => lifecycleProjection.value.kpis.map((item) => {
     const report = consistencyAudit.value
     if (item.key === 'agent_proposals') {
@@ -128,6 +132,7 @@ export function useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runV
     consistencyAudit,
     lifecycleEventMode,
     lifecycleEventsForDisplay,
+    lifecycleAgentStatus,
     lifecycleKpis,
     lifecycleStages,
     pauseLifecycleRun: () => control('pause', '暂停请求已写入生命周期状态'),

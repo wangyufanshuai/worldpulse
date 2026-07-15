@@ -128,6 +128,33 @@ def test_pause_and_resume_queued_job(monkeypatch, tmp_path):
     assert processed.status == "completed"
 
 
+def test_mock_agent_lifecycle_records_proposals_and_action_decisions(monkeypatch, tmp_path):
+    _setup_tmp_db(monkeypatch, tmp_path)
+    client = TestClient(app)
+    project_id = _create_war_room_project(client)
+    created = client.post(
+        f"/api/v2/projects/{project_id}/runs",
+        json={"engine_mode": "mock_agent", "scenario": {"scenario_key": "strait_blockade_30d"}, "seed": 42},
+    ).json()
+
+    processed = process_one_queued_job()
+    assert processed is not None
+    assert processed.status == "completed"
+    assert processed.engine_mode == "mock_agent"
+
+    audit = client.get(f"/api/v2/runs/{created['run_id']}/audit").json()
+    artifacts = {item["artifact_type"] for item in audit["artifacts"]}
+    report = audit["consistency_audit"]
+    assert "agent_action_proposals" in artifacts
+    assert report["schema_version"] == "consistency-audit.v2"
+    assert report["summary"]["agent_action_count"] == 4
+    assert report["summary"]["accepted_action_count"] == 4
+    assert {item["decision"] for item in report["proposal_decisions"]} == {"accepted"}
+    agent_events = [event for event in audit["events"] if event["event_type"] == "AGENT"]
+    assert agent_events[-1]["payload"]["proposal_count"] == 4
+    assert agent_events[-1]["payload"]["batch_hash"]
+
+
 def test_sse_stream_returns_existing_event(monkeypatch, tmp_path):
     _setup_tmp_db(monkeypatch, tmp_path)
     client = TestClient(app)

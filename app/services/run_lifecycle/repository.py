@@ -316,7 +316,7 @@ def _scenario_payload(raw: WarRoomScenarioRequest | dict, seed: int | None) -> d
 
 def _engine_mode(value: str | None) -> str:
     normalized = str(value or "deterministic").lower()
-    return normalized if normalized in {"deterministic", "hybrid_recorded"} else "deterministic"
+    return normalized if normalized in {"deterministic", "mock_agent", "hybrid_recorded"} else "deterministic"
 
 
 def _ensure_job_exists(run_id: str) -> None:

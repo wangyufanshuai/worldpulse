@@ -14,7 +14,7 @@
 
         <WarRoomOverviewConsole
           v-if="activeSection === 'overview'"
-          active-agents="0/0"
+          :active-agents="lifecycleAgentStatus"
           :active-replay-day="activeReplayDay"
           :causal-edges="mapCausalEdges"
           :control="lifecycleControl"
@@ -138,7 +138,9 @@
 
           <WarRoomSettingsModule
             v-else-if="activeSection === 'settings'"
+            :engine-mode="lifecycleEngineMode"
             :layer-label="layerLabel"
+            :on-engine-mode-change="value => lifecycleEngineMode = value"
             :visible-map-layers="visibleMapLayers"
           />
 
@@ -441,6 +443,7 @@ const running = ref(false)
 const chatting = ref(false)
 const message = ref('')
 const runMode = ref('fast')
+const lifecycleEngineMode = ref('deterministic')
 const selectedRunId = ref('')
 const evidenceDrawer = ref(null)
 const focusedEdgeKey = ref('')
@@ -568,6 +571,7 @@ const {
   lifecycleControl,
   lifecycleEventMode,
   lifecycleEventsForDisplay,
+  lifecycleAgentStatus,
   lifecycleKpis,
   lifecycleStages,
   pauseLifecycleRun,
@@ -1134,7 +1138,7 @@ async function run() {
   running.value = true
   try {
     if (isWarRoom.value) {
-      await runLifecycle.create({ engine_mode: 'deterministic', scenario: scenarioPayload(), seed: scenarioDraft.seed || 42 })
+      await runLifecycle.create({ engine_mode: lifecycleEngineMode.value, scenario: scenarioPayload(), seed: scenarioDraft.seed || 42 })
       showToast('生命周期任务已排队；请启动或保持 worker 运行')
       return
     }

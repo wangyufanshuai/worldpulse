@@ -10,6 +10,7 @@ AuditStatus = Literal["passed", "warning", "failed", "not_evaluated"]
 FindingStatus = Literal["warning", "failed", "not_evaluated"]
 FindingCategory = Literal["schema", "capability", "resource", "causal", "temporal", "evidence"]
 FindingSeverity = Literal["info", "warning", "error"]
+ActionDecisionStatus = Literal["accepted", "rejected", "needs_revision", "not_evaluated"]
 
 
 class ConsistencyFinding(BaseModel):
@@ -27,6 +28,15 @@ class ConsistencyFinding(BaseModel):
     suggested_action: str = ""
 
 
+class AgentActionDecision(BaseModel):
+    proposal_id: str
+    decision: ActionDecisionStatus
+    rule_findings: list[ConsistencyFinding] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    explanation_zh: str
+    audit_hash: str
+
+
 class ConsistencyAuditReport(BaseModel):
     schema_version: str = "consistency-audit.v1"
     evaluator_version: str = "worldpulse-consistency.v0.8"
@@ -34,6 +44,7 @@ class ConsistencyAuditReport(BaseModel):
     overall_status: AuditStatus
     summary: dict[str, Any] = Field(default_factory=dict)
     findings: list[ConsistencyFinding] = Field(default_factory=list)
+    proposal_decisions: list[AgentActionDecision] = Field(default_factory=list)
     evaluated_rule_count: int
     skipped_rule_count: int
     deterministic_result_hash: str

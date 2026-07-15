@@ -32,6 +32,10 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await expect(page.getByTestId('consistency-status')).toHaveText('待评估')
   await expect(page.getByTestId('war-room-lifecycle-kpis')).toBeVisible()
 
+  await page.getByLabel('设置').click()
+  await page.getByTestId('lifecycle-engine-mode').selectOption('mock_agent')
+  await page.getByRole('button', { name: '返回战情总览' }).click()
+
   await page.getByTestId('war-room-run-action').click()
   await expect(page.getByTestId('war-room-cancel-action')).toBeEnabled()
   await page.getByTestId('war-room-pause-action').click()
@@ -46,9 +50,11 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
     env: { ...process.env, WORLDPULSE_DB_PATH: process.env.WORLDPULSE_E2E_DB },
   })
   await expect(page.getByTestId('consistency-status')).toHaveText('部分评估')
-  await expect(page.getByTestId('consistency-finding')).toHaveCount(3)
+  await expect(page.getByTestId('consistency-finding')).toHaveCount(1)
   await expect(page.getByTestId('consistency-artifact-hash')).toHaveText(/^[a-f0-9]{64}$/)
-  await expect(page.getByTestId('lifecycle-kpi-agent_proposals')).toContainText('暂无真实 Agent 动作')
+  await expect(page.getByTestId('agent-proposal-decision')).toHaveCount(4)
+  await expect(page.getByTestId('agent-proposal-decisions')).toContainText('已接受')
+  await expect(page.getByTestId('lifecycle-kpi-agent_proposals')).toContainText('4')
   await expect(page.getByTestId('lifecycle-kpi-consistency')).toContainText('部分评估')
 
   const modules = {

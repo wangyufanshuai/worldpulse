@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import HTTPException
 
 from app.core.models import RunJobStatus, WarRoomScenarioRequest
+from app.services.agent_contract import build_mock_agent_batch
 from app.services.consistency import evaluate_war_room_result
 from app.services.consistency.projector import project_consistency_audit
 from app.services.projects import persist_war_room_result
@@ -46,6 +47,8 @@ def process_job(run_id: str) -> RunJobStatus:
     repository.add_artifact(run_id, "scenario", "scenario.v1", scenario.model_dump())
 
     result = None
+    proposals = []
+    constraint_context = None
     for index, (phase, progress, event_type, title, detail) in enumerate(PHASES):
         interrupted = _apply_boundary_control(run_id)
         if interrupted:
@@ -54,10 +57,34 @@ def process_job(run_id: str) -> RunJobStatus:
         if phase == "deterministic_run":
             result = run_war_room(scenario)
             repository.add_artifact(run_id, "war_room_result", "war-room-result.v1", result.model_dump())
+            if job.engine_mode == "mock_agent":
+                batch = build_mock_agent_batch(result, run_id=run_id, seed=job.seed)
+                proposals = batch.proposals
+                constraint_context = batch.constraint_context
+                artifact = repository.add_artifact(run_id, "agent_action_proposals", batch.schema_version, batch.model_dump(mode="json"))
+                repository.append_event(
+                    run_id,
+                    "AGENT",
+                    "deterministic_run",
+                    "Deterministic Mock Agent proposals recorded",
+                    f"已生成 {len(proposals)} 个可重复的结构化提案；尚未进入确定性数值转换。",
+                    payload={
+                        "provider": batch.provider,
+                        "proposal_count": len(proposals),
+                        "batch_hash": batch.batch_hash,
+                        "artifact_id": artifact.artifact_id,
+                    },
+                )
         elif phase == "consistency_audit":
             if result is None:
                 raise HTTPException(status_code=500, detail="Consistency audit requires a deterministic War Room result")
-            report = evaluate_war_room_result(result, run_id=run_id, created_at=repository.now_iso())
+            report = evaluate_war_room_result(
+                result,
+                run_id=run_id,
+                created_at=repository.now_iso(),
+                proposals=proposals,
+                constraint_context=constraint_context,
+            )
             project_consistency_audit(run_id, report, repository)
 
     if result is None:

@@ -2067,6 +2067,44 @@ body:has(.war-room-page) .studio-header {
   padding-top: 10px;
   font-size: 12px;
 }
+.agent-proposal-decisions {
+  margin-top: 14px;
+}
+.agent-proposal-decisions h3 {
+  margin: 0 0 9px;
+  color: #dceeff;
+  font-size: 14px;
+}
+.agent-proposal-decisions > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+.agent-proposal-decisions article {
+  border: 1px solid rgba(77, 163, 255, 0.16);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(8, 24, 42, 0.58);
+}
+.agent-proposal-decisions article.accepted { border-color: rgba(88, 226, 160, 0.3); }
+.agent-proposal-decisions article.rejected { border-color: rgba(255, 111, 124, 0.34); }
+.agent-proposal-decisions article.needs_revision { border-color: rgba(255, 173, 69, 0.34); }
+.agent-proposal-decisions header { align-items: center; }
+.agent-proposal-decisions header code { color: #8bd5ff; }
+.agent-proposal-decisions header b { color: #58e2a0; font-size: 12px; }
+.agent-proposal-decisions article.rejected header b { color: #ff6f7c; }
+.agent-proposal-decisions article.needs_revision header b { color: #ffad45; }
+.agent-proposal-decisions p { margin: 7px 0; color: #c6d5e6; font-size: 12px; line-height: 1.5; }
+.agent-proposal-decisions small { color: #758ba4; }
+.settings-control-card select {
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid rgba(77, 163, 255, 0.24);
+  border-radius: 8px;
+  padding: 9px;
+  color: #d7ebff;
+  background: rgba(9, 30, 54, 0.75);
+}
 
 .war-room-lifecycle-kpis {
   display: grid;

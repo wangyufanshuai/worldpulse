@@ -29,6 +29,21 @@
         </article>
         <p v-if="!report.findings?.length" class="consistency-empty">所有可用规则均通过，没有 finding。</p>
       </div>
+      <section v-if="report.proposal_decisions?.length" class="agent-proposal-decisions" data-testid="agent-proposal-decisions">
+        <h3>Agent Action Proposal 准入结果</h3>
+        <div>
+          <article
+            v-for="decision in report.proposal_decisions"
+            :key="decision.proposal_id"
+            :class="decision.decision"
+            data-testid="agent-proposal-decision"
+          >
+            <header><code>{{ shortId(decision.proposal_id) }}</code><b>{{ decisionLabel(decision.decision) }}</b></header>
+            <p>{{ decision.explanation_zh }}</p>
+            <small>决策 Hash：{{ shortHash(decision.audit_hash) }}</small>
+          </article>
+        </div>
+      </section>
       <footer>
         <span>审计 Hash</span>
         <code data-testid="consistency-artifact-hash">{{ report.audit_hash }}</code>
@@ -57,4 +72,16 @@ const statusLabel = computed(() => ({
 }[props.report?.overall_status] || '待评估'))
 
 const statusTone = computed(() => props.report?.overall_status || 'pending')
+
+function decisionLabel(value) {
+  return { accepted: '已接受', rejected: '已拒绝', needs_revision: '需修订', not_evaluated: '未评估' }[value] || value
+}
+
+function shortId(value) {
+  return String(value || '').replace(/^proposal_/, '#').slice(0, 18)
+}
+
+function shortHash(value) {
+  return String(value || '').slice(0, 16)
+}
 </script>
