@@ -2,7 +2,7 @@
 
 WorldPulse 是一个基于 FastAPI 的全球多源风险监测与预测看板。它不是“预测未来一切”的神秘模型，而是一个可扩展的数据工程项目：
 
-V1.0 同时提供可审计混合推演：确定性规则引擎负责所有风险和供应链数值，受控 Agent 只提交结构化行动提案，一致性评估器负责准入，固定适配器再触发确定性重算。Replay Pack 与离线复盘不会重新调用 LLM。
+V1.1.0-dev 正在把可审计混合推演升级为可阶段恢复、可重复提交和可并发验证的内部试用平台。确定性规则引擎继续负责所有风险和供应链数值，受控 Agent 只提交结构化行动提案，一致性评估器负责准入，固定适配器再触发确定性重算。Replay Pack 与离线复盘不会重新调用 LLM。
 
 ```text
 公开数据源 -> 指标标准化 -> 分项风险 -> 综合指数 -> 30天基线预测 -> 看板/Markdown报告
@@ -61,6 +61,17 @@ python -m app.workers.run_worker
 npm --prefix frontend install
 npm --prefix frontend run dev
 ```
+
+本地发布与数据库运维：
+
+```powershell
+python scripts/local_health.py
+python scripts/verify_database.py --database data/worldpulse.db
+python scripts/backup_database.py --source data/worldpulse.db --output data/backups/worldpulse.backup.db
+python scripts/export_openapi.py
+```
+
+`AI_PROVIDER` 服务于旧版解释/报告层；`AGENT_PROVIDER` 只服务于受控生命周期 Agent Runtime。两者都不能修改确定性风险和供应链数值，开发环境推荐 `AGENT_PROVIDER=mock`。
 
 打开：
 

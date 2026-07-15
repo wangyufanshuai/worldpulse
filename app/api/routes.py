@@ -87,6 +87,7 @@ from app.services.simulation_health import build_simulation_data_health
 from app.services.species_service import build_species_profile, list_species_presets
 from app.services.workbench import build_workbench_status, render_analysis_report, render_system_report, report_templates
 from app.services.war_room_engine import run_war_room, war_room_presets
+from app.version import version_info
 
 router = APIRouter()
 
@@ -94,6 +95,11 @@ router = APIRouter()
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "worldpulse"}
+
+
+@router.get("/version")
+def version() -> dict[str, str]:
+    return version_info()
 
 
 @router.post("/projects", response_model=ResearchProject)

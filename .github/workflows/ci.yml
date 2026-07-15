@@ -24,10 +24,16 @@ jobs:
         run: python -m pytest -q
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
+        run: npm ci
       - name: Frontend build
         working-directory: frontend
         run: npm run build
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Frontend E2E
+        working-directory: frontend
+        run: npm run test:e2e
       - name: Secret scan
         run: |
           ! grep -R -E "sk-[A-Za-z0-9_-]{24,}|DEEPSEEK_API_KEY=sk-|SILICONFLOW_API_KEY=sk-" . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=data

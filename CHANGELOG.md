@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0-dev - Unreleased
+
+- Aligning release, deployment, lifecycle checkpoint, concurrency, verification, and operational contracts for the V1.1 internal trial baseline.
+
 ## 1.0.0 - 2026-07-15
 
 - Preserved the deterministic War Room engine as the sole numeric authority.

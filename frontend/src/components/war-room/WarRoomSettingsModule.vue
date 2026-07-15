@@ -1,5 +1,6 @@
 <template>
   <div class="section-card-grid settings-grid" data-testid="war-room-settings-module">
+    <article data-testid="worldpulse-version-setting"><span>平台版本</span><strong>{{ WORLDPULSE_VERSION }}</strong><p>开发通道 · API contract v1</p></article>
     <article class="settings-control-card">
       <span>生命周期执行模式</span>
       <strong>{{ engineModeLabel }}</strong>
@@ -28,6 +29,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { WORLDPULSE_VERSION } from '../../version'
 
 const props = defineProps({
   visibleMapLayers: { type: Array, default: () => [] },

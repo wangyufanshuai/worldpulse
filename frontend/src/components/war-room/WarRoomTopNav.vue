@@ -4,7 +4,7 @@
       <span class="brand-orbit"><Globe2 :size="25" /></span>
       <span>
         <strong>WorldPulse AI</strong>
-        <small>地缘政治推演沙盘</small>
+        <small>地缘政治推演沙盘 · {{ WORLDPULSE_VERSION }}</small>
       </span>
     </div>
     <nav class="war-room-tabs" aria-label="War Room 模块">
@@ -27,6 +27,7 @@
 
 <script setup>
 import { AlertTriangle, Bell, BookOpen, ChevronDown, Globe2, Info, Search, Settings } from 'lucide-vue-next'
+import { WORLDPULSE_VERSION } from '../../version'
 
 defineProps({
   activeSection: { type: String, required: true },

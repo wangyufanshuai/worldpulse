@@ -1,0 +1,6852 @@
+{
+  "components": {
+    "schemas": {
+      "AIAnalysisRequest": {
+        "properties": {
+          "agent_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Code"
+          },
+          "focus": {
+            "default": "global",
+            "title": "Focus",
+            "type": "string"
+          },
+          "simulation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimulationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "window_days": {
+            "default": 30,
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "title": "AIAnalysisRequest",
+        "type": "object"
+      },
+      "AIAnalysisResult": {
+        "properties": {
+          "disclaimer": {
+            "title": "Disclaimer",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceItem"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "key_findings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Key Findings",
+            "type": "array"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "scenario_suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioSuggestion"
+            },
+            "title": "Scenario Suggestions",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "uncertainties": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Uncertainties",
+            "type": "array"
+          },
+          "watch_signals": {
+            "items": {
+              "$ref": "#/components/schemas/WatchSignal"
+            },
+            "title": "Watch Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "enabled",
+          "mode",
+          "title",
+          "summary",
+          "key_findings",
+          "evidence",
+          "uncertainties",
+          "watch_signals",
+          "scenario_suggestions",
+          "disclaimer"
+        ],
+        "title": "AIAnalysisResult",
+        "type": "object"
+      },
+      "AgentDecision": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "country_code": {
+            "title": "Country Code",
+            "type": "string"
+          },
+          "country_name": {
+            "title": "Country Name",
+            "type": "string"
+          },
+          "drivers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "expected_tradeoff": {
+            "default": "",
+            "title": "Expected Tradeoff",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "risk_delta": {
+            "title": "Risk Delta",
+            "type": "number"
+          }
+        },
+        "required": [
+          "country_code",
+          "country_name",
+          "action",
+          "rationale",
+          "confidence",
+          "risk_delta"
+        ],
+        "title": "AgentDecision",
+        "type": "object"
+      },
+      "AgentState": {
+        "properties": {
+          "conflict_pressure": {
+            "title": "Conflict Pressure",
+            "type": "number"
+          },
+          "energy_vulnerability": {
+            "title": "Energy Vulnerability",
+            "type": "number"
+          },
+          "gdp_pressure": {
+            "title": "Gdp Pressure",
+            "type": "number"
+          },
+          "military_pressure": {
+            "title": "Military Pressure",
+            "type": "number"
+          },
+          "rate_pressure": {
+            "title": "Rate Pressure",
+            "type": "number"
+          },
+          "sentiment_pressure": {
+            "title": "Sentiment Pressure",
+            "type": "number"
+          },
+          "stability": {
+            "title": "Stability",
+            "type": "number"
+          },
+          "trade_exposure": {
+            "title": "Trade Exposure",
+            "type": "number"
+          }
+        },
+        "required": [
+          "gdp_pressure",
+          "trade_exposure",
+          "energy_vulnerability",
+          "military_pressure",
+          "sentiment_pressure",
+          "rate_pressure",
+          "conflict_pressure",
+          "stability"
+        ],
+        "title": "AgentState",
+        "type": "object"
+      },
+      "AlertItem": {
+        "properties": {
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "title",
+          "message",
+          "metric",
+          "score"
+        ],
+        "title": "AlertItem",
+        "type": "object"
+      },
+      "CausalAnalysisRequest": {
+        "properties": {
+          "event_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Type"
+          },
+          "horizon_days": {
+            "default": 20,
+            "title": "Horizon Days",
+            "type": "integer"
+          },
+          "region": {
+            "default": "global",
+            "title": "Region",
+            "type": "string"
+          },
+          "use_ai": {
+            "default": true,
+            "title": "Use Ai",
+            "type": "boolean"
+          },
+          "window_days": {
+            "default": 30,
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "title": "CausalAnalysisRequest",
+        "type": "object"
+      },
+      "CausalAnalysisResult": {
+        "properties": {
+          "ai_explanation": {
+            "title": "Ai Explanation",
+            "type": "string"
+          },
+          "backtest": {
+            "$ref": "#/components/schemas/CausalBacktestResult"
+          },
+          "chains": {
+            "items": {
+              "$ref": "#/components/schemas/CausalChain"
+            },
+            "title": "Chains",
+            "type": "array"
+          },
+          "disclaimer": {
+            "title": "Disclaimer",
+            "type": "string"
+          },
+          "error_attribution": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Error Attribution",
+            "type": "array"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/CausalEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "impacts": {
+            "items": {
+              "$ref": "#/components/schemas/MarketImpact"
+            },
+            "title": "Impacts",
+            "type": "array"
+          },
+          "reasoning_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoning Path",
+            "type": "array"
+          },
+          "similar_events": {
+            "items": {
+              "$ref": "#/components/schemas/SimilarEvent"
+            },
+            "title": "Similar Events",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "uncertainty": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Uncertainty",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "summary",
+          "events",
+          "chains",
+          "impacts",
+          "similar_events",
+          "backtest",
+          "uncertainty",
+          "error_attribution",
+          "reasoning_path",
+          "ai_explanation",
+          "disclaimer"
+        ],
+        "title": "CausalAnalysisResult",
+        "type": "object"
+      },
+      "CausalBacktestResult": {
+        "properties": {
+          "average_impact": {
+            "title": "Average Impact",
+            "type": "number"
+          },
+          "error_attribution": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Error Attribution",
+            "type": "array"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "hit_rate": {
+            "title": "Hit Rate",
+            "type": "number"
+          },
+          "impacts": {
+            "items": {
+              "$ref": "#/components/schemas/MarketImpact"
+            },
+            "title": "Impacts",
+            "type": "array"
+          },
+          "max_error": {
+            "title": "Max Error",
+            "type": "number"
+          },
+          "sample_count": {
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "similar_events": {
+            "items": {
+              "$ref": "#/components/schemas/SimilarEvent"
+            },
+            "title": "Similar Events",
+            "type": "array"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_type",
+          "window_days",
+          "sample_count",
+          "hit_rate",
+          "average_impact",
+          "max_error",
+          "impacts",
+          "similar_events",
+          "error_attribution"
+        ],
+        "title": "CausalBacktestResult",
+        "type": "object"
+      },
+      "CausalChain": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/CausalGraphEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/CausalGraphNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_type",
+          "title",
+          "nodes",
+          "edges",
+          "confidence",
+          "explanation"
+        ],
+        "title": "CausalChain",
+        "type": "object"
+      },
+      "CausalEvent": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "intensity": {
+            "title": "Intensity",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_type",
+          "name",
+          "region",
+          "window_days",
+          "intensity",
+          "event_count",
+          "source",
+          "summary",
+          "confidence"
+        ],
+        "title": "CausalEvent",
+        "type": "object"
+      },
+      "CausalGraphEdge": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "relation": {
+            "title": "Relation",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "relation",
+          "weight",
+          "confidence",
+          "explanation"
+        ],
+        "title": "CausalGraphEdge",
+        "type": "object"
+      },
+      "CausalGraphNode": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "score"
+        ],
+        "title": "CausalGraphNode",
+        "type": "object"
+      },
+      "CausalGraphSnapshot": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "edges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "evidence_sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Sources",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "graph_id": {
+            "title": "Graph Id",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "graph_id",
+          "project_id",
+          "run_id",
+          "generated_at",
+          "nodes",
+          "edges",
+          "confidence",
+          "evidence_sources"
+        ],
+        "title": "CausalGraphSnapshot",
+        "type": "object"
+      },
+      "ComponentAnalysis": {
+        "properties": {
+          "contribution": {
+            "title": "Contribution",
+            "type": "number"
+          },
+          "delta_30d": {
+            "title": "Delta 30D",
+            "type": "number"
+          },
+          "indicators": {
+            "items": {
+              "$ref": "#/components/schemas/IndicatorAnalysis"
+            },
+            "title": "Indicators",
+            "type": "array"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "share_of_total": {
+            "title": "Share Of Total",
+            "type": "number"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "score",
+          "weight",
+          "contribution",
+          "delta_30d",
+          "share_of_total",
+          "indicators"
+        ],
+        "title": "ComponentAnalysis",
+        "type": "object"
+      },
+      "CompositeRisk": {
+        "properties": {
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/RiskComponent"
+            },
+            "title": "Components",
+            "type": "array"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "display_forecast_label": {
+            "title": "Display Forecast Label",
+            "type": "string"
+          },
+          "display_level": {
+            "title": "Display Level",
+            "type": "string"
+          },
+          "display_trend": {
+            "title": "Display Trend",
+            "type": "string"
+          },
+          "forecast_30d": {
+            "title": "Forecast 30D",
+            "type": "number"
+          },
+          "forecast_label": {
+            "title": "Forecast Label",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "trend": {
+            "title": "Trend",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "score",
+          "level",
+          "display_level",
+          "trend",
+          "display_trend",
+          "forecast_30d",
+          "forecast_label",
+          "display_forecast_label",
+          "components",
+          "summary"
+        ],
+        "title": "CompositeRisk",
+        "type": "object"
+      },
+      "ConflictEvent": {
+        "properties": {
+          "default_duration_days": {
+            "title": "Default Duration Days",
+            "type": "integer"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "target_chains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Chains",
+            "type": "array"
+          },
+          "target_countries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Countries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "description",
+          "default_duration_days",
+          "target_chains",
+          "target_countries"
+        ],
+        "title": "ConflictEvent",
+        "type": "object"
+      },
+      "CountryAgent": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "data_quality_score": {
+            "default": 0,
+            "title": "Data Quality Score",
+            "type": "number"
+          },
+          "fallback_fields": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Fallback Fields",
+            "type": "array"
+          },
+          "gdp_weight": {
+            "title": "Gdp Weight",
+            "type": "number"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "raw_indicators": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "default": {},
+            "title": "Raw Indicators",
+            "type": "object"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "risk_score": {
+            "title": "Risk Score",
+            "type": "number"
+          },
+          "source_breakdown": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Source Breakdown",
+            "type": "object"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AgentState"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "region",
+          "latitude",
+          "longitude",
+          "gdp_weight",
+          "state",
+          "risk_score"
+        ],
+        "title": "CountryAgent",
+        "type": "object"
+      },
+      "CountrySimulationResult": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "p10": {
+            "title": "P10",
+            "type": "number"
+          },
+          "p50": {
+            "title": "P50",
+            "type": "number"
+          },
+          "p90": {
+            "title": "P90",
+            "type": "number"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "start_risk": {
+            "title": "Start Risk",
+            "type": "number"
+          },
+          "uncertainty": {
+            "title": "Uncertainty",
+            "type": "number"
+          },
+          "upside_probability": {
+            "title": "Upside Probability",
+            "type": "number"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "region",
+          "latitude",
+          "longitude",
+          "start_risk",
+          "p10",
+          "p50",
+          "p90",
+          "uncertainty",
+          "upside_probability"
+        ],
+        "title": "CountrySimulationResult",
+        "type": "object"
+      },
+      "DataSourceHealth": {
+        "properties": {
+          "cache_age_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Age Hours"
+          },
+          "cache_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache File"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "status",
+          "note"
+        ],
+        "title": "DataSourceHealth",
+        "type": "object"
+      },
+      "EventDigest": {
+        "properties": {
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/EventTopic"
+            },
+            "title": "Topics",
+            "type": "array"
+          },
+          "total_events": {
+            "title": "Total Events",
+            "type": "integer"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "window_days",
+          "source",
+          "total_events",
+          "generated_at",
+          "topics",
+          "notes"
+        ],
+        "title": "EventDigest",
+        "type": "object"
+      },
+      "EventTopic": {
+        "properties": {
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "intensity": {
+            "title": "Intensity",
+            "type": "number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "event_count",
+          "intensity",
+          "source",
+          "summary"
+        ],
+        "title": "EventTopic",
+        "type": "object"
+      },
+      "EvidenceItem": {
+        "properties": {
+          "interpretation": {
+            "title": "Interpretation",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "source",
+          "value",
+          "interpretation"
+        ],
+        "title": "EvidenceItem",
+        "type": "object"
+      },
+      "GraphEditRequest": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "edges": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edges"
+          },
+          "evidence_sources": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Sources"
+          },
+          "nodes": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodes"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "title": "GraphEditRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IndicatorAnalysis": {
+        "properties": {
+          "delta_30d": {
+            "title": "Delta 30D",
+            "type": "number"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "previous_score": {
+            "title": "Previous Score",
+            "type": "number"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "score",
+          "previous_score",
+          "delta_30d",
+          "source",
+          "explanation"
+        ],
+        "title": "IndicatorAnalysis",
+        "type": "object"
+      },
+      "IndicatorLibraryItem": {
+        "properties": {
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "delta_30d": {
+            "title": "Delta 30D",
+            "type": "number"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "formula": {
+            "title": "Formula",
+            "type": "string"
+          },
+          "frequency": {
+            "title": "Frequency",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "component",
+          "score",
+          "delta_30d",
+          "source",
+          "frequency",
+          "formula",
+          "status",
+          "explanation"
+        ],
+        "title": "IndicatorLibraryItem",
+        "type": "object"
+      },
+      "MarketImpact": {
+        "properties": {
+          "asset_key": {
+            "title": "Asset Key",
+            "type": "string"
+          },
+          "asset_name": {
+            "title": "Asset Name",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "expected_return_pct": {
+            "title": "Expected Return Pct",
+            "type": "number"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_key",
+          "asset_name",
+          "direction",
+          "expected_return_pct",
+          "confidence",
+          "rationale"
+        ],
+        "title": "MarketImpact",
+        "type": "object"
+      },
+      "PolicyShock": {
+        "properties": {
+          "duration_months": {
+            "default": 6,
+            "title": "Duration Months",
+            "type": "integer"
+          },
+          "intensity": {
+            "default": 0.45,
+            "title": "Intensity",
+            "type": "number"
+          },
+          "propagation": {
+            "default": 0.35,
+            "title": "Propagation",
+            "type": "number"
+          },
+          "shock_type": {
+            "title": "Shock Type",
+            "type": "string"
+          },
+          "target_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "shock_type",
+          "target_codes"
+        ],
+        "title": "PolicyShock",
+        "type": "object"
+      },
+      "ProjectAIReport": {
+        "properties": {
+          "citations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReportCitation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "disclaimer": {
+            "title": "Disclaimer",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceItem"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "key_findings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Key Findings",
+            "type": "array"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "report_id": {
+            "title": "Report Id",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scenario_suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioSuggestion"
+            },
+            "title": "Scenario Suggestions",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "uncertainties": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Uncertainties",
+            "type": "array"
+          },
+          "watch_signals": {
+            "items": {
+              "$ref": "#/components/schemas/WatchSignal"
+            },
+            "title": "Watch Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "report_id",
+          "project_id",
+          "run_id",
+          "generated_at",
+          "mode",
+          "title",
+          "summary",
+          "key_findings",
+          "evidence",
+          "uncertainties",
+          "watch_signals",
+          "scenario_suggestions",
+          "markdown",
+          "disclaimer"
+        ],
+        "title": "ProjectAIReport",
+        "type": "object"
+      },
+      "ProjectChatMessage": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "mode": {
+            "default": "local",
+            "title": "Mode",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "project_id",
+          "role",
+          "content",
+          "created_at"
+        ],
+        "title": "ProjectChatMessage",
+        "type": "object"
+      },
+      "ProjectChatRequest": {
+        "properties": {
+          "message": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "ProjectChatRequest",
+        "type": "object"
+      },
+      "ProjectDetail": {
+        "properties": {
+          "chat_messages": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProjectChatMessage"
+            },
+            "title": "Chat Messages",
+            "type": "array"
+          },
+          "graph": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CausalGraphSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latest_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResearchRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project": {
+            "$ref": "#/components/schemas/ResearchProject"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectAIReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResearchRun"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project"
+        ],
+        "title": "ProjectDetail",
+        "type": "object"
+      },
+      "ReplayAssetMove": {
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "return_pct": {
+            "title": "Return Pct",
+            "type": "number"
+          },
+          "start": {
+            "title": "Start",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "start",
+          "end",
+          "return_pct"
+        ],
+        "title": "ReplayAssetMove",
+        "type": "object"
+      },
+      "ReplayComponentChange": {
+        "properties": {
+          "change": {
+            "title": "Change",
+            "type": "number"
+          },
+          "end": {
+            "title": "End",
+            "type": "number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "start",
+          "end",
+          "change"
+        ],
+        "title": "ReplayComponentChange",
+        "type": "object"
+      },
+      "ReplayResult": {
+        "properties": {
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/ReplayAssetMove"
+            },
+            "title": "Assets",
+            "type": "array"
+          },
+          "change": {
+            "title": "Change",
+            "type": "number"
+          },
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/ReplayComponentChange"
+            },
+            "title": "Components",
+            "type": "array"
+          },
+          "end_date": {
+            "title": "End Date",
+            "type": "string"
+          },
+          "end_score": {
+            "title": "End Score",
+            "type": "number"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/RiskPoint"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "interpretation": {
+            "title": "Interpretation",
+            "type": "string"
+          },
+          "start_date": {
+            "title": "Start Date",
+            "type": "string"
+          },
+          "start_score": {
+            "title": "Start Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "start_date",
+          "end_date",
+          "start_score",
+          "end_score",
+          "change",
+          "interpretation",
+          "components",
+          "assets",
+          "history"
+        ],
+        "title": "ReplayResult",
+        "type": "object"
+      },
+      "ReportCitation": {
+        "properties": {
+          "citation_id": {
+            "title": "Citation Id",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "finding_index": {
+            "title": "Finding Index",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation_id",
+          "finding_index",
+          "kind",
+          "target_id",
+          "title",
+          "summary",
+          "source",
+          "confidence"
+        ],
+        "title": "ReportCitation",
+        "type": "object"
+      },
+      "ReportExport": {
+        "properties": {
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "markdown"
+        ],
+        "title": "ReportExport",
+        "type": "object"
+      },
+      "ReportTemplate": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "description",
+          "endpoint"
+        ],
+        "title": "ReportTemplate",
+        "type": "object"
+      },
+      "ResearchProject": {
+        "properties": {
+          "asset_scope": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Asset Scope",
+            "type": "array"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Event Types",
+            "type": "array"
+          },
+          "event_window_days": {
+            "title": "Event Window Days",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "research",
+            "title": "Mode",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "scenario_config": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Scenario Config",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "title",
+          "question",
+          "region",
+          "asset_scope",
+          "event_window_days",
+          "event_types",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ResearchProject",
+        "type": "object"
+      },
+      "ResearchProjectCreate": {
+        "properties": {
+          "asset_scope": {
+            "default": [
+              "sp500",
+              "nasdaq",
+              "oil",
+              "gold",
+              "dollar",
+              "vix"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Asset Scope",
+            "type": "array"
+          },
+          "event_types": {
+            "default": [
+              "conflict",
+              "sanctions",
+              "energy",
+              "food",
+              "rates",
+              "trade",
+              "climate"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Event Types",
+            "type": "array"
+          },
+          "event_window_days": {
+            "default": 30,
+            "title": "Event Window Days",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "research",
+            "title": "Mode",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "region": {
+            "default": "global",
+            "title": "Region",
+            "type": "string"
+          },
+          "scenario_config": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Scenario Config",
+            "type": "object"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "question"
+        ],
+        "title": "ResearchProjectCreate",
+        "type": "object"
+      },
+      "ResearchRun": {
+        "properties": {
+          "backtest_snapshot": {
+            "additionalProperties": true,
+            "title": "Backtest Snapshot",
+            "type": "object"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "data_snapshot": {
+            "additionalProperties": true,
+            "title": "Data Snapshot",
+            "type": "object"
+          },
+          "event_snapshot": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Event Snapshot",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "risk_snapshot": {
+            "additionalProperties": true,
+            "title": "Risk Snapshot",
+            "type": "object"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "simulation_snapshot": {
+            "additionalProperties": true,
+            "title": "Simulation Snapshot",
+            "type": "object"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "project_id",
+          "status",
+          "started_at",
+          "summary",
+          "data_snapshot",
+          "risk_snapshot",
+          "event_snapshot",
+          "simulation_snapshot",
+          "backtest_snapshot"
+        ],
+        "title": "ResearchRun",
+        "type": "object"
+      },
+      "ResearchRunDiff": {
+        "properties": {
+          "added_events": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Added Events",
+            "type": "array"
+          },
+          "added_sources": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Added Sources",
+            "type": "array"
+          },
+          "base_run_id": {
+            "title": "Base Run Id",
+            "type": "string"
+          },
+          "changed_metrics": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Changed Metrics",
+            "type": "object"
+          },
+          "confidence_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Delta"
+          },
+          "event_count_delta": {
+            "default": 0,
+            "title": "Event Count Delta",
+            "type": "integer"
+          },
+          "evidence_source_delta": {
+            "default": 0,
+            "title": "Evidence Source Delta",
+            "type": "integer"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "removed_events": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed Events",
+            "type": "array"
+          },
+          "removed_sources": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed Sources",
+            "type": "array"
+          },
+          "risk_delta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Delta"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "target_run_id": {
+            "title": "Target Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "base_run_id",
+          "target_run_id",
+          "summary"
+        ],
+        "title": "ResearchRunDiff",
+        "type": "object"
+      },
+      "RiskAnalysis": {
+        "properties": {
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/ComponentAnalysis"
+            },
+            "title": "Components",
+            "type": "array"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "top_negative_drivers": {
+            "items": {
+              "$ref": "#/components/schemas/IndicatorAnalysis"
+            },
+            "title": "Top Negative Drivers",
+            "type": "array"
+          },
+          "top_positive_drivers": {
+            "items": {
+              "$ref": "#/components/schemas/IndicatorAnalysis"
+            },
+            "title": "Top Positive Drivers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "date",
+          "score",
+          "level",
+          "components",
+          "top_positive_drivers",
+          "top_negative_drivers"
+        ],
+        "title": "RiskAnalysis",
+        "type": "object"
+      },
+      "RiskComponent": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "display_trend": {
+            "title": "Display Trend",
+            "type": "string"
+          },
+          "drivers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "trend": {
+            "title": "Trend",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "display_name",
+          "score",
+          "weight",
+          "trend",
+          "display_trend",
+          "source",
+          "drivers"
+        ],
+        "title": "RiskComponent",
+        "type": "object"
+      },
+      "RiskOverview": {
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/RiskPoint"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "latest": {
+            "$ref": "#/components/schemas/CompositeRisk"
+          }
+        },
+        "required": [
+          "latest",
+          "history"
+        ],
+        "title": "RiskOverview",
+        "type": "object"
+      },
+      "RiskPoint": {
+        "properties": {
+          "climate": {
+            "title": "Climate",
+            "type": "number"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "ecology": {
+            "title": "Ecology",
+            "type": "number"
+          },
+          "financial": {
+            "title": "Financial",
+            "type": "number"
+          },
+          "geopolitical": {
+            "title": "Geopolitical",
+            "type": "number"
+          },
+          "macro": {
+            "title": "Macro",
+            "type": "number"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "score",
+          "financial",
+          "climate",
+          "geopolitical",
+          "ecology",
+          "macro"
+        ],
+        "title": "RiskPoint",
+        "type": "object"
+      },
+      "RunArtifactSummary": {
+        "properties": {
+          "artifact_id": {
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_type": {
+            "title": "Artifact Type",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "integrity_status": {
+            "default": "verified",
+            "title": "Integrity Status",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "run_id",
+          "artifact_type",
+          "schema_version",
+          "sha256",
+          "created_at"
+        ],
+        "title": "RunArtifactSummary",
+        "type": "object"
+      },
+      "RunControlResponse": {
+        "properties": {
+          "events": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RunLifecycleEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "run": {
+            "$ref": "#/components/schemas/RunJobStatus"
+          }
+        },
+        "required": [
+          "run"
+        ],
+        "title": "RunControlResponse",
+        "type": "object"
+      },
+      "RunJobCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "engine_mode": {
+            "default": "deterministic",
+            "maxLength": 40,
+            "title": "Engine Mode",
+            "type": "string"
+          },
+          "parent_run_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Run Id"
+          },
+          "scenario": {
+            "$ref": "#/components/schemas/WarRoomScenarioRequest"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 42,
+            "title": "Seed"
+          }
+        },
+        "title": "RunJobCreateRequest",
+        "type": "object"
+      },
+      "RunJobStatus": {
+        "properties": {
+          "attempt_count": {
+            "default": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "cancel_requested_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Requested At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_phase": {
+            "title": "Current Phase",
+            "type": "string"
+          },
+          "engine_mode": {
+            "title": "Engine Mode",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "lease_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Expires At"
+          },
+          "parent_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Run Id"
+          },
+          "pause_requested_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Requested At"
+          },
+          "progress": {
+            "default": 0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "result_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Run Id"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scenario": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Scenario",
+            "type": "object"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "worker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Id"
+          }
+        },
+        "required": [
+          "run_id",
+          "project_id",
+          "engine_mode",
+          "status",
+          "current_phase",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RunJobStatus",
+        "type": "object"
+      },
+      "RunLifecycleEvent": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Payload",
+            "type": "object"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "tick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tick"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "seq",
+          "event_type",
+          "phase",
+          "title",
+          "detail",
+          "created_at"
+        ],
+        "title": "RunLifecycleEvent",
+        "type": "object"
+      },
+      "ScenarioSuggestion": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "shock_type": {
+            "title": "Shock Type",
+            "type": "string"
+          },
+          "target_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "shock_type",
+          "target_codes",
+          "rationale"
+        ],
+        "title": "ScenarioSuggestion",
+        "type": "object"
+      },
+      "SimilarEvent": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "market_move": {
+            "title": "Market Move",
+            "type": "string"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "similarity": {
+            "title": "Similarity",
+            "type": "number"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "event_type",
+          "title",
+          "similarity",
+          "market_move",
+          "notes"
+        ],
+        "title": "SimilarEvent",
+        "type": "object"
+      },
+      "SimulationAgentDetail": {
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/CountryAgent"
+          },
+          "fallback_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fallback Fields",
+            "type": "array"
+          },
+          "raw_indicators": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Raw Indicators",
+            "type": "object"
+          },
+          "source_breakdown": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Source Breakdown",
+            "type": "object"
+          },
+          "state_explanations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "State Explanations",
+            "type": "object"
+          }
+        },
+        "required": [
+          "agent",
+          "state_explanations",
+          "source_breakdown",
+          "fallback_fields",
+          "raw_indicators"
+        ],
+        "title": "SimulationAgentDetail",
+        "type": "object"
+      },
+      "SimulationDataHealth": {
+        "properties": {
+          "agent_count": {
+            "default": 0,
+            "title": "Agent Count",
+            "type": "integer"
+          },
+          "cache_age_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Age Hours"
+          },
+          "cache_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache File"
+          },
+          "fallback_field_count": {
+            "default": 0,
+            "title": "Fallback Field Count",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "real_field_count": {
+            "default": 0,
+            "title": "Real Field Count",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "status",
+          "note"
+        ],
+        "title": "SimulationDataHealth",
+        "type": "object"
+      },
+      "SimulationDriver": {
+        "properties": {
+          "contribution": {
+            "title": "Contribution",
+            "type": "number"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "contribution",
+          "explanation"
+        ],
+        "title": "SimulationDriver",
+        "type": "object"
+      },
+      "SimulationMapPoint": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "risk": {
+            "title": "Risk",
+            "type": "number"
+          },
+          "uncertainty": {
+            "title": "Uncertainty",
+            "type": "number"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "latitude",
+          "longitude",
+          "risk",
+          "uncertainty",
+          "region"
+        ],
+        "title": "SimulationMapPoint",
+        "type": "object"
+      },
+      "SimulationPathPoint": {
+        "properties": {
+          "month": {
+            "title": "Month",
+            "type": "integer"
+          },
+          "p10": {
+            "title": "P10",
+            "type": "number"
+          },
+          "p50": {
+            "title": "P50",
+            "type": "number"
+          },
+          "p90": {
+            "title": "P90",
+            "type": "number"
+          }
+        },
+        "required": [
+          "month",
+          "p10",
+          "p50",
+          "p90"
+        ],
+        "title": "SimulationPathPoint",
+        "type": "object"
+      },
+      "SimulationPropagationEdge": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "impact": {
+            "title": "Impact",
+            "type": "number"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "channel",
+          "weight",
+          "impact"
+        ],
+        "title": "SimulationPropagationEdge",
+        "type": "object"
+      },
+      "SimulationRequest": {
+        "properties": {
+          "horizon_months": {
+            "default": 12,
+            "title": "Horizon Months",
+            "type": "integer"
+          },
+          "runs": {
+            "default": 500,
+            "title": "Runs",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 42,
+            "title": "Seed"
+          },
+          "shocks": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyShock"
+            },
+            "title": "Shocks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "shocks"
+        ],
+        "title": "SimulationRequest",
+        "type": "object"
+      },
+      "SimulationResult": {
+        "properties": {
+          "countries": {
+            "items": {
+              "$ref": "#/components/schemas/CountrySimulationResult"
+            },
+            "title": "Countries",
+            "type": "array"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/SimulationDriver"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "global_path": {
+            "items": {
+              "$ref": "#/components/schemas/SimulationPathPoint"
+            },
+            "title": "Global Path",
+            "type": "array"
+          },
+          "horizon_months": {
+            "title": "Horizon Months",
+            "type": "integer"
+          },
+          "map_points": {
+            "items": {
+              "$ref": "#/components/schemas/SimulationMapPoint"
+            },
+            "title": "Map Points",
+            "type": "array"
+          },
+          "propagation_edges": {
+            "items": {
+              "$ref": "#/components/schemas/SimulationPropagationEdge"
+            },
+            "title": "Propagation Edges",
+            "type": "array"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "horizon_months",
+          "runs",
+          "global_path",
+          "countries",
+          "map_points",
+          "propagation_edges",
+          "drivers"
+        ],
+        "title": "SimulationResult",
+        "type": "object"
+      },
+      "SimulationScenario": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "shocks": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyShock"
+            },
+            "title": "Shocks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "description",
+          "shocks"
+        ],
+        "title": "SimulationScenario",
+        "type": "object"
+      },
+      "SpeciesCountryCount": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "country": {
+            "title": "Country",
+            "type": "string"
+          }
+        },
+        "required": [
+          "country",
+          "count"
+        ],
+        "title": "SpeciesCountryCount",
+        "type": "object"
+      },
+      "SpeciesOccurrence": {
+        "properties": {
+          "basis_of_record": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis Of Record"
+          },
+          "common_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Common Name"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "dataset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset"
+          },
+          "event_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Date"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "locality": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locality"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "scientific_name": {
+            "title": "Scientific Name",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "source",
+          "scientific_name",
+          "latitude",
+          "longitude"
+        ],
+        "title": "SpeciesOccurrence",
+        "type": "object"
+      },
+      "SpeciesPreset": {
+        "properties": {
+          "chinese_name": {
+            "title": "Chinese Name",
+            "type": "string"
+          },
+          "conservation_prior_score": {
+            "title": "Conservation Prior Score",
+            "type": "number"
+          },
+          "conservation_status": {
+            "title": "Conservation Status",
+            "type": "string"
+          },
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "scientific_name": {
+            "title": "Scientific Name",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "chinese_name",
+          "scientific_name",
+          "group",
+          "source",
+          "region",
+          "conservation_status",
+          "conservation_prior_score"
+        ],
+        "title": "SpeciesPreset",
+        "type": "object"
+      },
+      "SpeciesProfile": {
+        "properties": {
+          "chinese_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chinese Name"
+          },
+          "conservation_prior_score": {
+            "title": "Conservation Prior Score",
+            "type": "number"
+          },
+          "conservation_status": {
+            "title": "Conservation Status",
+            "type": "string"
+          },
+          "country_count": {
+            "title": "Country Count",
+            "type": "integer"
+          },
+          "data_quality_score": {
+            "title": "Data Quality Score",
+            "type": "number"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "occurrence_density_score": {
+            "title": "Occurrence Density Score",
+            "type": "number"
+          },
+          "occurrences": {
+            "items": {
+              "$ref": "#/components/schemas/SpeciesOccurrence"
+            },
+            "title": "Occurrences",
+            "type": "array"
+          },
+          "recency_score": {
+            "title": "Recency Score",
+            "type": "number"
+          },
+          "recent_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recent Year"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "risk_label": {
+            "title": "Risk Label",
+            "type": "string"
+          },
+          "sample_size": {
+            "title": "Sample Size",
+            "type": "integer"
+          },
+          "scientific_name": {
+            "title": "Scientific Name",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "species_risk_score": {
+            "title": "Species Risk Score",
+            "type": "number"
+          },
+          "top_countries": {
+            "items": {
+              "$ref": "#/components/schemas/SpeciesCountryCount"
+            },
+            "title": "Top Countries",
+            "type": "array"
+          },
+          "total_records": {
+            "title": "Total Records",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scientific_name",
+          "source",
+          "region",
+          "total_records",
+          "sample_size",
+          "country_count",
+          "top_countries",
+          "conservation_status",
+          "conservation_prior_score",
+          "occurrence_density_score",
+          "recency_score",
+          "data_quality_score",
+          "species_risk_score",
+          "risk_label",
+          "notes",
+          "occurrences"
+        ],
+        "title": "SpeciesProfile",
+        "type": "object"
+      },
+      "SupplyChainLink": {
+        "properties": {
+          "affected_countries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Countries",
+            "type": "array"
+          },
+          "capacity": {
+            "title": "Capacity",
+            "type": "number"
+          },
+          "disruption": {
+            "title": "Disruption",
+            "type": "number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "lag_days": {
+            "title": "Lag Days",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pressure_score": {
+            "title": "Pressure Score",
+            "type": "number"
+          },
+          "substitution": {
+            "title": "Substitution",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "capacity",
+          "disruption",
+          "substitution",
+          "lag_days",
+          "affected_countries",
+          "pressure_score"
+        ],
+        "title": "SupplyChainLink",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WarRoomCountryAgent": {
+        "properties": {
+          "alliance": {
+            "title": "Alliance",
+            "type": "string"
+          },
+          "chip_dependency": {
+            "title": "Chip Dependency",
+            "type": "number"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "energy_dependency": {
+            "title": "Energy Dependency",
+            "type": "number"
+          },
+          "financial_stress": {
+            "title": "Financial Stress",
+            "type": "number"
+          },
+          "food_dependency": {
+            "title": "Food Dependency",
+            "type": "number"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "military_pressure": {
+            "title": "Military Pressure",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "public_opinion_pressure": {
+            "title": "Public Opinion Pressure",
+            "type": "number"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "risk_score": {
+            "title": "Risk Score",
+            "type": "number"
+          },
+          "stability": {
+            "title": "Stability",
+            "type": "number"
+          },
+          "trade_exposure": {
+            "title": "Trade Exposure",
+            "type": "number"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "region",
+          "latitude",
+          "longitude",
+          "alliance",
+          "energy_dependency",
+          "food_dependency",
+          "trade_exposure",
+          "chip_dependency",
+          "military_pressure",
+          "public_opinion_pressure",
+          "financial_stress",
+          "stability",
+          "risk_score"
+        ],
+        "title": "WarRoomCountryAgent",
+        "type": "object"
+      },
+      "WarRoomHeatmapCell": {
+        "properties": {
+          "country_code": {
+            "title": "Country Code",
+            "type": "string"
+          },
+          "country_name": {
+            "title": "Country Name",
+            "type": "string"
+          },
+          "dominant_channel": {
+            "title": "Dominant Channel",
+            "type": "string"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "risk": {
+            "title": "Risk",
+            "type": "number"
+          },
+          "risk_breakdown": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "default": {},
+            "title": "Risk Breakdown",
+            "type": "object"
+          }
+        },
+        "required": [
+          "country_code",
+          "country_name",
+          "region",
+          "latitude",
+          "longitude",
+          "risk",
+          "dominant_channel"
+        ],
+        "title": "WarRoomHeatmapCell",
+        "type": "object"
+      },
+      "WarRoomImpactGraph": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "edges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges",
+          "confidence"
+        ],
+        "title": "WarRoomImpactGraph",
+        "type": "object"
+      },
+      "WarRoomPresetBundle": {
+        "properties": {
+          "conflict_events": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictEvent"
+            },
+            "title": "Conflict Events",
+            "type": "array"
+          },
+          "countries": {
+            "items": {
+              "$ref": "#/components/schemas/WarRoomCountryAgent"
+            },
+            "title": "Countries",
+            "type": "array"
+          },
+          "disclaimer": {
+            "title": "Disclaimer",
+            "type": "string"
+          },
+          "scenarios": {
+            "items": {
+              "$ref": "#/components/schemas/WarRoomScenario"
+            },
+            "title": "Scenarios",
+            "type": "array"
+          },
+          "supply_chains": {
+            "items": {
+              "$ref": "#/components/schemas/SupplyChainLink"
+            },
+            "title": "Supply Chains",
+            "type": "array"
+          }
+        },
+        "required": [
+          "countries",
+          "supply_chains",
+          "conflict_events",
+          "scenarios",
+          "disclaimer"
+        ],
+        "title": "WarRoomPresetBundle",
+        "type": "object"
+      },
+      "WarRoomReplayPack": {
+        "properties": {
+          "agent_decisions": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Agent Decisions",
+            "type": "array"
+          },
+          "artifacts": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Artifacts",
+            "type": "object"
+          },
+          "assumptions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "audit_trail": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Audit Trail",
+            "type": "array"
+          },
+          "base_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Run Id"
+          },
+          "counterfactual_observations": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Counterfactual Observations",
+            "type": "array"
+          },
+          "disclaimer": {
+            "title": "Disclaimer",
+            "type": "string"
+          },
+          "impact_graph": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Impact Graph",
+            "type": "object"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Manifest",
+            "type": "object"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "model_inputs": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Model Inputs",
+            "type": "object"
+          },
+          "model_outputs": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Model Outputs",
+            "type": "object"
+          },
+          "policy_actions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Actions",
+            "type": "array"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "risk_heatmap": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Risk Heatmap",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "scenario": {
+            "additionalProperties": true,
+            "title": "Scenario",
+            "type": "object"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Summary",
+            "type": "object"
+          },
+          "supply_chain_delta": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Supply Chain Delta",
+            "type": "array"
+          },
+          "target_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Run Id"
+          },
+          "timeline": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Timeline",
+            "type": "array"
+          },
+          "timeline_delta": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Timeline Delta",
+            "type": "object"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "run_id",
+          "title",
+          "scenario",
+          "markdown",
+          "disclaimer"
+        ],
+        "title": "WarRoomReplayPack",
+        "type": "object"
+      },
+      "WarRoomRun": {
+        "properties": {
+          "agent_decisions": {
+            "items": {
+              "$ref": "#/components/schemas/AgentDecision"
+            },
+            "title": "Agent Decisions",
+            "type": "array"
+          },
+          "assumptions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "country_agents": {
+            "items": {
+              "$ref": "#/components/schemas/WarRoomCountryAgent"
+            },
+            "title": "Country Agents",
+            "type": "array"
+          },
+          "disclaimer": {
+            "title": "Disclaimer",
+            "type": "string"
+          },
+          "impact_graph": {
+            "$ref": "#/components/schemas/WarRoomImpactGraph"
+          },
+          "risk_heatmap": {
+            "items": {
+              "$ref": "#/components/schemas/WarRoomHeatmapCell"
+            },
+            "title": "Risk Heatmap",
+            "type": "array"
+          },
+          "scenario": {
+            "$ref": "#/components/schemas/WarRoomScenario"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "supply_chains": {
+            "items": {
+              "$ref": "#/components/schemas/SupplyChainLink"
+            },
+            "title": "Supply Chains",
+            "type": "array"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/WarRoomTimelinePoint"
+            },
+            "title": "Timeline",
+            "type": "array"
+          },
+          "ui_state": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Ui State",
+            "type": "object"
+          }
+        },
+        "required": [
+          "scenario",
+          "timeline",
+          "country_agents",
+          "supply_chains",
+          "impact_graph",
+          "risk_heatmap",
+          "agent_decisions",
+          "summary",
+          "disclaimer"
+        ],
+        "title": "WarRoomRun",
+        "type": "object"
+      },
+      "WarRoomScenario": {
+        "properties": {
+          "chain_overrides": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "default": {},
+            "title": "Chain Overrides",
+            "type": "object"
+          },
+          "country_overrides": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "default": {},
+            "title": "Country Overrides",
+            "type": "object"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "duration_days": {
+            "default": 30,
+            "title": "Duration Days",
+            "type": "integer"
+          },
+          "intensity": {
+            "default": 0.65,
+            "title": "Intensity",
+            "type": "number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "policy_actions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Actions",
+            "type": "array"
+          },
+          "propagation": {
+            "default": 0.42,
+            "title": "Propagation",
+            "type": "number"
+          },
+          "target_chains": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Chains",
+            "type": "array"
+          },
+          "target_countries": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Countries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "description"
+        ],
+        "title": "WarRoomScenario",
+        "type": "object"
+      },
+      "WarRoomScenarioRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "chain_overrides": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "title": "Chain Overrides",
+            "type": "object"
+          },
+          "country_overrides": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "title": "Country Overrides",
+            "type": "object"
+          },
+          "duration_days": {
+            "default": 30,
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Duration Days",
+            "type": "integer"
+          },
+          "intensity": {
+            "default": 0.65,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Intensity",
+            "type": "number"
+          },
+          "policy_actions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Policy Actions",
+            "type": "array"
+          },
+          "propagation": {
+            "default": 0.42,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Propagation",
+            "type": "number"
+          },
+          "scenario_key": {
+            "default": "strait_blockade_30d",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Scenario Key",
+            "type": "string"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 42,
+            "title": "Seed"
+          },
+          "target_chains": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Target Chains",
+            "type": "array"
+          },
+          "target_countries": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Target Countries",
+            "type": "array"
+          }
+        },
+        "title": "WarRoomScenarioRequest",
+        "type": "object"
+      },
+      "WarRoomTimelinePoint": {
+        "properties": {
+          "day": {
+            "title": "Day",
+            "type": "integer"
+          },
+          "energy_pressure": {
+            "title": "Energy Pressure",
+            "type": "number"
+          },
+          "financial_pressure": {
+            "title": "Financial Pressure",
+            "type": "number"
+          },
+          "food_pressure": {
+            "title": "Food Pressure",
+            "type": "number"
+          },
+          "global_risk": {
+            "title": "Global Risk",
+            "type": "number"
+          },
+          "key_development": {
+            "title": "Key Development",
+            "type": "string"
+          },
+          "public_opinion_pressure": {
+            "title": "Public Opinion Pressure",
+            "type": "number"
+          },
+          "trade_pressure": {
+            "title": "Trade Pressure",
+            "type": "number"
+          },
+          "turning_point": {
+            "default": false,
+            "title": "Turning Point",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "day",
+          "global_risk",
+          "energy_pressure",
+          "food_pressure",
+          "trade_pressure",
+          "financial_pressure",
+          "public_opinion_pressure",
+          "key_development"
+        ],
+        "title": "WarRoomTimelinePoint",
+        "type": "object"
+      },
+      "WarRoomWorkspaceState": {
+        "properties": {
+          "command_actions": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Command Actions",
+            "type": "array"
+          },
+          "compare_ready": {
+            "default": false,
+            "title": "Compare Ready",
+            "type": "boolean"
+          },
+          "disclaimer": {
+            "title": "Disclaimer",
+            "type": "string"
+          },
+          "entity_details": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Entity Details",
+            "type": "object"
+          },
+          "entity_index": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Entity Index",
+            "type": "array"
+          },
+          "insight_cards": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Insight Cards",
+            "type": "array"
+          },
+          "project": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Project",
+            "type": "object"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "replay_ready": {
+            "default": false,
+            "title": "Replay Ready",
+            "type": "boolean"
+          },
+          "run_control": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Run Control",
+            "type": "object"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "ui_state": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Ui State",
+            "type": "object"
+          }
+        },
+        "required": [
+          "project_id",
+          "disclaimer"
+        ],
+        "title": "WarRoomWorkspaceState",
+        "type": "object"
+      },
+      "WatchSignal": {
+        "properties": {
+          "current_status": {
+            "title": "Current Status",
+            "type": "string"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "why_it_matters": {
+            "title": "Why It Matters",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "direction",
+          "why_it_matters",
+          "current_status"
+        ],
+        "title": "WatchSignal",
+        "type": "object"
+      },
+      "WorkbenchStatus": {
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertItem"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "data_sources": {
+            "items": {
+              "$ref": "#/components/schemas/DataSourceHealth"
+            },
+            "title": "Data Sources",
+            "type": "array"
+          },
+          "indicators": {
+            "items": {
+              "$ref": "#/components/schemas/IndicatorLibraryItem"
+            },
+            "title": "Indicators",
+            "type": "array"
+          }
+        },
+        "required": [
+          "indicators",
+          "alerts",
+          "data_sources"
+        ],
+        "title": "WorkbenchStatus",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "全球多源综合风险指数与世界局势情景模拟器",
+    "title": "WorldPulse",
+    "version": "1.1.0-dev"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "dashboard__get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dashboard"
+      }
+    },
+    "/api/ai/analyze-risk": {
+      "post": {
+        "operationId": "ai_analyze_risk_api_ai_analyze_risk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIAnalysisResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ai Analyze Risk"
+      }
+    },
+    "/api/ai/analyze-simulation": {
+      "post": {
+        "operationId": "ai_analyze_simulation_api_ai_analyze_simulation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIAnalysisResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ai Analyze Simulation"
+      }
+    },
+    "/api/ai/report/export": {
+      "post": {
+        "operationId": "ai_report_export_api_ai_report_export_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportExport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ai Report Export"
+      }
+    },
+    "/api/ai/smoke-test": {
+      "post": {
+        "operationId": "ai_service_smoke_test_api_ai_smoke_test_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ai Service Smoke Test Api Ai Smoke Test Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ai Service Smoke Test"
+      }
+    },
+    "/api/ai/status": {
+      "get": {
+        "operationId": "ai_service_status_api_ai_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ai Service Status Api Ai Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ai Service Status"
+      }
+    },
+    "/api/causal/ai-smoke-test": {
+      "post": {
+        "operationId": "causal_ai_service_smoke_test_api_causal_ai_smoke_test_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Causal Ai Service Smoke Test Api Causal Ai Smoke Test Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Causal Ai Service Smoke Test"
+      }
+    },
+    "/api/causal/analyze": {
+      "post": {
+        "operationId": "causal_analyze_api_causal_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CausalAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/CausalAnalysisResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Causal Analyze"
+      }
+    },
+    "/api/causal/backtest": {
+      "get": {
+        "operationId": "causal_backtest_api_causal_backtest_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "event_type",
+            "required": false,
+            "schema": {
+              "default": "conflict",
+              "title": "Event Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 120,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "horizon_days",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Horizon Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/CausalBacktestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Causal Backtest"
+      }
+    },
+    "/api/causal/events": {
+      "get": {
+        "operationId": "causal_events_api_causal_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "global",
+              "title": "Region",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CausalEvent"
+                  },
+                  "title": "Response Causal Events Api Causal Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Causal Events"
+      }
+    },
+    "/api/causal/graph": {
+      "get": {
+        "operationId": "causal_graph_api_causal_graph_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "global",
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "event_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/CausalChain"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Causal Graph"
+      }
+    },
+    "/api/causal/report/export": {
+      "post": {
+        "operationId": "causal_report_export_api_causal_report_export_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CausalAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportExport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Causal Report Export"
+      }
+    },
+    "/api/events/agent/{code}": {
+      "get": {
+        "operationId": "events_agent_digest_api_events_agent__code__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventDigest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events Agent Digest"
+      }
+    },
+    "/api/events/digest": {
+      "get": {
+        "operationId": "events_digest_api_events_digest_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "global",
+              "title": "Region",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventDigest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events Digest"
+      }
+    },
+    "/api/exports/alerts.csv": {
+      "get": {
+        "operationId": "export_alerts_csv_api_exports_alerts_csv_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Export Alerts Csv"
+      }
+    },
+    "/api/exports/indicators.csv": {
+      "get": {
+        "operationId": "export_indicators_csv_api_exports_indicators_csv_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Export Indicators Csv"
+      }
+    },
+    "/api/exports/replay.csv": {
+      "get": {
+        "operationId": "export_replay_csv_api_exports_replay_csv_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 120,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Replay Csv"
+      }
+    },
+    "/api/exports/risk-history.csv": {
+      "get": {
+        "operationId": "export_risk_history_csv_api_exports_risk_history_csv_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Export Risk History Csv"
+      }
+    },
+    "/api/exports/species-occurrences.csv": {
+      "get": {
+        "operationId": "export_species_occurrences_csv_api_exports_species_occurrences_csv_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scientific_name",
+            "required": true,
+            "schema": {
+              "title": "Scientific Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "default": "gbif",
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "africa",
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 240,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Species Occurrences Csv"
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Api Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "operationId": "research_project_list_api_projects_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ResearchProject"
+                  },
+                  "title": "Response Research Project List Api Projects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project List"
+      },
+      "post": {
+        "operationId": "research_project_create_api_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchProjectCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchProject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project Create"
+      }
+    },
+    "/api/projects/{project_id}": {
+      "get": {
+        "operationId": "research_project_detail_api_projects__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project Detail"
+      }
+    },
+    "/api/projects/{project_id}/chat": {
+      "post": {
+        "operationId": "research_project_chat_api_projects__project_id__chat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectChatMessage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project Chat"
+      }
+    },
+    "/api/projects/{project_id}/graph": {
+      "get": {
+        "operationId": "research_project_graph_api_projects__project_id__graph_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/CausalGraphSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project Graph"
+      },
+      "patch": {
+        "operationId": "research_project_graph_edit_api_projects__project_id__graph_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project Graph Edit"
+      }
+    },
+    "/api/projects/{project_id}/report": {
+      "get": {
+        "operationId": "research_project_report_api_projects__project_id__report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAIReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project Report"
+      }
+    },
+    "/api/projects/{project_id}/run": {
+      "post": {
+        "operationId": "research_project_run_api_projects__project_id__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "fast",
+              "title": "Mode",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project Run"
+      }
+    },
+    "/api/projects/{project_id}/runs": {
+      "get": {
+        "operationId": "research_project_runs_api_projects__project_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ResearchRun"
+                  },
+                  "title": "Response Research Project Runs Api Projects  Project Id  Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project Runs"
+      }
+    },
+    "/api/projects/{project_id}/runs/compare": {
+      "get": {
+        "operationId": "research_project_run_compare_api_projects__project_id__runs_compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "base_run_id",
+            "required": true,
+            "schema": {
+              "title": "Base Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_run_id",
+            "required": true,
+            "schema": {
+              "title": "Target Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchRunDiff"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project Run Compare"
+      }
+    },
+    "/api/projects/{project_id}/runs/{run_id}": {
+      "get": {
+        "operationId": "research_project_run_detail_api_projects__project_id__runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project Run Detail"
+      }
+    },
+    "/api/projects/{project_id}/runs/{run_id}/citations": {
+      "get": {
+        "operationId": "research_project_run_citations_api_projects__project_id__runs__run_id__citations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReportCitation"
+                  },
+                  "title": "Response Research Project Run Citations Api Projects  Project Id  Runs  Run Id  Citations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project Run Citations"
+      }
+    },
+    "/api/projects/{project_id}/war-room/replay-pack": {
+      "get": {
+        "operationId": "research_project_war_room_replay_pack_api_projects__project_id__war_room_replay_pack_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "base_run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarRoomReplayPack"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project War Room Replay Pack"
+      }
+    },
+    "/api/projects/{project_id}/war-room/run": {
+      "post": {
+        "operationId": "research_project_war_room_run_api_projects__project_id__war_room_run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarRoomScenarioRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project War Room Run"
+      }
+    },
+    "/api/projects/{project_id}/war-room/workspace": {
+      "get": {
+        "operationId": "research_project_war_room_workspace_api_projects__project_id__war_room_workspace_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarRoomWorkspaceState"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Project War Room Workspace"
+      }
+    },
+    "/api/report.md": {
+      "get": {
+        "operationId": "report_markdown_api_report_md_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Report Markdown"
+      }
+    },
+    "/api/report/analysis.md": {
+      "get": {
+        "operationId": "report_analysis_markdown_api_report_analysis_md_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Report Analysis Markdown"
+      }
+    },
+    "/api/report/export": {
+      "post": {
+        "operationId": "save_report_api_report_export_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportExport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Save Report"
+      }
+    },
+    "/api/report/system.md": {
+      "get": {
+        "operationId": "report_system_markdown_api_report_system_md_get",
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Report System Markdown"
+      }
+    },
+    "/api/reports/templates": {
+      "get": {
+        "operationId": "reports_templates_api_reports_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReportTemplate"
+                  },
+                  "title": "Response Reports Templates Api Reports Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reports Templates"
+      }
+    },
+    "/api/risk/analysis": {
+      "get": {
+        "operationId": "risk_analysis_api_risk_analysis_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RiskAnalysis"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Risk Analysis"
+      }
+    },
+    "/api/risk/history": {
+      "get": {
+        "operationId": "risk_history_api_risk_history_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RiskPoint"
+                  },
+                  "title": "Response Risk History Api Risk History Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Risk History"
+      }
+    },
+    "/api/risk/latest": {
+      "get": {
+        "operationId": "latest_risk_api_risk_latest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompositeRisk"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Latest Risk"
+      }
+    },
+    "/api/risk/overview": {
+      "get": {
+        "operationId": "risk_overview_api_risk_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RiskOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Risk Overview"
+      }
+    },
+    "/api/risk/replay": {
+      "get": {
+        "operationId": "risk_replay_api_risk_replay_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 120,
+              "title": "Window Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Risk Replay"
+      }
+    },
+    "/api/simulation/agent/{code}": {
+      "get": {
+        "operationId": "simulation_agent_detail_api_simulation_agent__code__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationAgentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Simulation Agent Detail"
+      }
+    },
+    "/api/simulation/agents": {
+      "get": {
+        "operationId": "simulation_agents_api_simulation_agents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CountryAgent"
+                  },
+                  "title": "Response Simulation Agents Api Simulation Agents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Simulation Agents"
+      }
+    },
+    "/api/simulation/data-health": {
+      "get": {
+        "operationId": "simulation_data_health_api_simulation_data_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SimulationDataHealth"
+                  },
+                  "title": "Response Simulation Data Health Api Simulation Data Health Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Simulation Data Health"
+      }
+    },
+    "/api/simulation/run": {
+      "post": {
+        "operationId": "simulation_run_api_simulation_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Simulation Run"
+      }
+    },
+    "/api/simulation/scenarios": {
+      "get": {
+        "operationId": "simulation_scenario_templates_api_simulation_scenarios_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SimulationScenario"
+                  },
+                  "title": "Response Simulation Scenario Templates Api Simulation Scenarios Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Simulation Scenario Templates"
+      }
+    },
+    "/api/species/presets": {
+      "get": {
+        "operationId": "species_presets_api_species_presets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SpeciesPreset"
+                  },
+                  "title": "Response Species Presets Api Species Presets Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Species Presets"
+      }
+    },
+    "/api/species/profile": {
+      "get": {
+        "operationId": "species_profile_api_species_profile_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scientific_name",
+            "required": true,
+            "schema": {
+              "title": "Scientific Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "default": "gbif",
+              "title": "Source",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "region",
+            "required": false,
+            "schema": {
+              "default": "africa",
+              "title": "Region",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 240,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeciesProfile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Species Profile"
+      }
+    },
+    "/api/v2/projects/{project_id}/runs": {
+      "post": {
+        "operationId": "lifecycle_run_create_api_v2_projects__project_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunJobCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunJobStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lifecycle Run Create"
+      }
+    },
+    "/api/v2/runs/{run_id}": {
+      "get": {
+        "operationId": "lifecycle_run_status_api_v2_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunJobStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lifecycle Run Status"
+      }
+    },
+    "/api/v2/runs/{run_id}/artifacts": {
+      "get": {
+        "operationId": "lifecycle_run_artifacts_api_v2_runs__run_id__artifacts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunArtifactSummary"
+                  },
+                  "title": "Response Lifecycle Run Artifacts Api V2 Runs  Run Id  Artifacts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lifecycle Run Artifacts"
+      }
+    },
+    "/api/v2/runs/{run_id}/audit": {
+      "get": {
+        "operationId": "lifecycle_run_audit_api_v2_runs__run_id__audit_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Lifecycle Run Audit Api V2 Runs  Run Id  Audit Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lifecycle Run Audit"
+      }
+    },
+    "/api/v2/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "lifecycle_run_cancel_api_v2_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunControlResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lifecycle Run Cancel"
+      }
+    },
+    "/api/v2/runs/{run_id}/events": {
+      "get": {
+        "operationId": "lifecycle_run_events_api_v2_runs__run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "After Seq",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunLifecycleEvent"
+                  },
+                  "title": "Response Lifecycle Run Events Api V2 Runs  Run Id  Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lifecycle Run Events"
+      }
+    },
+    "/api/v2/runs/{run_id}/events/stream": {
+      "get": {
+        "operationId": "lifecycle_run_events_stream_api_v2_runs__run_id__events_stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "After Seq",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lifecycle Run Events Stream"
+      }
+    },
+    "/api/v2/runs/{run_id}/pause": {
+      "post": {
+        "operationId": "lifecycle_run_pause_api_v2_runs__run_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunControlResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lifecycle Run Pause"
+      }
+    },
+    "/api/v2/runs/{run_id}/resume": {
+      "post": {
+        "operationId": "lifecycle_run_resume_api_v2_runs__run_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunControlResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lifecycle Run Resume"
+      }
+    },
+    "/api/v2/runs/{run_id}/retry": {
+      "post": {
+        "operationId": "lifecycle_run_retry_api_v2_runs__run_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunControlResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lifecycle Run Retry"
+      }
+    },
+    "/api/version": {
+      "get": {
+        "operationId": "version_api_version_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Version Api Version Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Version"
+      }
+    },
+    "/api/war-room/presets": {
+      "get": {
+        "operationId": "war_room_preset_bundle_api_war_room_presets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarRoomPresetBundle"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "War Room Preset Bundle"
+      }
+    },
+    "/api/war-room/run": {
+      "post": {
+        "operationId": "war_room_sandbox_run_api_war_room_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WarRoomScenarioRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/WarRoomRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "War Room Sandbox Run"
+      }
+    },
+    "/api/workbench/status": {
+      "get": {
+        "operationId": "workbench_status_api_workbench_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkbenchStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Workbench Status"
+      }
+    },
+    "/favicon.ico": {
+      "get": {
+        "operationId": "favicon_favicon_ico_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Favicon"
+      }
+    },
+    "/studio": {
+      "get": {
+        "operationId": "studio_studio_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Studio"
+      }
+    },
+    "/studio/{path}": {
+      "get": {
+        "operationId": "studio_studio__path__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Studio"
+      }
+    }
+  }
+}

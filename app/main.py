@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.api.routes import router
+from app.version import WORLDPULSE_VERSION
 
 
 class UTF8JSONResponse(JSONResponse):
@@ -16,7 +17,7 @@ class UTF8JSONResponse(JSONResponse):
 app = FastAPI(
     title="WorldPulse",
     description="全球多源综合风险指数与世界局势情景模拟器",
-    version="0.1.0",
+    version=WORLDPULSE_VERSION,
     default_response_class=UTF8JSONResponse,
 )
 

@@ -1,8 +1,31 @@
 services:
-  worldpulse:
+  api:
     build: .
     ports:
       - "8010:8010"
     volumes:
       - ./data:/app/data
+    environment:
+      WORLDPULSE_DB_PATH: /app/data/worldpulse.db
+      AGENT_PROVIDER: ${AGENT_PROVIDER:-mock}
+      AGENT_FALLBACK_MODE: ${AGENT_FALLBACK_MODE:-mock}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.workers.run_worker"]
+    volumes:
+      - ./data:/app/data
+    environment:
+      WORLDPULSE_DB_PATH: /app/data/worldpulse.db
+      AGENT_PROVIDER: ${AGENT_PROVIDER:-mock}
+      AGENT_FALLBACK_MODE: ${AGENT_FALLBACK_MODE:-mock}
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
