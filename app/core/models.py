@@ -687,6 +687,7 @@ class RunJobCreateRequest(BaseModel):
     scenario: WarRoomScenarioRequest = Field(default_factory=WarRoomScenarioRequest)
     seed: int | None = 42
     parent_run_id: str | None = Field(default=None, max_length=80)
+    max_attempts: int = Field(default=3, ge=1, le=10)
 
 
 class RunLifecycleEvent(BaseModel):
@@ -729,6 +730,19 @@ class RunStepRecord(BaseModel):
     output: dict = Field(default_factory=dict)
 
 
+class RunAttemptRecord(BaseModel):
+    attempt_id: str
+    run_id: str
+    worker_id: str
+    attempt_number: int
+    status: str
+    resume_from_step: str | None = None
+    started_at: str
+    completed_at: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
 class RunJobStatus(BaseModel):
     run_id: str
     project_id: str
@@ -751,6 +765,10 @@ class RunJobStatus(BaseModel):
     worker_id: str | None = None
     lease_expires_at: str | None = None
     attempt_count: int = 0
+    current_attempt_id: str | None = None
+    max_attempts: int = 3
+    next_attempt_at: str | None = None
+    terminal_reason: str | None = None
 
 
 class RunControlResponse(BaseModel):

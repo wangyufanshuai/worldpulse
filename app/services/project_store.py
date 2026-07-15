@@ -155,6 +155,21 @@ def init_db() -> None:
                 FOREIGN KEY(run_id) REFERENCES run_jobs(run_id),
                 UNIQUE(run_id, step_key, attempt_id)
             );
+
+            CREATE TABLE IF NOT EXISTS run_attempts (
+                attempt_id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                worker_id TEXT NOT NULL,
+                attempt_number INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                resume_from_step TEXT,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                error_code TEXT,
+                error_message TEXT,
+                FOREIGN KEY(run_id) REFERENCES run_jobs(run_id),
+                UNIQUE(run_id, attempt_number)
+            );
             """
         )
         _ensure_column(conn, "ai_reports", "citations", "TEXT NOT NULL DEFAULT '[]'")
@@ -165,6 +180,24 @@ def init_db() -> None:
         _ensure_column(conn, "run_jobs", "worker_id", "TEXT")
         _ensure_column(conn, "run_jobs", "lease_expires_at", "TEXT")
         _ensure_column(conn, "run_jobs", "attempt_count", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "run_jobs", "current_attempt_id", "TEXT")
+        _ensure_column(conn, "run_jobs", "max_attempts", "INTEGER NOT NULL DEFAULT 3")
+        _ensure_column(conn, "run_jobs", "next_attempt_at", "TEXT")
+        _ensure_column(conn, "run_jobs", "terminal_reason", "TEXT")
+        _ensure_column(conn, "run_jobs", "request_hash", "TEXT")
+        _ensure_column(conn, "run_jobs", "idempotency_key", "TEXT")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_run_jobs_project_idempotency "
+            "ON run_jobs(project_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_run_jobs_claimable "
+            "ON run_jobs(status, next_attempt_at, created_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_run_attempts_run_number "
+            "ON run_attempts(run_id, attempt_number)"
+        )
 
 
 @contextmanager

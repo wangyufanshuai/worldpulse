@@ -132,7 +132,7 @@ def test_failed_phase_is_recorded_in_step_contract(monkeypatch, tmp_path):
     project_id = _create_war_room_project(client)
     created = client.post(
         f"/api/v2/projects/{project_id}/runs",
-        json={"engine_mode": "deterministic", "scenario": {"scenario_key": "food_shortfall"}},
+        json={"engine_mode": "deterministic", "scenario": {"scenario_key": "food_shortfall"}, "max_attempts": 1},
     ).json()
     monkeypatch.setattr(lifecycle_executor, "run_war_room", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("synthetic step failure")))
 

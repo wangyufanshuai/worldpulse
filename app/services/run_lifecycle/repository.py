@@ -7,12 +7,14 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from app.core.models import (
+    RunAttemptRecord,
     RunArtifactSummary,
     RunJobCreateRequest,
     RunJobStatus,
     RunLifecycleEvent,
     WarRoomScenarioRequest,
 )
+from app.services.consistency.hashing import stable_hash
 from app.services.project_store import connect, dumps, init_db, loads
 from app.services.security import redact_secrets, redact_structure
 
@@ -25,25 +27,52 @@ def now_iso() -> str:
     return datetime.now().isoformat(timespec="milliseconds")
 
 
-def create_job(project_id: str, request: RunJobCreateRequest) -> RunJobStatus:
+def create_job(
+    project_id: str,
+    request: RunJobCreateRequest,
+    *,
+    idempotency_key: str | None = None,
+) -> RunJobStatus:
     init_db()
     scenario = _scenario_payload(request.scenario, request.seed)
+    engine_mode = _engine_mode(request.engine_mode)
+    normalized_key = _normalize_idempotency_key(idempotency_key)
+    request_hash = stable_hash(
+        {
+            "project_id": project_id,
+            "engine_mode": engine_mode,
+            "scenario": scenario,
+            "seed": request.seed,
+            "parent_run_id": request.parent_run_id,
+            "max_attempts": request.max_attempts,
+        }
+    )
     run_id = f"job_{uuid4().hex[:12]}"
     now = now_iso()
     with connect() as conn:
         project = conn.execute("SELECT project_id FROM research_projects WHERE project_id = ?", (project_id,)).fetchone()
         if project is None:
             raise HTTPException(status_code=404, detail=f"Unknown project: {project_id}")
+        if normalized_key:
+            existing = conn.execute(
+                "SELECT run_id, request_hash FROM run_jobs WHERE project_id = ? AND idempotency_key = ?",
+                (project_id, normalized_key),
+            ).fetchone()
+            if existing is not None:
+                if existing["request_hash"] != request_hash:
+                    raise HTTPException(status_code=409, detail="Idempotency-Key was already used with a different request")
+                return get_job(existing["run_id"])
         conn.execute(
             """
             INSERT INTO run_jobs
-            (run_id, project_id, engine_mode, status, current_phase, progress, seed, parent_run_id, scenario_json, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (run_id, project_id, engine_mode, status, current_phase, progress, seed, parent_run_id,
+             scenario_json, created_at, updated_at, max_attempts, request_hash, idempotency_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
                 project_id,
-                _engine_mode(request.engine_mode),
+                engine_mode,
                 "queued",
                 "scenario_compile",
                 0,
@@ -52,6 +81,9 @@ def create_job(project_id: str, request: RunJobCreateRequest) -> RunJobStatus:
                 dumps(scenario),
                 now,
                 now,
+                request.max_attempts,
+                request_hash,
+                normalized_key,
             ),
         )
     append_event(
@@ -60,7 +92,7 @@ def create_job(project_id: str, request: RunJobCreateRequest) -> RunJobStatus:
         "scenario_compile",
         "Run lifecycle job queued",
         "已创建本地生命周期任务，等待独立 worker 领取。",
-        payload={"status": "queued", "engine_mode": _engine_mode(request.engine_mode)},
+        payload={"status": "queued", "engine_mode": engine_mode, "idempotent": bool(normalized_key)},
     )
     return get_job(run_id)
 
@@ -138,23 +170,46 @@ def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300) ->
     lease_expires_at = _lease_expiry(lease_seconds)
     with connect() as conn:
         row = conn.execute(
-            "SELECT * FROM run_jobs WHERE status = ? ORDER BY created_at ASC LIMIT 1",
-            (CLAIMABLE_STATUS,),
+            """
+            SELECT * FROM run_jobs
+            WHERE status = ?
+              AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+              AND COALESCE(attempt_count, 0) < COALESCE(max_attempts, 3)
+            ORDER BY created_at ASC LIMIT 1
+            """,
+            (CLAIMABLE_STATUS, now),
         ).fetchone()
         if row is None:
             return None
+        attempt_number = int(row["attempt_count"] or 0) + 1
+        attempt_id = f"attempt_{uuid4().hex}"
         updated = conn.execute(
             """
             UPDATE run_jobs
-            SET status = ?, current_phase = ?, progress = ?, started_at = COALESCE(started_at, ?), updated_at = ?,
-                worker_id = ?, lease_expires_at = ?, attempt_count = COALESCE(attempt_count, 0) + 1
+            SET status = ?, started_at = COALESCE(started_at, ?), updated_at = ?,
+                worker_id = ?, lease_expires_at = ?, attempt_count = ?, current_attempt_id = ?,
+                next_attempt_at = NULL, terminal_reason = NULL, error_code = NULL, error_message = NULL
             WHERE run_id = ? AND status = ?
             """,
-            ("preparing", "scenario_compile", 5, now, now, worker_id, lease_expires_at, row["run_id"], CLAIMABLE_STATUS),
+            ("preparing", now, now, worker_id, lease_expires_at, attempt_number, attempt_id, row["run_id"], CLAIMABLE_STATUS),
         )
         if updated.rowcount != 1:
             return None
-    append_event(row["run_id"], "WORKER", "scenario_compile", "Worker claimed run", "独立本地 worker 已领取任务。", payload={"status": "preparing", "worker_id": worker_id, "lease_expires_at": lease_expires_at})
+        conn.execute(
+            """
+            INSERT INTO run_attempts
+            (attempt_id, run_id, worker_id, attempt_number, status, started_at)
+            VALUES (?, ?, ?, ?, 'running', ?)
+            """,
+            (attempt_id, row["run_id"], worker_id, attempt_number, now),
+        )
+    append_event(
+        row["run_id"], "WORKER", row["current_phase"], "Worker claimed run", "独立本地 worker 已领取任务。",
+        payload={
+            "status": "preparing", "worker_id": worker_id, "lease_expires_at": lease_expires_at,
+            "attempt_id": attempt_id, "attempt_number": attempt_number,
+        },
+    )
     return get_job(row["run_id"])
 
 
@@ -177,11 +232,11 @@ def heartbeat_job(run_id: str, worker_id: str | None, *, lease_seconds: int = 30
 def recover_stale_jobs(*, recovered_by: str = "worker-recovery", now: str | None = None) -> list[RunJobStatus]:
     init_db()
     cutoff = now or now_iso()
-    recovered: list[tuple[str, str, str]] = []
+    recovered: list[tuple[str, str, str, str | None]] = []
     with connect() as conn:
         rows = conn.execute(
             """
-            SELECT run_id, status, current_phase FROM run_jobs
+            SELECT run_id, status, current_phase, current_attempt_id, attempt_count, max_attempts FROM run_jobs
             WHERE status IN ('preparing', 'running', 'pausing', 'cancelling')
               AND lease_expires_at IS NOT NULL AND lease_expires_at < ?
             ORDER BY updated_at ASC
@@ -189,26 +244,46 @@ def recover_stale_jobs(*, recovered_by: str = "worker-recovery", now: str | None
             (cutoff,),
         ).fetchall()
         for row in rows:
-            next_status = "paused" if row["status"] == "pausing" else "cancelled" if row["status"] == "cancelling" else "queued"
-            completed_at = cutoff if next_status == "cancelled" else None
+            attempts_exhausted = int(row["attempt_count"] or 0) >= int(row["max_attempts"] or 3)
+            next_status = (
+                "paused" if row["status"] == "pausing"
+                else "cancelled" if row["status"] == "cancelling"
+                else "failed" if attempts_exhausted
+                else "queued"
+            )
+            completed_at = cutoff if next_status in TERMINAL_STATUSES else None
+            terminal_reason = "stale_lease_attempts_exhausted" if next_status == "failed" else (
+                "user_cancelled" if next_status == "cancelled" else "stale_lease_recovered"
+            )
             conn.execute(
                 """
                 UPDATE run_jobs
-                SET status = ?, worker_id = NULL, lease_expires_at = NULL, updated_at = ?, completed_at = COALESCE(?, completed_at)
+                SET status = ?, worker_id = NULL, lease_expires_at = NULL, updated_at = ?,
+                    completed_at = COALESCE(?, completed_at), terminal_reason = ?
                 WHERE run_id = ? AND status = ?
                 """,
-                (next_status, cutoff, completed_at, row["run_id"], row["status"]),
+                (next_status, cutoff, completed_at, terminal_reason, row["run_id"], row["status"]),
             )
-            recovered.append((row["run_id"], row["current_phase"], next_status))
+            if row["current_attempt_id"]:
+                conn.execute(
+                    """
+                    UPDATE run_attempts
+                    SET status = ?, completed_at = ?, error_code = 'WorkerLeaseExpired',
+                        error_message = 'Worker lease expired before the next verified step boundary'
+                    WHERE attempt_id = ? AND status = 'running'
+                    """,
+                    ("failed" if next_status == "failed" else "abandoned", cutoff, row["current_attempt_id"]),
+                )
+            recovered.append((row["run_id"], row["current_phase"], next_status, row["current_attempt_id"]))
     results = []
-    for run_id, phase, next_status in recovered:
+    for run_id, phase, next_status, attempt_id in recovered:
         append_event(
             run_id,
             "WORKER",
             phase,
             "Stale worker lease recovered",
             "检测到 worker 租约过期，任务已按阶段边界语义安全恢复。",
-            payload={"status": next_status, "recovered_by": recovered_by},
+            payload={"status": next_status, "recovered_by": recovered_by, "attempt_id": attempt_id},
         )
         results.append(get_job(run_id))
     return results
@@ -223,6 +298,7 @@ def update_job_status(
     result_run_id: str | None = None,
     error_code: str | None = None,
     error_message: str | None = None,
+    terminal_reason: str | None = None,
     completed: bool = False,
 ) -> RunJobStatus:
     current = get_job(run_id)
@@ -237,12 +313,79 @@ def update_job_status(
             UPDATE run_jobs
             SET status = ?, current_phase = ?, progress = ?, result_run_id = COALESCE(?, result_run_id),
                 error_code = ?, error_message = ?, updated_at = ?, completed_at = ?,
+                terminal_reason = COALESCE(?, terminal_reason),
                 worker_id = CASE WHEN ? THEN NULL ELSE worker_id END,
                 lease_expires_at = CASE WHEN ? THEN NULL ELSE lease_expires_at END
             WHERE run_id = ?
             """,
-            (status, next_phase, next_progress, result_run_id, error_code, redact_secrets(error_message), now, completed_at, clear_owner, clear_owner, run_id),
+            (status, next_phase, next_progress, result_run_id, error_code, redact_secrets(error_message), now, completed_at, terminal_reason, clear_owner, clear_owner, run_id),
         )
+        if current.current_attempt_id and status in {"completed", "paused", "cancelled", "failed"}:
+            conn.execute(
+                """
+                UPDATE run_attempts
+                SET status = ?, completed_at = COALESCE(completed_at, ?), error_code = COALESCE(?, error_code),
+                    error_message = COALESCE(?, error_message)
+                WHERE attempt_id = ? AND status = 'running'
+                """,
+                (status, now, error_code, redact_secrets(error_message), current.current_attempt_id),
+            )
+    return get_job(run_id)
+
+
+def handle_attempt_failure(run_id: str, error: Exception) -> RunJobStatus:
+    job = get_job(run_id)
+    safe_error = redact_secrets(str(error)) or "Lifecycle execution failed"
+    error_code = type(error).__name__
+    now = now_iso()
+    exhausted = job.attempt_count >= job.max_attempts
+    if exhausted:
+        return update_job_status(
+            run_id,
+            status="failed",
+            progress=job.progress,
+            error_code=error_code,
+            error_message=safe_error,
+            terminal_reason="max_attempts_exhausted",
+            completed=True,
+        )
+
+    delay_seconds = min(60, 2 ** max(0, job.attempt_count - 1))
+    next_attempt_at = (datetime.now() + timedelta(seconds=delay_seconds)).isoformat(timespec="milliseconds")
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE run_jobs
+            SET status = 'queued', next_attempt_at = ?, terminal_reason = 'retry_scheduled',
+                error_code = ?, error_message = ?, updated_at = ?, worker_id = NULL, lease_expires_at = NULL
+            WHERE run_id = ?
+            """,
+            (next_attempt_at, error_code, safe_error, now, run_id),
+        )
+        if job.current_attempt_id:
+            conn.execute(
+                """
+                UPDATE run_attempts
+                SET status = 'failed', completed_at = ?, error_code = ?, error_message = ?
+                WHERE attempt_id = ? AND status = 'running'
+                """,
+                (now, error_code, safe_error, job.current_attempt_id),
+            )
+    append_event(
+        run_id,
+        "WORKER",
+        job.current_phase,
+        "Run retry scheduled",
+        "当前执行尝试失败，任务将在指数退避后从最近有效检查点继续。",
+        payload={
+            "status": "queued",
+            "attempt_id": job.current_attempt_id,
+            "attempt_number": job.attempt_count,
+            "max_attempts": job.max_attempts,
+            "next_attempt_at": next_attempt_at,
+            "error": error_code,
+        },
+    )
     return get_job(run_id)
 
 
@@ -274,7 +417,12 @@ def resume_job(run_id: str) -> RunJobStatus:
     now = now_iso()
     with connect() as conn:
         conn.execute(
-            "UPDATE run_jobs SET status = ?, pause_requested_at = NULL, worker_id = NULL, lease_expires_at = NULL, updated_at = ? WHERE run_id = ?",
+            """
+            UPDATE run_jobs
+            SET status = ?, pause_requested_at = NULL, worker_id = NULL, lease_expires_at = NULL,
+                next_attempt_at = NULL, terminal_reason = NULL, completed_at = NULL, updated_at = ?
+            WHERE run_id = ?
+            """,
             ("queued", now, run_id),
         )
     append_event(run_id, "WORKER", job.current_phase, "Run resumed", "任务已恢复排队，等待 worker 继续处理。", payload={"status": "queued"})
@@ -289,9 +437,25 @@ def cancel_job(run_id: str) -> RunJobStatus:
     next_status = "cancelled" if job.status in {"queued", "paused"} else "cancelling"
     with connect() as conn:
         conn.execute(
-            "UPDATE run_jobs SET status = ?, cancel_requested_at = ?, updated_at = ?, completed_at = CASE WHEN ? = 'cancelled' THEN ? ELSE completed_at END, worker_id = CASE WHEN ? = 'cancelled' THEN NULL ELSE worker_id END, lease_expires_at = CASE WHEN ? = 'cancelled' THEN NULL ELSE lease_expires_at END WHERE run_id = ?",
-            (next_status, now, now, next_status, now, next_status, next_status, run_id),
+            """
+            UPDATE run_jobs
+            SET status = ?, cancel_requested_at = ?, updated_at = ?,
+                completed_at = CASE WHEN ? = 'cancelled' THEN ? ELSE completed_at END,
+                terminal_reason = CASE WHEN ? = 'cancelled' THEN 'user_cancelled' ELSE terminal_reason END,
+                worker_id = CASE WHEN ? = 'cancelled' THEN NULL ELSE worker_id END,
+                lease_expires_at = CASE WHEN ? = 'cancelled' THEN NULL ELSE lease_expires_at END
+            WHERE run_id = ?
+            """,
+            (next_status, now, now, next_status, now, next_status, next_status, next_status, run_id),
         )
+        if next_status == "cancelled" and job.current_attempt_id:
+            conn.execute(
+                """
+                UPDATE run_attempts SET status = 'cancelled', completed_at = ?
+                WHERE attempt_id = ? AND status = 'running'
+                """,
+                (now, job.current_attempt_id),
+            )
     append_event(run_id, "WORKER", job.current_phase, "Cancel requested", "取消请求已记录；未完成任务不会投影到 research_runs。", payload={"status": next_status})
     return get_job(run_id)
 
@@ -307,6 +471,7 @@ def retry_job(run_id: str) -> RunJobStatus:
             scenario=job.scenario,
             seed=job.seed,
             parent_run_id=job.run_id,
+            max_attempts=job.max_attempts,
         ),
     )
 
@@ -351,6 +516,57 @@ def get_steps(run_id: str):
     from .steps import get_steps as query_steps
 
     return query_steps(run_id)
+
+
+def get_attempts(run_id: str) -> list[RunAttemptRecord]:
+    init_db()
+    _ensure_job_exists(run_id)
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM run_attempts WHERE run_id = ? ORDER BY attempt_number ASC",
+            (run_id,),
+        ).fetchall()
+    return [
+        RunAttemptRecord(
+            attempt_id=row["attempt_id"],
+            run_id=row["run_id"],
+            worker_id=row["worker_id"],
+            attempt_number=int(row["attempt_number"]),
+            status=row["status"],
+            resume_from_step=row["resume_from_step"],
+            started_at=row["started_at"],
+            completed_at=row["completed_at"],
+            error_code=row["error_code"],
+            error_message=row["error_message"],
+        )
+        for row in rows
+    ]
+
+
+def set_attempt_resume_step(attempt_id: str, step_key: str | None) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE run_attempts SET resume_from_step = ? WHERE attempt_id = ?",
+            (step_key, attempt_id),
+        )
+
+
+def get_artifact_content_by_id(run_id: str, artifact_id: str) -> dict:
+    return get_artifact_record_by_id(run_id, artifact_id)[1]
+
+
+def get_artifact_record_by_id(run_id: str, artifact_id: str) -> tuple[str, dict]:
+    init_db()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT artifact_type, content_json, sha256 FROM run_artifacts WHERE run_id = ? AND artifact_id = ?",
+            (run_id, artifact_id),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=409, detail=f"Checkpoint artifact is missing: {artifact_id}")
+    if _artifact_digest(row["content_json"]) != row["sha256"]:
+        raise HTTPException(status_code=409, detail=f"Checkpoint artifact integrity verification failed: {row['artifact_type']}")
+    return row["artifact_type"], loads(row["content_json"], {})
 
 
 def get_latest_artifact_content(run_id: str, artifact_type: str) -> dict | None:
@@ -403,6 +619,7 @@ def get_audit(run_id: str) -> dict:
         "events": [event.model_dump() for event in get_events(run_id)],
         "artifacts": [artifact.model_dump() for artifact in get_artifacts(run_id)],
         "steps": [step.model_dump() for step in get_steps(run_id)],
+        "attempts": [attempt.model_dump() for attempt in get_attempts(run_id)],
         "integrity": verify_artifacts(run_id),
         "consistency_audit": get_latest_artifact_content(run_id, "consistency_audit"),
         "agent_runtime": get_latest_artifact_content(run_id, "agent_runtime_audit"),
@@ -461,6 +678,10 @@ def _job_from_row(row) -> RunJobStatus:
         worker_id=row["worker_id"],
         lease_expires_at=row["lease_expires_at"],
         attempt_count=int(row["attempt_count"] or 0),
+        current_attempt_id=row["current_attempt_id"],
+        max_attempts=int(row["max_attempts"] or 3),
+        next_attempt_at=row["next_attempt_at"],
+        terminal_reason=row["terminal_reason"],
     )
 
 
@@ -497,3 +718,16 @@ def _artifact_digest(body: str) -> str:
 def _lease_expiry(lease_seconds: int) -> str:
     seconds = max(10, min(int(lease_seconds), 3600))
     return (datetime.now() + timedelta(seconds=seconds)).isoformat(timespec="milliseconds")
+
+
+def _normalize_idempotency_key(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Idempotency-Key cannot be empty")
+    if len(normalized) > 200:
+        raise HTTPException(status_code=400, detail="Idempotency-Key cannot exceed 200 characters")
+    if any(ord(char) < 33 or ord(char) > 126 for char in normalized):
+        raise HTTPException(status_code=400, detail="Idempotency-Key must contain printable ASCII characters only")
+    return normalized

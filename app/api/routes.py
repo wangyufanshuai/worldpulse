@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 
 from app.core.models import (
@@ -129,8 +129,12 @@ def research_project_war_room_run(project_id: str, request: WarRoomScenarioReque
 
 
 @router.post("/v2/projects/{project_id}/runs", response_model=RunJobStatus)
-def lifecycle_run_create(project_id: str, request: RunJobCreateRequest) -> RunJobStatus:
-    return run_lifecycle.create_job(project_id, request)
+def lifecycle_run_create(
+    project_id: str,
+    request: RunJobCreateRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> RunJobStatus:
+    return run_lifecycle.create_job(project_id, request, idempotency_key=idempotency_key)
 
 
 @router.get("/v2/runs/{run_id}", response_model=RunJobStatus)

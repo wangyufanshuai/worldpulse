@@ -2385,6 +2385,13 @@
             "title": "Engine Mode",
             "type": "string"
           },
+          "max_attempts": {
+            "default": 3,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
           "parent_run_id": {
             "anyOf": [
               {
@@ -2449,6 +2456,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "current_attempt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Attempt Id"
+          },
           "current_phase": {
             "title": "Current Phase",
             "type": "string"
@@ -2489,6 +2507,22 @@
               }
             ],
             "title": "Lease Expires At"
+          },
+          "max_attempts": {
+            "default": 3,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
           },
           "parent_run_id": {
             "anyOf": [
@@ -2567,6 +2601,17 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "terminal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Reason"
           },
           "updated_at": {
             "title": "Updated At",
@@ -6339,6 +6384,22 @@
             "schema": {
               "title": "Project Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           }
         ],

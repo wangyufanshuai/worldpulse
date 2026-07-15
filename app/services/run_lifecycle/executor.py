@@ -15,7 +15,7 @@ from app.services.projects import persist_war_room_result
 from app.services.security import redact_secrets
 from app.services.war_room_engine import run_war_room
 
-from . import repository, steps
+from . import checkpoints, repository, steps
 
 
 PHASES = [
@@ -37,16 +37,16 @@ def process_one_queued_job(worker_id: str | None = None) -> RunJobStatus | None:
     except Exception as exc:  # pragma: no cover - defensive audit path
         steps.fail_active_step(job.run_id, exc)
         safe_error = redact_secrets(str(exc)) or "Lifecycle execution failed"
-        repository.append_event(job.run_id, "WORKER", job.current_phase, "Run failed", safe_error, payload={"error": type(exc).__name__})
-        return repository.update_job_status(
+        current = repository.get_job(job.run_id)
+        repository.append_event(
             job.run_id,
-            status="failed",
-            phase=job.current_phase,
-            progress=job.progress,
-            error_code=type(exc).__name__,
-            error_message=safe_error,
-            completed=True,
+            "WORKER",
+            current.current_phase,
+            "Run attempt failed",
+            safe_error,
+            payload={"error": type(exc).__name__, "attempt_id": current.current_attempt_id},
         )
+        return repository.handle_attempt_failure(job.run_id, exc)
 
 
 def process_job(run_id: str) -> RunJobStatus:
@@ -80,15 +80,35 @@ def process_job(run_id: str) -> RunJobStatus:
     lifecycle_started = perf_counter()
     phase_durations_ms: dict[str, int] = {}
     scenario = WarRoomScenarioRequest(**job.scenario)
-    attempt_id = steps.attempt_id_for(run_id, job.attempt_count)
+    attempt_id = job.current_attempt_id
+    if not attempt_id:
+        raise HTTPException(status_code=409, detail="Lifecycle job has no active execution attempt")
 
-    result = None
-    proposals = []
-    constraint_context = None
-    report = None
-    result_run_id = None
-    previous_step = None
-    for index, (phase, progress, event_type, title, detail) in enumerate(PHASES):
+    checkpoint = checkpoints.load_verified_checkpoint(job)
+    repository.set_attempt_resume_step(attempt_id, checkpoint.next_step_key)
+    result = checkpoint.result
+    proposals = checkpoint.proposals
+    constraint_context = checkpoint.constraint_context
+    report = checkpoint.report
+    result_run_id = checkpoint.result_run_id
+    previous_step = checkpoint.previous_step
+    start_index = len(checkpoint.completed_steps)
+    if checkpoint.completed_steps:
+        repository.append_event(
+            run_id,
+            "SNAPSHOT",
+            checkpoint.completed_steps[-1].step_key,
+            "Verified checkpoint restored",
+            "已验证阶段版本、输入链、输出 Hash 与 Artifact 完整性；后续执行从下一个阶段继续。",
+            payload={
+                "attempt_id": attempt_id,
+                "completed_step_count": start_index,
+                "last_step_id": checkpoint.completed_steps[-1].step_id,
+                "resume_from_step": checkpoint.next_step_key,
+            },
+        )
+
+    for index, (phase, progress, event_type, title, detail) in enumerate(PHASES[start_index:], start=start_index):
         phase_started = perf_counter()
         repository.heartbeat_job(run_id, worker_id)
         interrupted = _apply_boundary_control(run_id)
@@ -299,7 +319,15 @@ def process_job(run_id: str) -> RunJobStatus:
             "engine_mode": job.engine_mode,
         },
     )
-    return repository.update_job_status(run_id, status="completed", phase="replay_archive", progress=100, result_run_id=result_run_id, completed=True)
+    return repository.update_job_status(
+        run_id,
+        status="completed",
+        phase="replay_archive",
+        progress=100,
+        result_run_id=result_run_id,
+        terminal_reason="completed",
+        completed=True,
+    )
 
 
 def _apply_boundary_control(run_id: str) -> RunJobStatus | None:
