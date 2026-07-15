@@ -2,7 +2,11 @@
 
 ## 1.1.0-dev - Unreleased
 
-- Aligning release, deployment, lifecycle checkpoint, concurrency, verification, and operational contracts for the V1.1 internal trial baseline.
+- Added versioned six-stage lifecycle step contracts and verified checkpoint recovery.
+- Added attempt lineage, idempotent run creation, exponential retry/backoff, terminal reasons, atomic SQLite event sequencing, and artifact lineage.
+- Added fault-injection, security corpus, Vitest composable coverage, Chromium E2E map/lifecycle coverage, and 10 Golden Scenario fixtures.
+- Added lifecycle health summary, phase P50/P95, stale/recovery and integrity metrics, plus step/attempt/artifact UI audit tables.
+- V1.1 remains an internal trial: deterministic War Room values are authoritative; Agent/LLM actions remain bounded proposals and Replay remains offline.
 
 ## 1.0.0 - 2026-07-15
 

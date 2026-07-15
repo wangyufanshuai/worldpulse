@@ -81,9 +81,13 @@ http://127.0.0.1:8010
 
 ## API
 
+V1.1 可信运行文档：[`lifecycle-step-contract.md`](docs/architecture/lifecycle-step-contract.md)、[`checkpoint-and-recovery.md`](docs/architecture/checkpoint-and-recovery.md)、[`idempotent-run-creation.md`](docs/api/idempotent-run-creation.md)。Golden Scenario、故障注入、备份和事故响应见 `docs/testing` 与 `docs/runbooks`。
+
 V2 生命周期 API 参见 [`docs/api/v2-run-lifecycle.md`](docs/api/v2-run-lifecycle.md)，混合引擎边界参见 [`docs/architecture/v1-hybrid-engine.md`](docs/architecture/v1-hybrid-engine.md)。
 
 - `GET /api/health`：健康检查
+- `GET /api/version`：应用与 API 合同版本
+- `GET /api/v2/lifecycle/health`：生命周期队列、阶段耗时、恢复和制品完整性摘要
 - `GET /api/risk/latest`：最新综合风险
 - `GET /api/risk/overview`：最新综合风险 + 历史曲线，供看板一次性加载
 - `GET /api/risk/history`：历史风险曲线
