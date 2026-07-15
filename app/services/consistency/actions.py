@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.services.agent_contract.models import AgentActionProposal, AgentConstraintContext
 
 from .hashing import stable_hash
-from .models import AgentActionDecision
+from .models import ACTION_AUDIT_RULE_VERSION, AgentActionDecision
 from .rules import _finding
 
 
@@ -28,6 +28,22 @@ def evaluate_action_proposals(
     consumed: dict[tuple[str, int], int] = {}
     for proposal in sorted(proposals, key=lambda item: (item.turn, item.proposal_id)):
         findings = []
+        if proposal.expires_after_turn is not None and proposal.turn > proposal.expires_after_turn:
+            findings.append(_finding(
+                "CONSISTENCY.ACTION_EXPIRY.V1",
+                category="temporal",
+                status="warning",
+                severity="warning",
+                subject_type="agent_action",
+                subject_id=proposal.proposal_id,
+                message_zh="鎻愭瓒呭嚭鏈夋晥鍥炲悎锛屼笉寰楄繘鍏ユ暟鍊兼姇褰便€?",
+                expected={"expires_after_turn": proposal.expires_after_turn},
+                actual={"turn": proposal.turn},
+                evidence_refs=[proposal.proposal_id],
+                suggested_action="閲嶆柊鐢熸垚鎻愭鎴栧皢鍏舵爣璁颁负 expired銆?",
+            ))
+            decisions.append(_decision(proposal, "not_evaluated", findings, outcome="expired", rejection_reason="proposal_expired"))
+            continue
         if context is None:
             findings.append(_finding(
                 "CONSISTENCY.ACTION_CONTEXT.V1",
@@ -41,7 +57,7 @@ def evaluate_action_proposals(
                 actual="unavailable",
                 suggested_action="提供版本化能力信封和动作预算。",
             ))
-            decisions.append(_decision(proposal, "not_evaluated", findings))
+            decisions.append(_decision(proposal, "not_evaluated", findings, outcome="expired", rejection_reason="evaluation_context_missing"))
             continue
 
         allowed = context.actor_capabilities.get(proposal.actor_id)
@@ -160,11 +176,27 @@ def evaluate_action_proposals(
             status = "needs_revision"
         else:
             status = "accepted"
-        decisions.append(_decision(proposal, status, findings))
+        canonical_outcome = {
+            "accepted": "accepted",
+            "rejected": "rejected",
+            "needs_revision": "constrained",
+            "not_evaluated": "expired",
+        }[status]
+        rejection_reason = None
+        if status != "accepted":
+            rejection_reason = _reason_for(findings, status)
+        decisions.append(_decision(proposal, status, findings, outcome=canonical_outcome, rejection_reason=rejection_reason))
     return decisions
 
 
-def _decision(proposal: AgentActionProposal, status: str, findings: list) -> AgentActionDecision:
+def _decision(
+    proposal: AgentActionProposal,
+    status: str,
+    findings: list,
+    *,
+    outcome: str | None = None,
+    rejection_reason: str | None = None,
+) -> AgentActionDecision:
     explanations = {
         "accepted": "结构、能力信封、动作预算、目标和证据引用均通过合同检查。",
         "rejected": "动作违反强制约束，已拒绝且不会修改确定性世界状态。",
@@ -177,5 +209,27 @@ def _decision(proposal: AgentActionProposal, status: str, findings: list) -> Age
         "rule_findings": [finding.model_dump(mode="json") for finding in findings],
         "evidence_refs": proposal.evidence_refs,
         "explanation_zh": explanations[status],
+        "outcome": outcome or {
+            "accepted": "accepted",
+            "rejected": "rejected",
+            "needs_revision": "constrained",
+            "not_evaluated": "expired",
+        }[status],
+        "input_hash": stable_hash(proposal.model_dump(mode="json")),
+        "rule_version": ACTION_AUDIT_RULE_VERSION,
+        "rejection_reason": rejection_reason,
+        "projection_status": "not_projected",
     }
     return AgentActionDecision(**payload, audit_hash=stable_hash(payload))
+
+
+def _reason_for(findings: list, status: str) -> str:
+    if status == "rejected":
+        for finding in findings:
+            if finding.severity == "error":
+                return finding.rule_id
+    if status == "needs_revision":
+        for finding in findings:
+            if finding.severity == "warning":
+                return finding.rule_id
+    return "evaluation_incomplete"

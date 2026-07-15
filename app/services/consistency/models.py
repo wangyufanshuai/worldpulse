@@ -11,6 +11,10 @@ FindingStatus = Literal["warning", "failed", "not_evaluated"]
 FindingCategory = Literal["schema", "capability", "resource", "causal", "temporal", "evidence"]
 FindingSeverity = Literal["info", "warning", "error"]
 ActionDecisionStatus = Literal["accepted", "rejected", "needs_revision", "not_evaluated"]
+ActionOutcomeStatus = Literal["accepted", "rejected", "constrained", "expired"]
+ProjectionStatus = Literal["not_projected", "projected", "constrained", "blocked"]
+
+ACTION_AUDIT_RULE_VERSION = "worldpulse-consistency.v1.2"
 
 
 class ConsistencyFinding(BaseModel):
@@ -35,6 +39,14 @@ class AgentActionDecision(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
     explanation_zh: str
     audit_hash: str
+    # V1.2 additive audit contract. The legacy decision field remains intact
+    # for v1/v2 consumers; outcome is the canonical lifecycle status.
+    outcome: ActionOutcomeStatus = "accepted"
+    input_hash: str = ""
+    rule_version: str = ACTION_AUDIT_RULE_VERSION
+    rejection_reason: str | None = None
+    projection_status: ProjectionStatus = "not_projected"
+    projection_hash: str | None = None
 
 
 class ConsistencyAuditReport(BaseModel):

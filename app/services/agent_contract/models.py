@@ -49,6 +49,7 @@ class AgentActionProposal(BaseModel):
     expected_direction: ExpectedDirection
     confidence: float = Field(ge=0, le=100)
     created_at: str
+    expires_after_turn: int | None = Field(default=None, ge=0, le=100)
 
     @model_validator(mode="before")
     @classmethod

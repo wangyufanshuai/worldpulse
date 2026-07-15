@@ -59,6 +59,14 @@ def evaluate_war_room_result(
         "rejected_action_count": sum(1 for decision in proposal_decisions if decision.decision == "rejected"),
         "needs_revision_action_count": sum(1 for decision in proposal_decisions if decision.decision == "needs_revision"),
         "not_evaluated_action_count": sum(1 for decision in proposal_decisions if decision.decision == "not_evaluated"),
+        "constrained_action_count": sum(1 for decision in proposal_decisions if decision.outcome == "constrained"),
+        "expired_action_count": sum(1 for decision in proposal_decisions if decision.outcome == "expired"),
+        "action_pass_rate": round(
+            sum(1 for decision in proposal_decisions if decision.outcome == "accepted") / len(proposal_decisions),
+            4,
+        ) if proposal_decisions else None,
+        "action_audit_rule_version": "worldpulse-consistency.v1.2",
+        "action_audit_count": len(proposal_decisions),
     }
     schema_version = "consistency-audit.v2" if proposals else "consistency-audit.v1"
     audit_payload = {
