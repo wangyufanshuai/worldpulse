@@ -133,6 +133,16 @@ def init_db() -> None:
                 content_json TEXT NOT NULL,
                 sha256 TEXT NOT NULL,
                 created_at TEXT NOT NULL,
+                attempt_id TEXT,
+                step_id TEXT,
+                artifact_version INTEGER NOT NULL DEFAULT 1,
+                supersedes_artifact_id TEXT,
+                FOREIGN KEY(run_id) REFERENCES run_jobs(run_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS run_event_counters (
+                run_id TEXT PRIMARY KEY,
+                next_seq INTEGER NOT NULL DEFAULT 1,
                 FOREIGN KEY(run_id) REFERENCES run_jobs(run_id)
             );
 
@@ -186,6 +196,14 @@ def init_db() -> None:
         _ensure_column(conn, "run_jobs", "terminal_reason", "TEXT")
         _ensure_column(conn, "run_jobs", "request_hash", "TEXT")
         _ensure_column(conn, "run_jobs", "idempotency_key", "TEXT")
+        _ensure_column(conn, "run_artifacts", "attempt_id", "TEXT")
+        _ensure_column(conn, "run_artifacts", "step_id", "TEXT")
+        _ensure_column(conn, "run_artifacts", "artifact_version", "INTEGER NOT NULL DEFAULT 1")
+        _ensure_column(conn, "run_artifacts", "supersedes_artifact_id", "TEXT")
+        conn.execute(
+            "INSERT OR IGNORE INTO run_event_counters(run_id, next_seq) "
+            "SELECT run_id, COALESCE(MAX(seq), 0) + 1 FROM run_events GROUP BY run_id"
+        )
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_run_jobs_project_idempotency "
             "ON run_jobs(project_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
@@ -197,6 +215,10 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_run_attempts_run_number "
             "ON run_attempts(run_id, attempt_number)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_run_artifacts_lineage "
+            "ON run_artifacts(run_id, artifact_type, attempt_id, artifact_version)"
         )
 
 

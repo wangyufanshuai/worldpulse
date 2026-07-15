@@ -49,7 +49,9 @@ def create_job(
     )
     run_id = f"job_{uuid4().hex[:12]}"
     now = now_iso()
+    existing_run_id: str | None = None
     with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         project = conn.execute("SELECT project_id FROM research_projects WHERE project_id = ?", (project_id,)).fetchone()
         if project is None:
             raise HTTPException(status_code=404, detail=f"Unknown project: {project_id}")
@@ -61,8 +63,9 @@ def create_job(
             if existing is not None:
                 if existing["request_hash"] != request_hash:
                     raise HTTPException(status_code=409, detail="Idempotency-Key was already used with a different request")
-                return get_job(existing["run_id"])
-        conn.execute(
+                existing_run_id = existing["run_id"]
+        if existing_run_id is None:
+            conn.execute(
             """
             INSERT INTO run_jobs
             (run_id, project_id, engine_mode, status, current_phase, progress, seed, parent_run_id,
@@ -84,8 +87,10 @@ def create_job(
                 request.max_attempts,
                 request_hash,
                 normalized_key,
-            ),
-        )
+                ),
+            )
+    if existing_run_id is not None:
+        return get_job(existing_run_id)
     append_event(
         run_id,
         "WORKER",
@@ -137,11 +142,20 @@ def append_event(
     safe_detail = redact_secrets(detail, max_length=2000) or ""
     safe_payload = redact_structure(payload or {})
     with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         job = conn.execute("SELECT run_id FROM run_jobs WHERE run_id = ?", (run_id,)).fetchone()
         if job is None:
             raise HTTPException(status_code=404, detail=f"Unknown lifecycle run: {run_id}")
-        last = conn.execute("SELECT COALESCE(MAX(seq), 0) AS seq FROM run_events WHERE run_id = ?", (run_id,)).fetchone()
-        seq = int(last["seq"]) + 1
+        conn.execute("INSERT OR IGNORE INTO run_event_counters(run_id, next_seq) VALUES (?, 1)", (run_id,))
+        counter = conn.execute(
+            "SELECT next_seq FROM run_event_counters WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        seq = int(counter["next_seq"])
+        conn.execute(
+            "UPDATE run_event_counters SET next_seq = ? WHERE run_id = ?",
+            (seq + 1, run_id),
+        )
         conn.execute(
             """
             INSERT INTO run_events
@@ -169,6 +183,7 @@ def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300) ->
     now = now_iso()
     lease_expires_at = _lease_expiry(lease_seconds)
     with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
             """
             SELECT * FROM run_jobs
@@ -234,6 +249,7 @@ def recover_stale_jobs(*, recovered_by: str = "worker-recovery", now: str | None
     cutoff = now or now_iso()
     recovered: list[tuple[str, str, str, str | None]] = []
     with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         rows = conn.execute(
             """
             SELECT run_id, status, current_phase, current_attempt_id, attempt_count, max_attempts FROM run_jobs
@@ -476,10 +492,55 @@ def retry_job(run_id: str) -> RunJobStatus:
     )
 
 
-def add_artifact(run_id: str, artifact_type: str, schema_version: str, content: dict) -> RunArtifactSummary:
+def add_artifact(
+    run_id: str,
+    artifact_type: str,
+    schema_version: str,
+    content: dict,
+    *,
+    attempt_id: str | None = None,
+    step_id: str | None = None,
+    supersedes_artifact_id: str | None = None,
+) -> RunArtifactSummary:
     init_db()
     body = dumps(content)
     sha256 = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    with connect() as conn:
+        job = conn.execute(
+            "SELECT current_attempt_id FROM run_jobs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Unknown lifecycle run: {run_id}")
+        attempt_id = attempt_id or job["current_attempt_id"]
+        if step_id is None and attempt_id:
+            active_step = conn.execute(
+                """
+                SELECT step_id FROM run_steps
+                WHERE run_id = ? AND attempt_id = ? AND status = 'running'
+                ORDER BY started_at DESC, rowid DESC LIMIT 1
+                """,
+                (run_id, attempt_id),
+            ).fetchone()
+            step_id = active_step["step_id"] if active_step else None
+        if supersedes_artifact_id is None:
+            previous = conn.execute(
+                """
+                SELECT artifact_id FROM run_artifacts
+                WHERE run_id = ? AND artifact_type = ?
+                ORDER BY created_at DESC, rowid DESC LIMIT 1
+                """,
+                (run_id, artifact_type),
+            ).fetchone()
+            supersedes_artifact_id = previous["artifact_id"] if previous else None
+        version_row = conn.execute(
+            """
+            SELECT COALESCE(MAX(artifact_version), 0) AS version
+            FROM run_artifacts WHERE run_id = ? AND artifact_type = ?
+            """,
+            (run_id, artifact_type),
+        ).fetchone()
+        artifact_version = int(version_row["version"] or 0) + 1
     artifact = RunArtifactSummary(
         artifact_id=f"artifact_{uuid4().hex[:12]}",
         run_id=run_id,
@@ -487,15 +548,24 @@ def add_artifact(run_id: str, artifact_type: str, schema_version: str, content: 
         schema_version=schema_version,
         sha256=sha256,
         created_at=now_iso(),
+        attempt_id=attempt_id,
+        step_id=step_id,
+        artifact_version=artifact_version,
+        supersedes_artifact_id=supersedes_artifact_id,
     )
     with connect() as conn:
         conn.execute(
             """
             INSERT INTO run_artifacts
-            (artifact_id, run_id, artifact_type, schema_version, content_json, sha256, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (artifact_id, run_id, artifact_type, schema_version, content_json, sha256, created_at,
+             attempt_id, step_id, artifact_version, supersedes_artifact_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (artifact.artifact_id, artifact.run_id, artifact.artifact_type, artifact.schema_version, body, artifact.sha256, artifact.created_at),
+            (
+                artifact.artifact_id, artifact.run_id, artifact.artifact_type, artifact.schema_version,
+                body, artifact.sha256, artifact.created_at, artifact.attempt_id, artifact.step_id,
+                artifact.artifact_version, artifact.supersedes_artifact_id,
+            ),
         )
     return artifact
 
@@ -505,7 +575,11 @@ def get_artifacts(run_id: str) -> list[RunArtifactSummary]:
     _ensure_job_exists(run_id)
     with connect() as conn:
         rows = conn.execute(
-            "SELECT artifact_id, run_id, artifact_type, schema_version, content_json, sha256, created_at FROM run_artifacts WHERE run_id = ? ORDER BY created_at ASC",
+            """
+            SELECT artifact_id, run_id, artifact_type, schema_version, content_json, sha256, created_at,
+                   attempt_id, step_id, artifact_version, supersedes_artifact_id
+            FROM run_artifacts WHERE run_id = ? ORDER BY created_at ASC, rowid ASC
+            """,
             (run_id,),
         ).fetchall()
     return [_artifact_from_row(row) for row in rows]
@@ -575,9 +649,16 @@ def get_latest_artifact_content(run_id: str, artifact_type: str) -> dict | None:
     with connect() as conn:
         row = conn.execute(
             """
-            SELECT content_json, sha256 FROM run_artifacts
-            WHERE run_id = ? AND artifact_type = ?
-            ORDER BY created_at DESC, rowid DESC LIMIT 1
+            SELECT a.content_json, a.sha256
+            FROM run_artifacts AS a
+            LEFT JOIN run_attempts AS attempt ON attempt.attempt_id = a.attempt_id
+            LEFT JOIN run_steps AS step ON step.step_id = a.step_id
+            WHERE a.run_id = ? AND a.artifact_type = ?
+              AND (a.attempt_id IS NULL OR attempt.status IN ('running', 'completed'))
+            ORDER BY COALESCE(attempt.attempt_number, 0) DESC,
+                     COALESCE(step.completed_at, step.started_at, a.created_at) DESC,
+                     a.artifact_version DESC, a.created_at DESC, a.rowid DESC
+            LIMIT 1
             """,
             (run_id, artifact_type),
         ).fetchone()
@@ -707,6 +788,10 @@ def _artifact_from_row(row) -> RunArtifactSummary:
         schema_version=row["schema_version"],
         sha256=row["sha256"],
         created_at=row["created_at"],
+        attempt_id=row["attempt_id"] if "attempt_id" in row.keys() else None,
+        step_id=row["step_id"] if "step_id" in row.keys() else None,
+        artifact_version=int(row["artifact_version"] or 1) if "artifact_version" in row.keys() else 1,
+        supersedes_artifact_id=row["supersedes_artifact_id"] if "supersedes_artifact_id" in row.keys() else None,
         integrity_status="verified" if "content_json" not in row.keys() or _artifact_digest(row["content_json"]) == row["sha256"] else "failed",
     )
 

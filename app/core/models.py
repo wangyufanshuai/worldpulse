@@ -710,6 +710,10 @@ class RunArtifactSummary(BaseModel):
     sha256: str
     created_at: str
     integrity_status: str = "verified"
+    attempt_id: str | None = None
+    step_id: str | None = None
+    artifact_version: int = 1
+    supersedes_artifact_id: str | None = None
 
 
 class RunStepRecord(BaseModel):
