@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+import argparse
+import json
+from getpass import getpass
+
+from app.db import apply_migrations, migration_status, verify_schema
+from app.services.project_store import DB_PATH
+
+
+def _migration_command(action: str) -> int:
+    if action == "apply":
+        applied = apply_migrations(DB_PATH)
+        print(json.dumps({"status": "ok", "applied": [item.version for item in applied]}, ensure_ascii=False))
+    elif action == "status":
+        print(json.dumps(migration_status(DB_PATH), ensure_ascii=False, indent=2))
+    elif action == "verify":
+        print(json.dumps(verify_schema(DB_PATH), ensure_ascii=False))
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="WorldPulse administration commands")
+    sub = parser.add_subparsers(dest="command", required=True)
+    migrate = sub.add_parser("migrate", help="Apply or inspect numbered schema migrations")
+    migrate.add_argument("action", nargs="?", default="apply", choices=("apply", "status", "verify"))
+    sub.add_parser("status", help="Alias for migrate status")
+    sub.add_parser("verify", help="Alias for migrate verify")
+    create_admin = sub.add_parser("create-admin", help="Create the first local administrator")
+    create_admin.add_argument("--username", required=True)
+    create_admin.add_argument("--display-name", default="WorldPulse Admin")
+    create_admin.add_argument("--password")
+    args = parser.parse_args()
+    if args.command in {"migrate", "status", "verify"}:
+        action = args.action if args.command == "migrate" else args.command
+        return _migration_command(action)
+    if args.command == "create-admin":
+        from app.services.auth import create_user
+        password = args.password or getpass("Admin password: ")
+        confirmation = args.password or getpass("Confirm password: ")
+        if password != confirmation:
+            parser.error("Passwords do not match")
+        user = create_user(args.username, password, args.display_name, "admin")
+        print(json.dumps(user.model_dump(mode="json"), ensure_ascii=False))
+        return 0
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
