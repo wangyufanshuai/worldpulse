@@ -12,322 +12,41 @@
 
         <WarRoomLifecycleRail :stages="lifecycleStages" />
 
-        <div v-if="activeSection === 'overview'" class="war-room-lifecycle-console">
-          <WarRoomLifecycleControl
-            :control="lifecycleControl"
-            :show-delta-overlay="showDeltaOverlay"
-            @cancel="cancelLifecycleRun"
-            @clone="cloneFromCurrentRun"
-            @compare="openCompareShortcut"
-            @pause="pauseLifecycleRun"
-            @replay="openReplayShortcut"
-            @resume="resumeLifecycleRun"
-            @retry="retryLifecycleRun"
-            @run="run"
-            @show-upcoming="showUpcoming"
-            @toggle-delta="toggleDeltaOverlay"
-          />
-
-          <WarRoomLifecycleMap
-            :active-agents="`${Math.min(20, Math.max(0, warRoom?.agent_decisions?.length || 0) + 8)}/20`"
-            :active-replay-day="activeReplayDay"
-            :causal-edges="mapCausalEdges"
-            :countries="mapCountries"
-            :current-replay-time="currentReplayTime"
-            :events="mapEvents"
-            :image-src="worldMapCommand"
-            :processed-events="Math.max(0, timelineEvents.length * 208)"
-            :replay-speed="replaySpeed"
-            :routes="supplyRoutes"
-            @open-country-analysis="openEntityAnalysis"
-            @select-causal-edge="selectCausalEdge"
-            @select-country="selectMapCountry"
-            @select-day="selectReplayDay"
-            @select-event="selectMapEvent"
-            @select-supply-chain="selectSupplyChain"
-            @show-causal="navigateSection('graph')"
-          />
-
-          <WarRoomEventStream :events="lifecycleEventsForDisplay" :mode="lifecycleEventMode" />
-
-          <WarRoomLifecycleKpis :kpis="lifecycleProjection.kpis" />
-        </div>
-
-        <div v-if="false && activeSection === 'overview'" class="war-room-console">
-          <aside class="war-room-rail">
-            <RouterLink v-for="item in railSections" :key="item.key" :to="sectionPath(item.key)" :class="{ active: activeSection === item.key }" :aria-label="item.label">
-              <component :is="item.icon" :size="18" />
-            </RouterLink>
-          </aside>
-
-          <aside class="scenario-command-panel">
-            <div class="panel-title-row">
-              <h2>场景构建</h2>
-              <ChevronsLeft :size="18" />
-            </div>
-
-            <section class="scenario-block">
-              <h3>基础信息</h3>
-              <label>
-                场景名称
-                <input v-model="scenarioTitle" />
-              </label>
-              <label>
-                背景设定
-                <textarea v-model="scenarioBackground" rows="4"></textarea>
-              </label>
-            </section>
-
-            <section class="scenario-block">
-              <h3>触发条件</h3>
-              <div class="trigger-grid">
-                <button v-for="action in policyActions.slice(0, 4)" :key="action.key" type="button" :class="{ active: scenarioDraft.policy_actions.includes(action.key) }" @click="toggleDraftList('policy_actions', action.key)">
-                  {{ action.label }}
-                </button>
-                <button type="button" @click="clearPolicyActions">重置条件</button>
-              </div>
-            </section>
-
-            <section class="scenario-block">
-              <div class="panel-subtitle">
-                <h3>可变因素 ({{ scenarioDraft.target_countries.length || countryOptions.length }}/10)</h3>
-                <Search :size="15" />
-              </div>
-              <div class="factor-list">
-                <label v-for="factor in factorControls" :key="factor.key">
-                  <span>{{ factor.label }}</span>
-                  <b>{{ factor.value }}%</b>
-                  <input v-model.number="factor.model.value" type="range" min="20" max="95" step="5" />
-                </label>
-              </div>
-              <button class="ghost-wide" type="button" @click="selectAllCountries">+ 添加可变因素</button>
-            </section>
-
-            <section class="scenario-block">
-              <h3>推演设置</h3>
-              <div class="duration-grid">
-                <button v-for="day in [7, 30, 90, 180]" :key="day" type="button" :class="{ active: scenarioDraft.duration_days === day }" @click="scenarioDraft.duration_days = day">{{ day }}天</button>
-              </div>
-              <div class="precision-grid">
-                <button type="button" :class="{ active: scenarioDraft.propagation < 0.6 }" @click="scenarioDraft.propagation = 0.42">标准</button>
-                <button type="button" :class="{ active: scenarioDraft.propagation >= 0.6 }" @click="scenarioDraft.propagation = 0.72">高精度</button>
-              </div>
-            </section>
-
-            <button class="run-simulation-button" type="button" :disabled="running" @click="run">
-              <Play :size="17" /> {{ running ? '推演中...' : '开始推演' }}
-            </button>
-          </aside>
-
-          <section class="situation-board">
-            <div class="kpi-strip" :data-active-day="activeReplayDay">
-              <article v-for="card in kpiCards" :key="card.key" class="kpi-card" :class="[card.tone, { active: card.active }]">
-                <span>{{ card.label }}</span>
-                <strong>{{ card.value }}</strong>
-                <small>{{ card.detail }}</small>
-                <em v-if="card.delta" :class="deltaClass(card.delta)">{{ signed(card.delta) }}</em>
-                <i></i>
-              </article>
-            </div>
-            <div v-if="insightCards.length" class="insight-strip" data-testid="war-room-insight-cards">
-              <article v-for="card in insightCards" :key="card.key" :class="card.tone">
-                <span>{{ card.label_zh }}</span>
-                <strong>{{ card.value_zh }}</strong>
-                <small>{{ card.detail_zh }}</small>
-              </article>
-            </div>
-
-            <section class="command-map-card">
-              <div class="map-image-wrap" :style="{ '--map-zoom': mapZoom }" :data-layer-menu-open="layerMenuOpen">
-                <img :src="worldMapCommand" alt="暗色全球态势地图" />
-                <svg class="command-map-overlay" viewBox="0 0 1000 560" preserveAspectRatio="none" data-war-room-map :data-active-day="activeReplayDay" :data-selected-entity="selectedMapEntity?.id || ''">
-                  <defs>
-                    <filter id="pulseGlow" x="-50%" y="-50%" width="200%" height="200%">
-                      <feGaussianBlur stdDeviation="4" result="blur" />
-                      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                    </filter>
-                    <marker id="blueArrow" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto">
-                      <path d="M0,0 L8,3.5 L0,7 Z" fill="#36a7ff" />
-                    </marker>
-                    <marker id="redArrow" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto">
-                      <path d="M0,0 L8,3.5 L0,7 Z" fill="#ff4d5f" />
-                    </marker>
-                  </defs>
-
-                  <g v-show="layerActive('economic')" class="map-route economic" data-layer="economic">
-                    <path v-for="route in supplyRoutes" :key="route.key" :class="{ active: entityActive('supply_chain', route.key), dimmed: selectedMapEntity && !entityActive('supply_chain', route.key) }" :d="route.path" marker-end="url(#blueArrow)" data-entity-type="supply_chain" :data-entity-id="route.chain?.id || `chain:${route.key}`" :data-day="activeReplayDay" @mouseenter="hoveredMapEntity = mapTooltipFor('supply_chain', route.key, route.chain)" @mouseleave="hoveredMapEntity = null" @click="selectSupplyChain(route.chain)" />
-                  </g>
-                  <g v-show="layerActive('diplomatic') || layerActive('causal')" class="map-route diplomatic" data-layer="causal">
-                    <path v-for="edge in mapCausalEdges" :key="edge.id" :class="{ active: entityActive('causal_edge', edge.id), dimmed: selectedMapEntity && !entityActive('causal_edge', edge.id) }" :d="edge.path" marker-end="url(#blueArrow)" data-entity-type="causal_edge" :data-entity-id="edge.id" :data-day="activeReplayDay" @mouseenter="hoveredMapEntity = mapTooltipFor('causal_edge', edge.id, edge.edge)" @mouseleave="hoveredMapEntity = null" @click="selectCausalEdge(edge.edge, edge.id)" />
-                  </g>
-                  <g v-show="layerActive('military')" class="military-units" data-layer="military">
-                    <g v-for="unit in militaryUnits" :key="unit.key" :class="{ active: entityActive('unit', unit.key) }" :transform="`translate(${unit.x}, ${unit.y})`" data-entity-type="unit" :data-entity-id="unit.id || `unit:${unit.key}`" :data-day="activeReplayDay" @click="selectMilitaryUnit(unit)">
-                      <path d="M-12 4 L12 4 L5 -5 L-5 -5 Z" />
-                      <text y="21">{{ unit.label }}</text>
-                    </g>
-                  </g>
-                  <g v-show="layerActive('risk')" class="command-risk-nodes" data-layer="risk">
-                    <g v-for="country in mapCountries" :key="country.code" :class="{ active: entityActive('country', country.code), hot: isCountryHot(country.code), easing: Number(country.delta || 0) < 0, delta: showDeltaOverlay && country.delta !== null && country.delta !== undefined }" :transform="`translate(${country.x}, ${country.y})`" data-entity-type="country" :data-entity-id="country.id || `country:${country.code}`" :data-day="activeReplayDay" @mouseenter="hoveredMapEntity = mapTooltipFor('country', country.code, country)" @mouseleave="hoveredMapEntity = null" @click="selectMapCountry(country)" @dblclick="openEntityAnalysis(country.code)">
-                      <circle class="node-aura" :r="country.radius + 18" :style="{ opacity: riskOpacity(country.risk) }" />
-                      <circle v-if="isCountryHot(country.code)" class="node-pulse" :r="country.radius + 28" />
-                      <circle class="node-core" :r="country.radius" :style="{ fill: riskColor(country.risk) }" />
-                      <text y="-20">{{ countryNameShort(country.code) }}</text>
-                      <text y="32" class="risk-score">{{ Math.round(country.risk) }}</text>
-                    </g>
-                  </g>
-                  <g v-show="layerActive('events')" class="event-hotspots" data-layer="events">
-                    <g v-for="event in mapEvents" v-show="eventVisible(event)" :key="event.key" :class="{ active: entityActive('event', event.key), hot: activeEventKeys.includes(event.key) }" :transform="`translate(${event.x}, ${event.y})`" data-entity-type="event" :data-entity-id="event.id || `event:${event.key}`" :data-day="event.day ?? activeReplayDay" @mouseenter="hoveredMapEntity = mapTooltipFor('event', event.key, event)" @mouseleave="hoveredMapEntity = null" @click="selectMapEvent(event)">
-                      <circle r="18" />
-                      <path d="M0 -9 L9 8 H-9 Z" />
-                      <text y="34">{{ event.label }}</text>
-                    </g>
-                  </g>
-                </svg>
-                <div v-if="hoveredMapEntity" class="map-mini-tooltip" :style="{ left: `${hoveredMapEntity.x}px`, top: `${hoveredMapEntity.y}px` }" data-testid="war-room-map-tooltip">
-                  <strong>{{ hoveredMapEntity.title }}</strong>
-                  <span>{{ hoveredMapEntity.detail }}</span>
-                </div>
-
-                <div class="map-layer-menu">
-                  <button type="button" class="layer-menu-toggle" :aria-expanded="layerMenuOpen" @click="layerMenuOpen = !layerMenuOpen"><Layers3 :size="14" /> 图层控制</button>
-                  <button v-for="layer in mapLayerButtons" v-show="layerMenuOpen" :key="layer.key" type="button" :class="{ active: layerActive(layer.key) }" @click="toggleMapLayer(layer.key)">
-                    {{ layer.label }}
-                  </button>
-                </div>
-                <div class="map-zoom-stack">
-                  <button type="button" aria-label="重置地图" @click="resetMapView"><Crosshair :size="18" /></button>
-                  <button type="button" aria-label="放大地图" @click="zoomMap(0.12)">+</button>
-                  <button type="button" aria-label="缩小地图" @click="zoomMap(-0.12)">-</button>
-                  <button type="button" class="upcoming-control" aria-label="3D 视图待上线" @click="showUpcoming('3D 视图待上线', '本版先保留二维态势沙盘。3D 地球和视角切换将在后续版本接入。')">3D</button>
-                </div>
-              </div>
-            </section>
-
-            <section class="replay-timeline">
-              <div class="timeline-head">
-                <h2>复盘时间线</h2>
-                <div class="timeline-legend">
-                  <span><i class="blue"></i>军事事件</span>
-                  <span><i class="green"></i>外交事件</span>
-                  <span><i class="orange"></i>经济事件</span>
-                  <span><i class="purple"></i>社会事件</span>
-                </div>
-                <button type="button" :class="{ active: eventFilterOpen }" :aria-expanded="eventFilterOpen" @click="eventFilterOpen = !eventFilterOpen">事件筛选 <ChevronDown :size="14" /></button>
-              </div>
-              <div v-if="eventFilterOpen" class="event-filter-popover">
-                <button v-for="filter in eventFilterOptions" :key="filter.key" type="button" :class="{ active: eventFilters.includes(filter.key) }" @click="toggleEventFilter(filter.key)">
-                  <i :class="filter.tone"></i>{{ filter.label }}
-                </button>
-                <button type="button" class="filter-reset" @click="eventFilters = []">清除筛选</button>
-              </div>
-              <div class="timeline-playbar">
-                <button class="timeline-play" type="button" :class="{ active: replayPlaying }" :aria-label="replayPlaying ? '暂停回放' : '播放回放'" :data-replay-playing="replayPlaying" @click="toggleReplay">
-                  <Pause v-if="replayPlaying" :size="18" />
-                  <Play v-else :size="18" />
-                </button>
-                <button class="speed-toggle" type="button" :data-replay-speed="`${replaySpeed}x`" @click="cycleReplaySpeed">{{ replaySpeed }}x</button>
-                <p>当前时间<br />{{ currentReplayTime }}</p>
-                <div class="tick-rail" :data-active-day="activeReplayDay">
-                  <b class="tick-progress" :style="{ width: `${activeReplayProgress}%` }"></b>
-                  <i v-for="(point, index) in timelineEvents" :key="`tick-${point.key}`" :style="{ left: `${point.position}%` }" :class="[point.tone, { active: index === activeReplayIndex }]" :data-day="point.day"></i>
-                </div>
-              </div>
-              <div class="timeline-cards">
-                <article v-for="(event, index) in filteredTimelineEvents" :key="event.key" :class="[event.tone, { active: event.key === activeTimelineEvent?.key }]" :data-day="event.day" :data-active="event.key === activeTimelineEvent?.key" @click="selectTimelineEvent(event, timelineEvents.findIndex(item => item.key === event.key))">
-                  <span>{{ event.time }}</span>
-                  <strong>{{ event.title }}</strong>
-                  <p>{{ event.detail }}</p>
-                </article>
-              </div>
-            </section>
-          </section>
-
-          <aside class="agent-command-panel">
-            <div class="agent-head">
-              <h2>国家Agent</h2>
-              <button type="button" @click="selected = null"><X :size="18" /></button>
-            </div>
-            <div class="agent-identity">
-              <span class="flag-card" :class="`flag-${activeAgent.code}`">{{ activeAgent.flag }}</span>
-              <div>
-                <strong>{{ activeAgent.name }}</strong>
-                <small>{{ activeAgent.enName }}</small>
-              </div>
-              <em>{{ activeAgent.status }}</em>
-            </div>
-            <section class="agent-card">
-              <h3>战略意图</h3>
-              <p>{{ activeAgent.intent }}</p>
-            </section>
-            <section class="agent-card entity-brief" :data-entity-type="activeEntityDetail.type" :data-entity-id="activeEntityDetail.id">
-              <h3>{{ activeEntityDetail.title }}</h3>
-              <p>{{ activeEntityDetail.summary }}</p>
-              <dl>
-                <div v-for="item in activeEntityDetail.metrics" :key="item.label">
-                  <dt>{{ item.label }}</dt>
-                  <dd>{{ item.value }}</dd>
-                </div>
-              </dl>
-            </section>
-            <section class="agent-card power-card">
-              <h3>当前状态</h3>
-              <div class="power-grid">
-                <div class="power-ring" :style="{ '--power': activeAgent.power }">
-                  <strong>{{ activeAgent.power }}</strong>
-                  <span>/100</span>
-                </div>
-                <div class="power-bars">
-                  <label v-for="metric in activeAgent.metrics" :key="metric.label">
-                    <span>{{ metric.label }}</span>
-                    <i><b :style="{ width: `${metric.value}%` }"></b></i>
-                    <em>{{ metric.value }}</em>
-                  </label>
-                </div>
-              </div>
-            </section>
-            <section class="agent-card">
-              <h3>关键决策倾向</h3>
-              <div class="decision-chips">
-                <button v-for="chip in activeAgent.decisions" :key="chip" type="button" @click="openDecisionDrawer(chip)">{{ chip }}</button>
-              </div>
-            </section>
-            <section class="agent-card">
-              <h3>当前触发源</h3>
-              <p>{{ activeAgent.triggerSource }}</p>
-            </section>
-            <section class="agent-card">
-              <h3>关联事件</h3>
-              <ul class="recent-actions compact">
-                <li v-for="event in activeAgent.relatedEvents" :key="event">{{ event }}</li>
-              </ul>
-            </section>
-            <section class="agent-card">
-              <h3>决策依据</h3>
-              <p>{{ activeAgent.decisionBasis }}</p>
-            </section>
-            <section class="agent-card">
-              <h3>预期代价</h3>
-              <p>{{ activeAgent.expectedTradeoff }}</p>
-            </section>
-            <section class="agent-card">
-              <h3>关系网络</h3>
-              <div class="relations-list">
-                <article v-for="relation in activeAgent.relations" :key="relation.country">
-                  <span>{{ relation.country }}</span>
-                  <p>{{ relation.role }}</p>
-                  <strong :class="relation.tone">{{ relation.label }} {{ relation.score }}</strong>
-                </article>
-              </div>
-            </section>
-            <section class="agent-card">
-              <h3>近期行动</h3>
-              <ul class="recent-actions">
-                <li v-for="action in activeAgent.actions" :key="action">{{ action }}</li>
-              </ul>
-            </section>
-            <button class="deep-analysis" type="button" @click="goDeepAnalysis">进入深度分析</button>
-          </aside>
-        </div>
+        <WarRoomOverviewConsole
+          v-if="activeSection === 'overview'"
+          :active-agents="`${Math.min(20, Math.max(0, warRoom?.agent_decisions?.length || 0) + 8)}/20`"
+          :active-replay-day="activeReplayDay"
+          :causal-edges="mapCausalEdges"
+          :control="lifecycleControl"
+          :countries="mapCountries"
+          :current-replay-time="currentReplayTime"
+          :events="mapEvents"
+          :image-src="worldMapCommand"
+          :kpis="lifecycleProjection.kpis"
+          :lifecycle-event-mode="lifecycleEventMode"
+          :lifecycle-events="lifecycleEventsForDisplay"
+          :processed-events="Math.max(0, timelineEvents.length * 208)"
+          :replay-speed="replaySpeed"
+          :routes="supplyRoutes"
+          :show-delta-overlay="showDeltaOverlay"
+          @cancel="cancelLifecycleRun"
+          @clone="cloneFromCurrentRun"
+          @compare="openCompareShortcut"
+          @open-country-analysis="openEntityAnalysis"
+          @pause="pauseLifecycleRun"
+          @replay="openReplayShortcut"
+          @resume="resumeLifecycleRun"
+          @retry="retryLifecycleRun"
+          @run="run"
+          @select-causal-edge="selectCausalEdge"
+          @select-country="selectMapCountry"
+          @select-day="selectReplayDay"
+          @select-event="selectMapEvent"
+          @select-supply-chain="selectSupplyChain"
+          @show-causal="navigateSection('graph')"
+          @show-upcoming="showUpcoming"
+          @toggle-delta="toggleDeltaOverlay"
+        />
 
         <section v-if="activeSection !== 'overview'" class="war-room-section-board" :data-section="activeSection">
           <div class="section-title">
@@ -339,262 +58,96 @@
             <button class="secondary" type="button" @click="navigateSection('overview')">返回战情总览</button>
           </div>
 
-          <div v-if="activeSection === 'sandbox'" class="module-workbench sandbox-workbench" data-testid="war-room-sandbox-module">
-            <section class="module-panel primary">
-              <div class="module-panel-head">
-                <div>
-                  <span>场景构建器</span>
-                  <h3>推演沙盘配置</h3>
-                </div>
-                <button class="secondary compact" type="button" @click="cloneFromCurrentRun"><Copy :size="14" /> 克隆本次运行</button>
-              </div>
+          <WarRoomSandboxModule
+            v-if="activeSection === 'sandbox'"
+            :chain-name="chainName"
+            :chain-options="chainOptions"
+            :country-name-short="countryNameShort"
+            :country-options="countryOptions"
+            :on-clear-policy-actions="clearPolicyActions"
+            :on-clone="cloneFromCurrentRun"
+            :on-load-run="load"
+            :on-run="run"
+            :on-select-all-countries="selectAllCountries"
+            :on-toggle-draft-list="toggleDraftList"
+            :policy-action-label="policyActionLabel"
+            :policy-actions="policyActions"
+            :preset-scenarios="presetScenarios"
+            :run-versions="runVersions"
+            :running="running"
+            :scenario-draft="scenarioDraft"
+            :scenario-label="scenarioLabel"
+            :selected-run-id="selectedRunId"
+            :short-run-id="shortRunId"
+            :version-label="versionLabel"
+          />
 
-              <div class="form-grid two">
-                <label>
-                  预设场景
-                  <select v-model="scenarioDraft.scenario_key">
-                    <option v-for="scenario in presetScenarios" :key="scenario.key" :value="scenario.key">{{ scenarioLabel(scenario) }}</option>
-                  </select>
-                </label>
-                <label>
-                  推演天数
-                  <input v-model.number="scenarioDraft.duration_days" type="number" min="7" max="180" step="1" />
-                </label>
-                <label>
-                  冲击强度 {{ Math.round(scenarioDraft.intensity * 100) }}%
-                  <input v-model.number="scenarioDraft.intensity" type="range" min="0.1" max="1" step="0.05" />
-                </label>
-                <label>
-                  传播系数 {{ Math.round(scenarioDraft.propagation * 100) }}%
-                  <input v-model.number="scenarioDraft.propagation" type="range" min="0.1" max="1" step="0.05" />
-                </label>
-              </div>
+          <WarRoomAnalysisModule
+            v-else-if="activeSection === 'analysis'"
+            :active-agent="activeAgent"
+            :active-agent-decision-confidence="activeAgentDecisionConfidence"
+            :active-entity-detail="activeEntityDetail"
+            :analysis-filter="analysisFilter"
+            :country-name-short="countryNameShort"
+            :filtered-analysis-countries="filteredAnalysisCountries"
+            :on-analysis-filter-change="value => analysisFilter = value"
+            :on-open-decision-drawer="openDecisionDrawer"
+            :on-set-analysis-country="setAnalysisCountry"
+            :risk-channel="riskChannel"
+          />
 
-              <div class="selector-block">
-                <div class="module-panel-head slim">
-                  <div><span>国家 Agent</span><h3>目标国家</h3></div>
-                  <button type="button" class="text-action" @click="selectAllCountries">全选 10 国</button>
-                </div>
-                <div class="token-grid">
-                  <button v-for="country in countryOptions" :key="country.code || country.country_code" type="button" :class="{ active: scenarioDraft.target_countries.includes(country.code || country.country_code) }" @click="toggleDraftList('target_countries', country.code || country.country_code)">
-                    {{ countryNameShort(country.code || country.country_code) }}
-                  </button>
-                </div>
-              </div>
+          <WarRoomGraphModule
+            v-else-if="activeSection === 'graph'"
+            :active-graph-edge="activeGraphEdge"
+            :chain-name="chainName"
+            :country-name-short="countryNameShort"
+            :edge-label="edgeLabel"
+            :filtered-graph-edges="filteredGraphEdges"
+            :focused-graph-edge-id="focusedGraphEdgeId"
+            :graph-type-filters="graphTypeFilters"
+            :graph-type-options="graphTypeOptions"
+            :on-focus-graph-edge="focusGraphEdge"
+            :on-open-entity-detail="openEntityDetail"
+            :on-render-section-graph="renderSectionGraph"
+            :on-toggle-graph-type-filter="toggleGraphTypeFilter"
+          />
 
-              <div class="selector-block">
-                <div class="module-panel-head slim">
-                  <div><span>供应链</span><h3>目标链路</h3></div>
-                  <button type="button" class="text-action" @click="scenarioDraft.target_chains = chainOptions.map(item => item.key).filter(Boolean)">全选链路</button>
-                </div>
-                <div class="token-grid">
-                  <button v-for="chain in chainOptions" :key="chain.key" type="button" :class="{ active: scenarioDraft.target_chains.includes(chain.key) }" @click="toggleDraftList('target_chains', chain.key)">
-                    {{ chainName(chain.key, chain.name) }}
-                  </button>
-                </div>
-              </div>
+          <WarRoomDataModule
+            v-else-if="activeSection === 'data'"
+            :active-data-tab="activeDataTab"
+            :chain-name="chainName"
+            :command-actions="commandActions"
+            :country-name-short="countryNameShort"
+            :data-json-preview="dataJsonPreview"
+            :entity-details="entityDetails"
+            :entity-index="entityIndex"
+            :map-countries="mapCountries"
+            :on-copy-run-id="copyRunId"
+            :on-download-ui-state="downloadUiState"
+            :on-open-replay-shortcut="openReplayShortcut"
+            :on-set-active-data-tab="value => activeDataTab = value"
+            :risk-channel="riskChannel"
+            :selected-run-id="selectedRunId"
+            :short-run-id="shortRunId"
+            :signed="signed"
+            :timeline-events="timelineEvents"
+            :ui-map-entities="uiMapEntities"
+            :war-room="warRoom"
+          />
 
-              <div class="selector-block">
-                <div class="module-panel-head slim">
-                  <div><span>策略干预</span><h3>政策动作</h3></div>
-                  <button type="button" class="text-action" @click="clearPolicyActions">清空</button>
-                </div>
-                <div class="policy-grid">
-                  <button v-for="action in policyActions" :key="action.key" type="button" :class="{ active: scenarioDraft.policy_actions.includes(action.key) }" @click="toggleDraftList('policy_actions', action.key)">
-                    <strong>{{ action.label }}</strong>
-                    <span>{{ action.desc }}</span>
-                  </button>
-                </div>
-              </div>
-            </section>
+          <WarRoomSettingsModule
+            v-else-if="activeSection === 'settings'"
+            :layer-label="layerLabel"
+            :visible-map-layers="visibleMapLayers"
+          />
 
-            <aside class="module-panel side">
-              <div class="module-panel-head">
-                <div><span>运行控制</span><h3>运行预览</h3></div>
-              </div>
-              <div class="run-preview-list">
-                <article><span>场景</span><strong>{{ scenarioLabel({ key: scenarioDraft.scenario_key }) }}</strong></article>
-                <article><span>国家</span><strong>{{ scenarioDraft.target_countries.length || countryOptions.length }}</strong><small>{{ scenarioDraft.target_countries.map(countryNameShort).join('、') || '使用预设' }}</small></article>
-                <article><span>供应链</span><strong>{{ scenarioDraft.target_chains.length || chainOptions.length }}</strong><small>{{ scenarioDraft.target_chains.map(chainName).join('、') || '使用预设' }}</small></article>
-                <article><span>政策动作</span><strong>{{ scenarioDraft.policy_actions.length }}</strong><small>{{ scenarioDraft.policy_actions.map(policyActionLabel).join('、') || '基线运行' }}</small></article>
-              </div>
-              <button class="primary-action" type="button" :disabled="running" data-testid="sandbox-run-scenario" @click="run"><Play :size="16" /> {{ running ? '推演中...' : '运行沙盘' }}</button>
-              <div class="recent-run-list">
-                <h4>最近运行</h4>
-                <button v-for="runItem in runVersions.slice(0, 5)" :key="runItem.run_id" type="button" :class="{ active: selectedRunId === runItem.run_id }" @click="load(runItem.run_id)">
-                  <span>{{ shortRunId(runItem.run_id) }}</span>
-                  <small>{{ versionLabel(runItem) }}</small>
-                </button>
-              </div>
-            </aside>
-          </div>
+          <WarRoomReplayModule
+            v-else-if="activeSection === 'replay'"
+            :replay-pack="replayPack"
+            :selected-run-id="selectedRunId"
+            :war-room-diff="warRoomDiff"
+          />
 
-          <div v-else-if="activeSection === 'analysis'" class="module-workbench analysis-workbench" data-testid="war-room-analysis-module">
-            <aside class="module-panel list">
-              <div class="module-panel-head">
-                <div><span>Agent 排行</span><h3>国家风险排行</h3></div>
-              </div>
-              <label class="compact-search">
-                筛选 Agent
-                <input v-model="analysisFilter" type="search" placeholder="中国 / USA / 芯片" data-testid="analysis-filter" />
-              </label>
-              <div class="agent-rank-list">
-                <button v-for="country in filteredAnalysisCountries" :key="country.code" type="button" :class="{ active: activeAgent.code === country.code }" @click="setAnalysisCountry(country.code)">
-                  <span>{{ countryNameShort(country.code) }}</span>
-                  <strong>{{ Math.round(country.risk) }}</strong>
-                  <small>{{ riskChannel(country.dominant_channel) }}</small>
-                </button>
-              </div>
-            </aside>
-
-            <section class="module-panel primary">
-              <div class="agent-analysis-head">
-                <span class="flag-card" :class="`flag-${activeAgent.code}`">{{ activeAgent.flag }}</span>
-                <div>
-                  <span>当前 Agent</span>
-                  <h3>{{ activeAgent.name }}</h3>
-                  <p>{{ activeAgent.intent }}</p>
-                </div>
-                <em>{{ activeAgent.status }}</em>
-              </div>
-              <div class="analysis-metric-grid">
-                <article><span>综合状态</span><strong>{{ activeAgent.power }}/100</strong></article>
-                <article><span>触发源</span><strong>{{ activeAgent.triggerSource }}</strong></article>
-                <article><span>决策置信度</span><strong>{{ activeAgentDecisionConfidence }}</strong></article>
-                <article><span>主导风险</span><strong>{{ activeEntityDetail.metrics?.[1]?.value || '--' }}</strong></article>
-              </div>
-              <div class="analysis-detail-grid">
-                <article><h4>决策依据</h4><p>{{ activeAgent.decisionBasis }}</p></article>
-                <article><h4>预期代价</h4><p>{{ activeAgent.expectedTradeoff }}</p></article>
-                <article><h4>关联事件</h4><ul><li v-for="event in activeAgent.relatedEvents" :key="event">{{ event }}</li></ul></article>
-                <article><h4>行动倾向</h4><div class="decision-chips"><button v-for="chip in activeAgent.decisions" :key="chip" type="button" @click="openDecisionDrawer(chip)">{{ chip }}</button></div></article>
-              </div>
-            </section>
-          </div>
-
-          <div v-else-if="activeSection === 'graph'" class="module-workbench graph-workbench" data-testid="war-room-graph-module">
-            <aside class="module-panel list">
-              <div class="module-panel-head">
-                <div><span>因果链路</span><h3>因果边列表</h3></div>
-              </div>
-              <div class="filter-chip-row">
-                <button v-for="filter in graphTypeOptions" :key="filter.key" type="button" :class="{ active: graphTypeFilters.includes(filter.key) }" @click="toggleGraphTypeFilter(filter.key)">
-                  {{ filter.label }}
-                </button>
-              </div>
-              <div class="edge-list">
-                <button v-for="edge in filteredGraphEdges" :key="edge.id" type="button" :class="{ active: focusedGraphEdgeId === edge.id }" @click="focusGraphEdge(edge)">
-                  <span>{{ edgeLabel(edge.edge.source) }} → {{ edgeLabel(edge.edge.target) }}</span>
-                  <strong>{{ Number(edge.edge.weight || 0).toFixed(2) }}</strong>
-                  <small>{{ edge.edge.mechanism || edge.edge.relation || '因果传导机制' }}</small>
-                </button>
-              </div>
-            </aside>
-            <section class="module-panel graph-stage-panel">
-              <div class="module-panel-head">
-                <div><span>图谱画布</span><h3>影响图谱</h3></div>
-                <button class="secondary compact" type="button" @click="renderSectionGraph"><Network :size="14" /> 重绘</button>
-              </div>
-              <div ref="sectionGraphEl" class="graph-canvas section-graph-canvas" data-testid="section-graph-canvas"></div>
-            </section>
-            <aside class="module-panel side">
-              <div class="module-panel-head">
-                <div><span>边详情</span><h3>链路机制</h3></div>
-              </div>
-              <template v-if="activeGraphEdge">
-                <div class="edge-detail-title">
-                  <strong>{{ edgeLabel(activeGraphEdge.edge.source) }} → {{ edgeLabel(activeGraphEdge.edge.target) }}</strong>
-                  <span>权重 {{ Number(activeGraphEdge.edge.weight || 0).toFixed(2) }}</span>
-                </div>
-                <p>{{ activeGraphEdge.edge.mechanism || activeGraphEdge.edge.relation || activeGraphEdge.edge.explanation || '该边来自当前 War Room 影响图。' }}</p>
-                <dl class="detail-dl">
-                  <div><dt>滞后天数</dt><dd>{{ activeGraphEdge.edge.lag_days ?? 0 }} 天</dd></div>
-                  <div><dt>关联国家</dt><dd>{{ (activeGraphEdge.edge.related_countries || []).map(countryNameShort).join('、') || '--' }}</dd></div>
-                  <div><dt>关联链路</dt><dd>{{ (activeGraphEdge.edge.related_chains || []).map(chainName).join('、') || '--' }}</dd></div>
-                </dl>
-                <button class="primary-action" type="button" @click="openEntityDetail('causal_edge', activeGraphEdge.id, activeGraphEdge.edge)">打开详情抽屉</button>
-              </template>
-              <div v-else class="empty">选择一条因果边查看机制。</div>
-            </aside>
-          </div>
-
-          <div v-else-if="activeSection === 'data'" class="module-workbench data-workbench" data-testid="war-room-data-module">
-            <section class="module-panel primary">
-              <div class="module-panel-head">
-                <div><span>数据控制台</span><h3>运行快照与展示合同</h3></div>
-                <div class="segmented-control">
-                  <button type="button" :class="{ active: activeDataTab === 'tables' }" @click="activeDataTab = 'tables'">表格</button>
-                  <button type="button" :class="{ active: activeDataTab === 'json' }" @click="activeDataTab = 'json'">JSON</button>
-                </div>
-              </div>
-              <div class="data-summary-grid">
-                <article><span>当前 run</span><strong>{{ shortRunId(selectedRunId) || '--' }}</strong><button type="button" @click="copyRunId">复制 run id</button></article>
-                <article><span>ui_state 实体</span><strong>{{ uiMapEntities.length }}</strong><small>地图、图层、时间线、Agent 面板</small></article>
-                <article><span>时间线</span><strong>{{ timelineEvents.length }}</strong><small>{{ timelineEvents.map(item => item.time).join(' / ') }}</small></article>
-                <article><span>免责声明</span><strong>Not a prediction</strong><small>{{ warRoom?.disclaimer }}</small></article>
-              </div>
-
-              <div v-if="activeDataTab === 'tables'" class="data-table-stack">
-                <section>
-                  <h4>确定性规则输出</h4>
-                  <div class="data-table">
-                    <table>
-                      <thead><tr><th>国家</th><th>风险</th><th>主导通道</th><th>Delta</th></tr></thead>
-                      <tbody><tr v-for="country in mapCountries" :key="country.code"><td>{{ countryNameShort(country.code) }}</td><td>{{ Math.round(country.risk) }}</td><td>{{ riskChannel(country.dominant_channel) }}</td><td>{{ country.delta === null || country.delta === undefined ? '--' : signed(country.delta) }}</td></tr></tbody>
-                    </table>
-                  </div>
-                </section>
-                <section>
-                  <h4>供应链压力</h4>
-                  <div class="data-table">
-                    <table>
-                      <thead><tr><th>链路</th><th>容量</th><th>中断</th><th>替代率</th><th>滞后</th></tr></thead>
-                      <tbody><tr v-for="chain in warRoom?.supply_chains || []" :key="chain.key"><td>{{ chainName(chain.key, chain.name) }}</td><td>{{ Math.round(Number(chain.capacity || 0)) }}</td><td>{{ Math.round(Number(chain.disruption || chain.pressure || 0)) }}</td><td>{{ Math.round(Number(chain.substitution || 0)) }}</td><td>{{ chain.lag_days }} 天</td></tr></tbody>
-                    </table>
-                  </div>
-                </section>
-                <section>
-                  <h4>展示合同</h4>
-                  <div class="data-table">
-                    <table>
-                      <thead><tr><th>类型</th><th>数量</th><th>说明</th></tr></thead>
-                      <tbody>
-                        <tr><td>entity_index</td><td>{{ entityIndex.length }}</td><td>指挥搜索可定位实体</td></tr>
-                        <tr><td>entity_details</td><td>{{ Object.keys(entityDetails).length }}</td><td>统一详情抽屉数据</td></tr>
-                        <tr><td>command_actions</td><td>{{ commandActions.length }}</td><td>可执行动作与状态</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              </div>
-              <pre v-else class="json-preview">{{ dataJsonPreview }}</pre>
-            </section>
-            <aside class="module-panel side">
-              <div class="module-panel-head">
-                <div><span>审计</span><h3>审计操作</h3></div>
-              </div>
-              <button class="primary-action" type="button" @click="downloadUiState"><Download :size="16" /> 下载 ui_state.json</button>
-              <button class="secondary full" type="button" @click="openReplayShortcut"><PackageCheck :size="16" /> 导出复盘包</button>
-              <div class="audit-note-list">
-                <article><strong>用户输入</strong><p>场景、政策动作、国家和供应链参数来自 Scenario Builder。</p></article>
-                <article><strong>确定性规则</strong><p>风险、Agent 决策和图谱边权重由本地规则引擎生成。</p></article>
-                <article><strong>展示合同</strong><p>前端优先读取 workspace API 与 ui_state，旧字段作为 fallback。</p></article>
-              </div>
-            </aside>
-          </div>
-
-          <div v-else-if="activeSection === 'settings'" class="section-card-grid settings-grid" data-testid="war-room-settings-module">
-            <article><span>策略边界</span><strong>策略沙盘</strong><p>不是现实战争预测、投资建议或政策建议。</p></article>
-            <article><span>显示设置</span><strong>{{ visibleMapLayers.length }} 个图层</strong><p>当前可见：{{ visibleMapLayers.map(layerLabel).join('、') }}</p></article>
-            <article class="upcoming-card"><span>待上线</span><strong>3D 地球</strong><p>后续接入独立 3D 视图，本版不做伪交互。</p></article>
-            <article class="upcoming-card"><span>待上线</span><strong>告警订阅</strong><p>通知中心和团队协作将作为后续能力。</p></article>
-          </div>
-
-          <div v-else-if="activeSection === 'replay'" class="section-card-grid replay-route-grid" data-testid="war-room-replay-module">
-            <article><span>当前运行</span><strong>{{ selectedRunId || '--' }}</strong><p>导出后可预览 Markdown 与 JSON 审计清单。</p></article>
-            <article><span>复盘包</span><strong>{{ replayPack ? '已生成' : '未生成' }}</strong><p>{{ replayPack?.title || '点击下方导出复盘包生成审计材料。' }}</p></article>
-            <article><span>反事实</span><strong>{{ warRoomDiff ? '可用' : '未选择' }}</strong><p>有 base/target 对比时会导出反事实复盘包。</p></article>
-          </div>
         </section>
       </section>
 
@@ -855,11 +408,14 @@ import {
 } from 'lucide-vue-next'
 import { chatWithProject, getProject, getProjectRun, runProject } from '../../api'
 import worldMapCommand from '../../assets/war-room/world-map-command.png'
-import WarRoomEventStream from '../../components/war-room/WarRoomEventStream.vue'
-import WarRoomLifecycleControl from '../../components/war-room/WarRoomLifecycleControl.vue'
-import WarRoomLifecycleKpis from '../../components/war-room/WarRoomLifecycleKpis.vue'
-import WarRoomLifecycleMap from '../../components/war-room/WarRoomLifecycleMap.vue'
+import WarRoomAnalysisModule from '../../components/war-room/WarRoomAnalysisModule.vue'
+import WarRoomDataModule from '../../components/war-room/WarRoomDataModule.vue'
+import WarRoomGraphModule from '../../components/war-room/WarRoomGraphModule.vue'
 import WarRoomLifecycleRail from '../../components/war-room/WarRoomLifecycleRail.vue'
+import WarRoomOverviewConsole from '../../components/war-room/WarRoomOverviewConsole.vue'
+import WarRoomReplayModule from '../../components/war-room/WarRoomReplayModule.vue'
+import WarRoomSandboxModule from '../../components/war-room/WarRoomSandboxModule.vue'
+import WarRoomSettingsModule from '../../components/war-room/WarRoomSettingsModule.vue'
 import WarRoomTopNav from '../../components/war-room/WarRoomTopNav.vue'
 import { useRunLifecycle } from '../../composables/useRunLifecycle'
 import { useWarRoomData } from '../../composables/useWarRoomData'
