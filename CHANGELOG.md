@@ -8,6 +8,13 @@
 - Added lifecycle health summary, phase P50/P95, stale/recovery and integrity metrics, plus step/attempt/artifact UI audit tables.
 - V1.1 remains an internal trial: deterministic War Room values are authoritative; Agent/LLM actions remain bounded proposals and Replay remains offline.
 
+## 1.2.0-dev - Unreleased
+
+- Added versioned per-action governance audit fields for input hash, rule version, canonical outcome, rejection reason, and projection status.
+- Added `agent-action-projection-audit.v1` artifacts for hybrid and audit-only runs, with checkpoint, replay, and Replay Pack integrity verification.
+- Added constrained/expired action coverage and War Room visibility for pass rate, rule hits, and final projection status.
+- Preserved legacy decision fields and all v1/v2 API contracts; deterministic War Room remains the sole numeric authority.
+
 ## 1.0.0 - 2026-07-15
 
 - Preserved the deterministic War Room engine as the sole numeric authority.

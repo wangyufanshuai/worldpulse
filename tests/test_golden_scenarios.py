@@ -62,3 +62,9 @@ def test_sensitivity_chain_substitution_and_lag_are_explicit():
     low_value = next(item.pressure_score for item in low_pressure if item.key == "chips")
     high_value = next(item.pressure_score for item in high_pressure if item.key == "chips")
     assert high_value >= low_value
+
+
+def test_v12_golden_fixture_declares_action_governance_outcomes():
+    record = json.loads(Path("tests/golden_scenarios/11_v12_agent_governance.json").read_text(encoding="utf-8"))
+    assert set(record["agent_proposals"]) == {"accepted", "rejected", "constrained", "expired"}
+    assert record["agent_proposals"]["accepted"] == 4
