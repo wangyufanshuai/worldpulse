@@ -704,6 +704,7 @@ def get_audit(run_id: str) -> dict:
         "attempts": [attempt.model_dump() for attempt in get_attempts(run_id)],
         "integrity": verify_artifacts(run_id),
         "consistency_audit": get_latest_artifact_content(run_id, "consistency_audit"),
+        "action_projection_audit": get_latest_artifact_content(run_id, "agent_action_projection_audit"),
         "agent_runtime": get_latest_artifact_content(run_id, "agent_runtime_audit"),
         "metrics": get_latest_artifact_content(run_id, "lifecycle_metrics"),
         "hybrid": {

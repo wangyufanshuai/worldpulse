@@ -3,6 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from app.core.models import WarRoomRun
+from app.services.consistency.models import AgentActionProjectionAudit
 
 
 class DeterministicActionModifier(BaseModel):
@@ -44,3 +45,4 @@ class HybridSimulationOutcome(BaseModel):
     final_result: WarRoomRun
     modifier_bundle: HybridModifierBundle
     replay_record: HybridReplayRecord
+    projection_audit: AgentActionProjectionAudit | None = None

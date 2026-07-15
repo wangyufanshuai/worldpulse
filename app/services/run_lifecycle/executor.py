@@ -10,6 +10,7 @@ from app.services.agent_runtime import run_agent_runtime, runtime_config_from_en
 from app.services.consistency import evaluate_war_room_result
 from app.services.consistency.hashing import stable_hash
 from app.services.consistency.projector import project_consistency_audit
+from app.services.consistency.projection import build_action_projection_audit
 from app.services.hybrid_simulation import run_hybrid_simulation
 from app.services.projects import persist_war_room_result
 from app.services.security import redact_secrets
@@ -225,6 +226,13 @@ def process_job(run_id: str) -> RunJobStatus:
             project_consistency_audit(run_id, report, repository)
             if job.engine_mode == "hybrid":
                 outcome = run_hybrid_simulation(result, proposals, report, seed=job.seed or 42)
+                if outcome.projection_audit is not None:
+                    repository.add_artifact(
+                        run_id,
+                        "agent_action_projection_audit",
+                        outcome.projection_audit.schema_version,
+                        outcome.projection_audit.model_dump(mode="json"),
+                    )
                 modifier_artifact = repository.add_artifact(
                     run_id,
                     "deterministic_action_modifiers",
@@ -261,6 +269,21 @@ def process_job(run_id: str) -> RunJobStatus:
                     },
                 )
                 result = outcome.final_result
+            elif proposals and report is not None:
+                projection_audit = build_action_projection_audit(
+                    run_id=run_id,
+                    consistency_audit_hash=report.audit_hash,
+                    final_result_hash=stable_hash(result.model_dump(mode="json")),
+                    proposals=proposals,
+                    decisions=report.proposal_decisions,
+                    projection_mode="audit_only",
+                )
+                repository.add_artifact(
+                    run_id,
+                    "agent_action_projection_audit",
+                    projection_audit.schema_version,
+                    projection_audit.model_dump(mode="json"),
+                )
         elif phase == "report_generate":
             if result is None:
                 raise HTTPException(status_code=500, detail="Report projection requires a deterministic War Room result")

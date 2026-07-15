@@ -4,6 +4,7 @@ from app.core.models import WarRoomRun, WarRoomScenarioRequest
 from app.services.agent_contract.models import AgentActionProposal
 from app.services.consistency.hashing import stable_hash
 from app.services.consistency.models import AgentActionDecision, ConsistencyAuditReport
+from app.services.consistency.projection import build_action_projection_audit
 from app.services.war_room_engine import run_war_room
 
 from .adapter import build_modifier_bundle, verify_modifier_bundle
@@ -35,6 +36,17 @@ def run_hybrid_simulation(
         "hash_scope": "WarRoomRun before hybrid_trace metadata",
     }
     record = HybridReplayRecord(**record_payload, replay_hash=stable_hash(record_payload))
+    projection_audit = build_action_projection_audit(
+        run_id=audit.run_id,
+        consistency_audit_hash=audit.audit_hash,
+        final_result_hash=final_hash,
+        proposals=proposals,
+        decisions=audit.proposal_decisions,
+        projection_mode="hybrid",
+        projected_ids=set(bundle.accepted_proposal_ids),
+        modifier_hashes={item.proposal_id: item.modifier_hash for item in bundle.modifiers},
+        modifier_ids={item.proposal_id: item.modifier_id for item in bundle.modifiers},
+    )
     final_result = final_without_trace.model_copy(deep=True)
     final_result.ui_state = {
         **final_result.ui_state,
@@ -50,7 +62,12 @@ def run_hybrid_simulation(
             "numeric_authority": "WorldPulse deterministic War Room engine",
         },
     }
-    return HybridSimulationOutcome(final_result=final_result, modifier_bundle=bundle, replay_record=record)
+    return HybridSimulationOutcome(
+        final_result=final_result,
+        modifier_bundle=bundle,
+        replay_record=record,
+        projection_audit=projection_audit,
+    )
 
 
 def replay_hybrid_from_artifacts(

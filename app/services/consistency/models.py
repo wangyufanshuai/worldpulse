@@ -12,7 +12,7 @@ FindingCategory = Literal["schema", "capability", "resource", "causal", "tempora
 FindingSeverity = Literal["info", "warning", "error"]
 ActionDecisionStatus = Literal["accepted", "rejected", "needs_revision", "not_evaluated"]
 ActionOutcomeStatus = Literal["accepted", "rejected", "constrained", "expired"]
-ProjectionStatus = Literal["not_projected", "projected", "constrained", "blocked"]
+ProjectionStatus = Literal["not_projected", "projected", "constrained", "blocked", "expired"]
 
 ACTION_AUDIT_RULE_VERSION = "worldpulse-consistency.v1.2"
 
@@ -47,6 +47,32 @@ class AgentActionDecision(BaseModel):
     rejection_reason: str | None = None
     projection_status: ProjectionStatus = "not_projected"
     projection_hash: str | None = None
+
+
+class AgentActionProjectionRecord(BaseModel):
+    proposal_id: str
+    input_hash: str
+    rule_version: str
+    outcome: ActionOutcomeStatus
+    projection_status: ProjectionStatus
+    projection_hash: str
+    modifier_id: str | None = None
+    rejection_reason: str | None = None
+    final_result_hash: str
+
+
+class AgentActionProjectionAudit(BaseModel):
+    schema_version: str = "agent-action-projection-audit.v1"
+    run_id: str
+    consistency_audit_hash: str
+    final_result_hash: str
+    projection_mode: Literal["hybrid", "audit_only"]
+    records: list[AgentActionProjectionRecord] = Field(default_factory=list)
+    projected_count: int = 0
+    constrained_count: int = 0
+    blocked_count: int = 0
+    expired_count: int = 0
+    audit_hash: str
 
 
 class ConsistencyAuditReport(BaseModel):
