@@ -126,3 +126,50 @@ class CalibrationRunStatus(BaseModel):
     created_at: str
     completed_at: str | None = None
     lifecycle_status: str | None = None
+
+
+ReviewDecisionType = Literal["confirmed", "request_revision", "reject_promotion", "approve_promotion"]
+
+
+class ReviewCase(BaseModel):
+    review_id: str
+    review_type: str
+    resource_type: str
+    resource_id: str
+    severity: str
+    status: str
+    reason: str
+    payload: dict = {}
+    assigned_to_user_id: str | None = None
+    created_at: str
+    closed_at: str | None = None
+
+
+class ReviewDecision(BaseModel):
+    decision_id: str
+    review_id: str
+    reviewer_user_id: str
+    decision: ReviewDecisionType
+    comment: str = ""
+    created_at: str
+
+
+class ReviewDecisionRequest(BaseModel):
+    decision: ReviewDecisionType
+    comment: str = Field(default="", max_length=3000)
+
+
+class TrustSummary(BaseModel):
+    project_id: str
+    rule_pack: RulePackManifest
+    calibration: CalibrationRunStatus | None = None
+    calibration_status: str
+    golden_gate: dict
+    security_gate: dict
+    agent_admission_matrix: dict
+    data_coverage: float
+    pending_review_count: int
+    reviews: list[ReviewCase] = []
+    rule_pack_history: list[RulePackManifest] = []
+    report_allowed: bool
+    generated_at: str

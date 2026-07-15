@@ -17,6 +17,7 @@
       <button type="button" class="top-icon-action" data-testid="war-room-command-search-trigger" @click="$emit('open-command-search')"><Search :size="17" /></button>
       <button type="button" class="top-icon-action" @click="$emit('show-upcoming', '说明中心', '这里将汇总模型边界、数据来源和操作说明。')"><Info :size="17" /></button>
       <RouterLink class="top-icon-action" :to="sectionPath('graph')" aria-label="知识图谱"><BookOpen :size="17" /></RouterLink>
+      <RouterLink class="top-icon-action" :to="sectionPath('trust')" aria-label="可信度中心" data-testid="war-room-trust-link"><ShieldCheck :size="17" /></RouterLink>
       <RouterLink class="top-icon-action" :to="sectionPath('settings')" aria-label="设置"><Settings :size="17" /></RouterLink>
       <button type="button" class="top-icon-action" @click="$emit('show-upcoming', '通知中心', '告警订阅和运行完成提醒将在后续版本接入。')"><Bell :size="17" /></button>
       <span class="commander-avatar">指挥官</span>
@@ -26,7 +27,7 @@
 </template>
 
 <script setup>
-import { AlertTriangle, Bell, BookOpen, ChevronDown, Globe2, Info, Search, Settings } from 'lucide-vue-next'
+import { AlertTriangle, Bell, BookOpen, ChevronDown, Globe2, Info, Search, Settings, ShieldCheck } from 'lucide-vue-next'
 import { WORLDPULSE_VERSION } from '../../version'
 
 defineProps({

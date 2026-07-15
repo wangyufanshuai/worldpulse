@@ -2,8 +2,63 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 120000
+  timeout: 120000,
+  withCredentials: true
 })
+
+api.interceptors.request.use((config) => {
+  const method = String(config.method || 'get').toLowerCase()
+  if (['post', 'put', 'patch', 'delete'].includes(method)) {
+    const token = document.cookie.split('; ').find(item => item.startsWith('worldpulse_csrf='))?.split('=').slice(1).join('=')
+    if (token) config.headers['X-CSRF-Token'] = decodeURIComponent(token)
+  }
+  return config
+})
+
+export async function login(username, password) {
+  const { data } = await api.post('/v3/auth/login', { username, password })
+  return data
+}
+
+export async function logout() {
+  const { data } = await api.post('/v3/auth/logout')
+  return data
+}
+
+export async function getCurrentUser() {
+  const { data } = await api.get('/v3/auth/me')
+  return data
+}
+
+export async function getTrustSummary(projectId) {
+  const { data } = await api.get(`/v3/projects/${projectId}/trust-summary`)
+  return data
+}
+
+export async function listReviews(status = null) {
+  const { data } = await api.get('/v3/reviews', { params: status ? { status } : {} })
+  return data
+}
+
+export async function decideReview(reviewId, decision, comment = '') {
+  const { data } = await api.post(`/v3/reviews/${reviewId}/decision`, { decision, comment })
+  return data
+}
+
+export async function listRulePacks() {
+  const { data } = await api.get('/v3/rule-packs')
+  return data
+}
+
+export async function listCalibrationCases() {
+  const { data } = await api.get('/v3/calibration/cases')
+  return data
+}
+
+export async function createCalibrationRun(rulePackId, caseIds = []) {
+  const { data } = await api.post('/v3/calibration/runs', { rule_pack_id: rulePackId, case_ids: caseIds })
+  return data
+}
 
 export async function getRiskOverview() {
   const { data } = await api.get('/risk/overview', { timeout: 8000 })

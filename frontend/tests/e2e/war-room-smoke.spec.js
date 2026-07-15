@@ -12,7 +12,13 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   })
   page.on('pageerror', (error) => browserErrors.push(error.message))
 
-  const created = await request.post('http://127.0.0.1:8010/api/projects', {
+  const loggedIn = await page.request.post('http://127.0.0.1:8010/api/v3/auth/login', {
+    data: { username: 'e2e-admin', password: 'e2e administrator secret' },
+  })
+  expect(loggedIn.ok()).toBeTruthy()
+  const csrf = (await loggedIn.json()).csrf_token
+  const created = await page.request.post('http://127.0.0.1:8010/api/projects', {
+    headers: { 'X-CSRF-Token': csrf },
     data: {
       title: 'Playwright V0.7 smoke',
       question: '验证 War Room 生命周期与模块导航',
@@ -91,7 +97,7 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   const modules = {
     sandbox: 'war-room-sandbox-module', analysis: 'war-room-analysis-module',
     graph: 'war-room-graph-module', data: 'war-room-data-module',
-    settings: 'war-room-settings-module', replay: 'war-room-replay-module',
+    settings: 'war-room-settings-module', replay: 'war-room-replay-module', trust: 'war-room-trust-center',
   }
   for (const [section, testId] of Object.entries(modules)) {
     await page.goto(`projects/${project.project_id}/war-room/${section}`)

@@ -89,6 +89,7 @@ from app.services.simulation_health import build_simulation_data_health
 from app.services.species_service import build_species_profile, list_species_presets
 from app.services.workbench import build_workbench_status, render_analysis_report, render_system_report, report_templates
 from app.services.war_room_engine import run_war_room, war_room_presets
+from app.services.reviews import review_run_diff_if_material
 from app.version import version_info
 
 router = APIRouter()
@@ -217,7 +218,9 @@ def research_project_runs(project_id: str) -> list[ResearchRun]:
 
 @router.get("/projects/{project_id}/runs/compare", response_model=ResearchRunDiff)
 def research_project_run_compare(project_id: str, base_run_id: str, target_run_id: str) -> ResearchRunDiff:
-    return compare_project_runs(project_id, base_run_id=base_run_id, target_run_id=target_run_id)
+    result = compare_project_runs(project_id, base_run_id=base_run_id, target_run_id=target_run_id)
+    review_run_diff_if_material(project_id, result.model_dump(mode="json"))
+    return result
 
 
 @router.get("/projects/{project_id}/runs/{run_id}", response_model=ProjectDetail)

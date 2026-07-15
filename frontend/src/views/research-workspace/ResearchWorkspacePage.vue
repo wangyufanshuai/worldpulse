@@ -12,12 +12,19 @@
 
         <WarRoomLifecycleRail :stages="lifecycleStages" />
 
+        <section v-if="activeSection === 'overview' && trustSummary" class="overview-trust-strip" data-testid="overview-trust-summary">
+          <article><span>当前规则版本</span><strong>{{ trustSummary.rule_pack?.version || '--' }}</strong></article>
+          <article><span>校准状态</span><strong>{{ trustSummary.calibration_status }}</strong></article>
+          <article><span>待复核数量</span><strong>{{ trustSummary.pending_review_count }}</strong></article>
+          <article><span>正式报告</span><strong :class="trustSummary.report_allowed ? 'passed' : 'blocked'">{{ trustSummary.report_allowed ? '允许' : '禁止' }}</strong></article>
+        </section>
+
         <WarRoomOverviewConsole
           v-if="activeSection === 'overview'"
           :active-agents="lifecycleAgentStatus"
           :active-replay-day="activeReplayDay"
           :causal-edges="mapCausalEdges"
-          :control="lifecycleControl"
+          :control="lifecycleControlForRole"
           :countries="mapCountries"
           :current-replay-time="currentReplayTime"
           :events="mapEvents"
@@ -158,6 +165,18 @@
             :replay-pack="replayPack"
             :selected-run-id="selectedRunId"
             :war-room-diff="warRoomDiff"
+          />
+
+          <WarRoomTrustCenter
+            v-else-if="activeSection === 'trust'"
+            :summary="trustSummary"
+            :loading="trustLoading"
+            :error="trustError"
+            :can-review="auth.permissions.value.canReview"
+            :can-calibrate="auth.permissions.value.canCalibrate"
+            @refresh="loadTrustSummary"
+            @calibrate="startTrustCalibration"
+            @decision="submitReviewDecision"
           />
 
         </section>
@@ -436,10 +455,11 @@ import {
   Send,
   Settings,
   ShieldAlert,
+  ShieldCheck,
   UsersRound,
   X
 } from 'lucide-vue-next'
-import { chatWithProject, getProject, getProjectRun, runProject } from '../../api'
+import { chatWithProject, createCalibrationRun, decideReview, getProject, getProjectRun, getTrustSummary, runProject } from '../../api'
 import worldMapCommand from '../../assets/war-room/world-map-command.png'
 import WarRoomAnalysisModule from '../../components/war-room/WarRoomAnalysisModule.vue'
 import WarRoomDataModule from '../../components/war-room/WarRoomDataModule.vue'
@@ -449,6 +469,7 @@ import WarRoomOverviewConsole from '../../components/war-room/WarRoomOverviewCon
 import WarRoomReplayModule from '../../components/war-room/WarRoomReplayModule.vue'
 import WarRoomSandboxModule from '../../components/war-room/WarRoomSandboxModule.vue'
 import WarRoomSettingsModule from '../../components/war-room/WarRoomSettingsModule.vue'
+import WarRoomTrustCenter from '../../components/war-room/WarRoomTrustCenter.vue'
 import WarRoomTopNav from '../../components/war-room/WarRoomTopNav.vue'
 import { useRunLifecycle } from '../../composables/useRunLifecycle'
 import { useRunLifecycleConsole } from '../../composables/useRunLifecycleConsole'
@@ -457,6 +478,7 @@ import { useWarRoomData } from '../../composables/useWarRoomData'
 import { useWarRoomMapProjection } from '../../composables/useWarRoomMapProjection'
 import { useWarRoomReplayControls } from '../../composables/useWarRoomReplayControls'
 import { useWarRoomScenarioDraft } from '../../composables/useWarRoomScenarioDraft'
+import { useAuthSession } from '../../composables/useAuthSession'
 import { decisionLabels, eventFilterOptions, graphTypeOptions, localizedText, prompts } from './warRoomWorkspaceConfig'
 
 const props = defineProps({ projectId: String, section: String })
@@ -464,6 +486,7 @@ const route = useRoute()
 const router = useRouter()
 const warRoomData = useWarRoomData(() => props.projectId)
 const runLifecycle = useRunLifecycle(() => props.projectId)
+const auth = useAuthSession()
 const detail = ref(null)
 const workspaceState = ref(null)
 const graphEl = ref(null)
@@ -494,13 +517,16 @@ const focusedGraphEdgeId = ref('')
 const activeDataTab = ref('tables')
 const analysisFilter = ref('')
 const graphTypeFilters = ref([])
+const trustSummary = ref(null)
+const trustLoading = ref(false)
+const trustError = ref('')
 let toastTimer = null
 const shortRunId = (runId) => {
   const text = String(runId || '')
   return text ? text.replace(/^run_/, '#').slice(0, 13) : ''
 }
 
-const sectionKeys = ['overview', 'sandbox', 'analysis', 'graph', 'data', 'settings', 'replay']
+const sectionKeys = ['overview', 'sandbox', 'analysis', 'graph', 'data', 'settings', 'replay', 'trust']
 const sectionMeta = {
   overview: { key: 'overview', label: '战情总览', title: '全球态势总览', desc: '地图、KPI、Agent 和时间线的指挥台总览。', icon: ShieldAlert },
   sandbox: { key: 'sandbox', label: '推演沙盘', title: '场景构建与推演参数', desc: '集中管理目标国家、供应链、政策动作和高级假设。', icon: MapPinned },
@@ -508,10 +534,11 @@ const sectionMeta = {
   graph: { key: 'graph', label: '知识图谱', title: '因果链路与机制', desc: '查看边权重、滞后天数和链路传播机制。', icon: BookOpen },
   data: { key: 'data', label: '数据中台', title: '运行快照与展示合同', desc: '审计 ui_state、时间线、供应链和快照数据。', icon: Database },
   settings: { key: 'settings', label: '系统设置', title: '显示设置与待上线能力', desc: '管理显示层、策略边界和未上线控件说明。', icon: Settings },
-  replay: { key: 'replay', label: '复盘包', title: 'Replay Pack 导出', desc: '生成 Markdown 与 JSON 审计清单。', icon: PackageCheck }
+  replay: { key: 'replay', label: '复盘包', title: 'Replay Pack 导出', desc: '生成 Markdown 与 JSON 审计清单。', icon: PackageCheck },
+  trust: { key: 'trust', label: '可信度中心', title: '规则、校准与人工复核', desc: '检查 Rule Pack、晋升门槛、证据覆盖与不可绕过的一致性准入。', icon: ShieldCheck }
 }
 const topSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.graph, sectionMeta.data]
-const railSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.replay, sectionMeta.settings]
+const railSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.trust, sectionMeta.replay, sectionMeta.settings]
 const isWarRoom = computed(() => detail.value?.project?.mode === 'war_room')
 const activeSection = computed(() => {
   const raw = String(route.params.section || props.section || 'overview')
@@ -618,6 +645,15 @@ const {
   cancelLifecycleRun,
   retryLifecycleRun,
 } = useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runVersions, running, showToast, onCompleted: load })
+const lifecycleControlForRole = computed(() => auth.permissions.value.canRun ? lifecycleControl.value : {
+  ...lifecycleControl.value,
+  busy: true,
+  canPause: false,
+  canCancel: false,
+  canResume: false,
+  canRetry: false,
+  disclaimer: '当前账户为只读/审阅角色；运行控制由后端 RBAC 禁止。',
+})
 const insightCards = computed(() => Array.isArray(workspaceState.value?.insight_cards) && workspaceState.value.insight_cards.length ? workspaceState.value.insight_cards : (Array.isArray(warRoomUi.value?.insight_cards) ? warRoomUi.value.insight_cards : []))
 const entityDetails = computed(() => workspaceState.value?.entity_details || warRoomUi.value?.entity_details || {})
 const topRiskCountry = computed(() => [...(warRoom.value?.risk_heatmap || [])].sort((a, b) => Number(b.risk || 0) - Number(a.risk || 0))[0] || null)
@@ -1145,8 +1181,34 @@ async function load(runId = selectedRunId.value) {
   await loadPresets()
   prepareCompareDefaults()
   await loadRunDiff()
+  await loadTrustSummary()
   await nextTick()
   renderGraph()
+}
+
+async function loadTrustSummary() {
+  if (!isWarRoom.value) return
+  trustLoading.value = true
+  trustError.value = ''
+  try { trustSummary.value = await getTrustSummary(props.projectId) }
+  catch (error) { trustError.value = error?.response?.data?.detail || error.message }
+  finally { trustLoading.value = false }
+}
+
+async function startTrustCalibration(rulePackId) {
+  try {
+    const calibration = await createCalibrationRun(rulePackId)
+    showToast(`校准任务已排队：${calibration.lifecycle_run_id}`)
+    await loadTrustSummary()
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function submitReviewDecision(reviewId, decision) {
+  try {
+    await decideReview(reviewId, decision, '通过可信度中心提交')
+    showToast('复核决定已追加写入审计链')
+    await loadTrustSummary()
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
 }
 async function loadWorkspaceState(runId = selectedRunId.value) {
   if (!isWarRoom.value) {
@@ -1175,6 +1237,10 @@ async function loadPresets() {
   }
 }
 async function run() {
+  if (!auth.permissions.value.canRun) {
+    showToast('当前角色无运行权限')
+    return
+  }
   running.value = true
   try {
     if (isWarRoom.value) {

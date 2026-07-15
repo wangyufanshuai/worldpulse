@@ -29,7 +29,7 @@
       </div>
     </section>
 
-    <section class="create-panel">
+    <section v-if="auth.permissions.value.canWrite" class="create-panel">
       <div class="section-title">
         <div>
           <div class="section-kicker"><PlusCircle :size="16" /> 新建项目</div>
@@ -87,6 +87,11 @@
       </button>
       <p v-if="error" class="error-text">{{ error }}</p>
     </section>
+    <section v-else class="create-panel readonly-panel" data-testid="readonly-project-notice">
+      <div class="section-kicker"><ShieldAlert :size="16" /> 只读访问</div>
+      <h2>当前角色不能创建项目</h2>
+      <p>你仍可查看项目、报告、Replay Pack 与可信度证据链；写权限由后端 RBAC 强制执行。</p>
+    </section>
 
     <section class="project-panel">
       <div class="section-title">
@@ -114,8 +119,10 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Clock3, FileSearch, PlusCircle, Radar, Rocket, ShieldAlert } from 'lucide-vue-next'
 import { createProject, getRiskOverview, getWarRoomPresets, listProjects } from '../api'
+import { useAuthSession } from '../composables/useAuthSession'
 
 const router = useRouter()
+const auth = useAuthSession()
 const projects = ref([])
 const risk = ref(null)
 const presets = ref(null)

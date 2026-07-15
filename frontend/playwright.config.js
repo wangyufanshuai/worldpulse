@@ -18,9 +18,9 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      command: 'python -m uvicorn app.main:app --host 127.0.0.1 --port 8010',
+      command: 'python -m app.manage create-admin --username e2e-admin --display-name "E2E Admin" --password "e2e administrator secret" && python -m uvicorn app.main:app --host 127.0.0.1 --port 8010',
       cwd: '..',
-      env: { WORLDPULSE_DB_PATH: e2eDb, AGENT_PROVIDER: 'mock' },
+      env: { WORLDPULSE_DB_PATH: e2eDb, AGENT_PROVIDER: 'mock', WORLDPULSE_AUTH_MODE: 'local', WORLDPULSE_AUTO_MIGRATE: '1' },
       url: 'http://127.0.0.1:8010/api/health',
       reuseExistingServer: false,
       timeout: 60_000,

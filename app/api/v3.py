@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Query, Request, Response
 
 from app.core.trust_models import (
     CalibrationCase,
@@ -13,6 +13,10 @@ from app.core.trust_models import (
     RulePackManifest,
     RulePackReviewRequest,
     SessionStatus,
+    ReviewCase,
+    ReviewDecision,
+    ReviewDecisionRequest,
+    TrustSummary,
 )
 from app.services.auth import (
     ABSOLUTE_HOURS,
@@ -25,6 +29,8 @@ from app.services.auth import (
 )
 from app.services import rule_packs
 from app.services import calibration
+from app.services import reviews
+from app.services.trust_center import project_trust_summary
 
 
 router = APIRouter()
@@ -104,3 +110,23 @@ def calibration_run_create(payload: CalibrationRunRequest, request: Request) -> 
 @router.get("/calibration/runs/{calibration_run_id}", response_model=CalibrationRunStatus)
 def calibration_run_detail(calibration_run_id: str) -> CalibrationRunStatus:
     return calibration.get_calibration_run(calibration_run_id)
+
+
+@router.get("/reviews", response_model=list[ReviewCase])
+def review_list(status: str | None = Query(default=None)) -> list[ReviewCase]:
+    return reviews.list_reviews(status=status)
+
+
+@router.get("/reviews/{review_id}", response_model=ReviewCase)
+def review_detail(review_id: str) -> ReviewCase:
+    return reviews.get_review(review_id)
+
+
+@router.post("/reviews/{review_id}/decision", response_model=ReviewDecision)
+def review_decision(review_id: str, payload: ReviewDecisionRequest, request: Request) -> ReviewDecision:
+    return reviews.decide_review(review_id, payload.decision, payload.comment, _actor(request))
+
+
+@router.get("/projects/{project_id}/trust-summary", response_model=TrustSummary)
+def trust_summary(project_id: str) -> TrustSummary:
+    return project_trust_summary(project_id)

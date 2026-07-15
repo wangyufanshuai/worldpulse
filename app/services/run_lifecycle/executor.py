@@ -15,6 +15,7 @@ from app.services.hybrid_simulation import run_hybrid_simulation
 from app.services.projects import persist_war_room_result
 from app.services.security import redact_secrets
 from app.services.war_room_engine import run_war_room
+from app.services.reviews import create_review_case
 
 from . import checkpoints, repository, steps
 
@@ -232,6 +233,23 @@ def process_job(run_id: str) -> RunJobStatus:
                 constraint_context=constraint_context,
             )
             project_consistency_audit(run_id, report, repository)
+            for decision in report.proposal_decisions:
+                if decision.outcome in {"constrained", "rejected", "expired"}:
+                    create_review_case(
+                        "agent_action_admission",
+                        "agent_action",
+                        f"{run_id}:{decision.proposal_id}",
+                        f"Agent action outcome requires human acknowledgement: {decision.outcome}",
+                        severity="high" if decision.outcome == "rejected" else "warning",
+                        payload={
+                            "run_id": run_id,
+                            "proposal_id": decision.proposal_id,
+                            "outcome": decision.outcome,
+                            "rule_version": decision.rule_version,
+                            "audit_hash": decision.audit_hash,
+                            "projection_status": decision.projection_status,
+                        },
+                    )
             if job.engine_mode == "hybrid":
                 outcome = run_hybrid_simulation(result, proposals, report, seed=job.seed or 42)
                 if outcome.projection_audit is not None:

@@ -2417,6 +2417,151 @@
         "title": "ResearchRunDiff",
         "type": "object"
       },
+      "ReviewCase": {
+        "properties": {
+          "assigned_to_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To User Id"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Payload",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "title": "Resource Type",
+            "type": "string"
+          },
+          "review_id": {
+            "title": "Review Id",
+            "type": "string"
+          },
+          "review_type": {
+            "title": "Review Type",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_id",
+          "review_type",
+          "resource_type",
+          "resource_id",
+          "severity",
+          "status",
+          "reason",
+          "created_at"
+        ],
+        "title": "ReviewCase",
+        "type": "object"
+      },
+      "ReviewDecision": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "confirmed",
+              "request_revision",
+              "reject_promotion",
+              "approve_promotion"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "decision_id": {
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "review_id": {
+            "title": "Review Id",
+            "type": "string"
+          },
+          "reviewer_user_id": {
+            "title": "Reviewer User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_id",
+          "review_id",
+          "reviewer_user_id",
+          "decision",
+          "created_at"
+        ],
+        "title": "ReviewDecision",
+        "type": "object"
+      },
+      "ReviewDecisionRequest": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "maxLength": 3000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "confirmed",
+              "request_revision",
+              "reject_promotion",
+              "approve_promotion"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "ReviewDecisionRequest",
+        "type": "object"
+      },
       "RiskAnalysis": {
         "properties": {
           "components": {
@@ -4170,6 +4315,92 @@
           "pressure_score"
         ],
         "title": "SupplyChainLink",
+        "type": "object"
+      },
+      "TrustSummary": {
+        "properties": {
+          "agent_admission_matrix": {
+            "additionalProperties": true,
+            "title": "Agent Admission Matrix",
+            "type": "object"
+          },
+          "calibration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalibrationRunStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "calibration_status": {
+            "title": "Calibration Status",
+            "type": "string"
+          },
+          "data_coverage": {
+            "title": "Data Coverage",
+            "type": "number"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "golden_gate": {
+            "additionalProperties": true,
+            "title": "Golden Gate",
+            "type": "object"
+          },
+          "pending_review_count": {
+            "title": "Pending Review Count",
+            "type": "integer"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "report_allowed": {
+            "title": "Report Allowed",
+            "type": "boolean"
+          },
+          "reviews": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReviewCase"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "rule_pack": {
+            "$ref": "#/components/schemas/RulePackManifest"
+          },
+          "rule_pack_history": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RulePackManifest"
+            },
+            "title": "Rule Pack History",
+            "type": "array"
+          },
+          "security_gate": {
+            "additionalProperties": true,
+            "title": "Security Gate",
+            "type": "object"
+          }
+        },
+        "required": [
+          "project_id",
+          "rule_pack",
+          "calibration_status",
+          "golden_gate",
+          "security_gate",
+          "agent_admission_matrix",
+          "data_coverage",
+          "pending_review_count",
+          "report_allowed",
+          "generated_at"
+        ],
+        "title": "TrustSummary",
         "type": "object"
       },
       "UserIdentity": {
@@ -7681,6 +7912,183 @@
           }
         },
         "summary": "Calibration Run Detail"
+      }
+    },
+    "/api/v3/projects/{project_id}/trust-summary": {
+      "get": {
+        "operationId": "trust_summary_api_v3_projects__project_id__trust_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trust Summary"
+      }
+    },
+    "/api/v3/reviews": {
+      "get": {
+        "operationId": "review_list_api_v3_reviews_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewCase"
+                  },
+                  "title": "Response Review List Api V3 Reviews Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review List"
+      }
+    },
+    "/api/v3/reviews/{review_id}": {
+      "get": {
+        "operationId": "review_detail_api_v3_reviews__review_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewCase"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Detail"
+      }
+    },
+    "/api/v3/reviews/{review_id}/decision": {
+      "post": {
+        "operationId": "review_decision_api_v3_reviews__review_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewDecision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Decision"
       }
     },
     "/api/v3/rule-packs": {
