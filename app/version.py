@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-WORLDPULSE_VERSION = "1.1.0-dev"
+WORLDPULSE_VERSION = "1.2.0-dev"
 API_CONTRACT_VERSION = "v1"
 RELEASE_CHANNEL = "development"
 
