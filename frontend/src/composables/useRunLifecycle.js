@@ -13,6 +13,12 @@ import {
 
 const TERMINAL = new Set(['completed', 'cancelled', 'failed'])
 
+export function mergeLifecycleEvents(current = [], nextEvents = []) {
+  const bySeq = new Map(current.map((event) => [Number(event.seq), event]))
+  nextEvents.forEach((event) => bySeq.set(Number(event.seq), event))
+  return [...bySeq.values()].sort((a, b) => Number(a.seq || 0) - Number(b.seq || 0))
+}
+
 export function useRunLifecycle(projectId) {
   const activeRun = ref(null)
   const events = ref([])
@@ -29,9 +35,7 @@ export function useRunLifecycle(projectId) {
   }
 
   function mergeEvents(nextEvents = []) {
-    const bySeq = new Map(events.value.map((event) => [Number(event.seq), event]))
-    nextEvents.forEach((event) => bySeq.set(Number(event.seq), event))
-    events.value = [...bySeq.values()].sort((a, b) => Number(a.seq || 0) - Number(b.seq || 0))
+    events.value = mergeLifecycleEvents(events.value, nextEvents)
   }
 
   async function refresh(runId = activeRun.value?.run_id) {

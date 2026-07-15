@@ -63,6 +63,11 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await expect(page.getByTestId('hybrid-view-toggle').getByRole('button', { name: '确定性基线' })).toHaveClass(/active/)
   await page.getByTestId('hybrid-view-toggle').getByRole('button', { name: '混合最终结果' }).click()
 
+  await page.getByTestId('war-room-map-tick-7').click()
+  await expect(page.getByTestId('war-room-lifecycle-map')).toContainText('D+7')
+  await page.getByTestId('war-room-causal-toggle').click()
+  await expect(page.getByTestId('war-room-graph-module')).toBeVisible()
+
   await page.getByRole('link', { name: '智能分析' }).click()
   await expect(page.getByTestId('agent-negotiation-panel')).toBeVisible()
   await expect(page.getByTestId('agent-negotiation-proposal')).toHaveCount(4)

@@ -62,6 +62,7 @@ export function useWarRoomReplayControls({ timelineEvents, selectedMapEntity, sh
     activeReplayProgress,
     activeEventKeys,
     selectReplayDay,
+    advanceReplay,
     toggleReplay,
     cycleReplaySpeed,
     stopReplayTimer,

@@ -40,6 +40,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { hybridSummaryMetrics } from '../../composables/hybridSummary'
 
 const props = defineProps({
   trace: { type: Object, default: null },
@@ -47,8 +48,9 @@ const props = defineProps({
 })
 defineEmits(['set-view'])
 const diff = computed(() => props.trace?.baseline_diff || {})
-const topChains = computed(() => (diff.value.supply_chain_pressure || []).filter(item => Number(item.delta)).slice(0, 3))
-const topCountries = computed(() => (diff.value.country_risk || []).filter(item => Number(item.delta)).slice(0, 3))
+const summaryMetrics = computed(() => hybridSummaryMetrics(props.trace))
+const topChains = computed(() => summaryMetrics.value.topChains)
+const topCountries = computed(() => summaryMetrics.value.topCountries)
 
 const signedRisk = value => Number.isFinite(Number(value)) ? Number(value).toFixed(1) : '—'
 const signedDelta = value => Number.isFinite(Number(value)) ? `${Number(value) > 0 ? '+' : ''}${Number(value).toFixed(1)}` : '—'

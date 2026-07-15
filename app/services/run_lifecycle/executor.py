@@ -28,6 +28,12 @@ PHASES = [
 ]
 
 
+def lifecycle_fault_hook(phase: str, moment: str) -> None:
+    """Test-only fault injection seam; production is a no-op."""
+
+    return None
+
+
 def process_one_queued_job(worker_id: str | None = None) -> RunJobStatus | None:
     job = repository.claim_next_job(worker_id=worker_id)
     if job is None:
@@ -124,6 +130,7 @@ def process_job(run_id: str) -> RunJobStatus:
         }
         step = steps.begin_step(run_id, phase, attempt_id, step_input)
         artifacts_before = {item.artifact_id for item in repository.get_artifacts(run_id)}
+        lifecycle_fault_hook(phase, "before")
         repository.mark_phase(run_id, phase, progress, event_type, title, detail, payload={"phase_index": index, "progress": progress})
         if phase == "scenario_compile":
             repository.add_artifact(run_id, "scenario", "scenario.v1", scenario.model_dump(mode="json"))
@@ -288,6 +295,7 @@ def process_job(run_id: str) -> RunJobStatus:
                 "确定性结果已投影回 research_runs，Run Diff / Replay Pack / workspace 可继续使用。",
                 payload={"result_run_id": result_run_id},
             )
+        lifecycle_fault_hook(phase, "after")
         phase_durations_ms[phase] = max(0, int((perf_counter() - phase_started) * 1000))
         new_artifacts = [
             item.artifact_id for item in repository.get_artifacts(run_id)

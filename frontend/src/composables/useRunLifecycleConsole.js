@@ -10,6 +10,16 @@ const PHASE_META = {
   replay_archive: ['06', '复盘归档', '固化结果与溯源'],
 }
 
+export function lifecycleControlMatrix(status) {
+  return {
+    canPause: ['queued', 'preparing', 'running'].includes(status),
+    canCancel: ['queued', 'preparing', 'running', 'pausing', 'paused'].includes(status),
+    canResume: ['paused', 'pausing'].includes(status),
+    canRetry: ['failed', 'cancelled'].includes(status),
+    busy: ['queued', 'preparing', 'running', 'pausing', 'cancelling'].includes(status),
+  }
+}
+
 export function useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runVersions, running, showToast, onCompleted }) {
   const activeLifecycleRun = computed(() => runLifecycle.activeRun.value)
   const consistencyAudit = computed(() => runLifecycle.audit.value?.consistency_audit || null)
@@ -54,6 +64,7 @@ export function useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runV
       }
     }
     const status = job.status
+    const controls = lifecycleControlMatrix(status)
     const resultRunId = job.result_run_id
     return {
       ...base,
@@ -71,11 +82,7 @@ export function useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runV
       checkpointStatus: status,
       replayReady: status === 'completed' && !!resultRunId,
       compareReady: base.compareReady || (status === 'completed' && !!resultRunId && runVersions.value.length > 1),
-      canPause: ['queued', 'preparing', 'running'].includes(status),
-      canCancel: ['queued', 'preparing', 'running', 'pausing', 'paused'].includes(status),
-      canResume: ['paused', 'pausing'].includes(status),
-      canRetry: ['failed', 'cancelled'].includes(status),
-      busy: ['queued', 'preparing', 'running', 'pausing', 'cancelling'].includes(status),
+      ...controls,
       disclaimer: status === 'completed'
         ? '真实生命周期任务已完成；结果已投影回 v1 workspace / Run Diff / Replay Pack。'
         : '当前为真实本地 Run Lifecycle：状态、事件、检查点来自 SQLite + 独立 worker。',
