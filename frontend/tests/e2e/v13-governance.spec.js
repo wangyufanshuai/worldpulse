@@ -90,3 +90,26 @@ test('draft Rule Pack cannot bypass calibration and activate', async ({ request 
   const activated = await request.post(`${API}/v3/rule-packs/${pack.rule_pack_id}/activate`, { headers: { 'X-CSRF-Token': csrf } })
   expect(activated.status()).toBe(409)
 })
+
+test('Evidence Center syncs a run and exposes immutable provenance', async ({ page }) => {
+  const csrf = await login(page.request)
+  const project = await createWarRoom(page.request, csrf, 'evidence')
+  const run = await page.request.post(`${API}/projects/${project.project_id}/war-room/run`, {
+    headers: { 'X-CSRF-Token': csrf },
+    data: { scenario_key: 'energy_export_cut', duration_days: 30, intensity: .7, propagation: .45, seed: 42 },
+  })
+  expect(run.ok()).toBeTruthy()
+  const runId = (await run.json()).latest_run.run_id
+  const synced = await page.request.post(`${API}/v4/projects/${project.project_id}/evidence/sync?run_id=${runId}`, {
+    headers: { 'X-CSRF-Token': csrf },
+  })
+  expect(synced.ok()).toBeTruthy()
+
+  await page.goto(`projects/${project.project_id}/war-room/evidence`)
+  await expect(page.getByTestId('war-room-evidence-center')).toBeVisible()
+  await expect(page.getByTestId('evidence-integrity-status')).toContainText('INTEGRITY VERIFIED')
+  await expect(page.getByText('Immutable Snapshots')).toBeVisible()
+  await page.getByTestId('evidence-search-input').fill('deterministic')
+  await page.getByTestId('evidence-search-input').press('Enter')
+  await expect(page.getByTestId('evidence-search-results')).toBeVisible()
+})

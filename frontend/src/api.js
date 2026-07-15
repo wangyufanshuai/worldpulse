@@ -35,6 +35,31 @@ export async function getTrustSummary(projectId) {
   return data
 }
 
+export async function getProjectEvidenceSummary(projectId) {
+  const { data } = await api.get(`/v4/projects/${projectId}/evidence-summary`)
+  return data
+}
+
+export async function syncProjectEvidence(projectId, runId = null) {
+  const { data } = await api.post(`/v4/projects/${projectId}/evidence/sync`, null, { params: runId ? { run_id: runId } : {} })
+  return data
+}
+
+export async function searchEvidence(params = {}) {
+  const { data } = await api.get('/v4/evidence/search', { params })
+  return data
+}
+
+export async function createEvidencePack(payload) {
+  const { data } = await api.post('/v4/evidence/packs', payload)
+  return data
+}
+
+export async function syncCalibrationEvidence() {
+  const { data } = await api.post('/v4/evidence/calibration/sync')
+  return data
+}
+
 export async function listReviews(status = null) {
   const { data } = await api.get('/v3/reviews', { params: status ? { status } : {} })
   return data

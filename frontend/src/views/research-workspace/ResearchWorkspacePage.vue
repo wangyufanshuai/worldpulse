@@ -179,6 +179,20 @@
             @decision="submitReviewDecision"
           />
 
+          <WarRoomEvidenceCenter
+            v-else-if="activeSection === 'evidence'"
+            :summary="evidenceRegistry.summary.value"
+            :search-result="evidenceRegistry.searchResult.value"
+            :loading="evidenceRegistry.loading.value"
+            :searching="evidenceRegistry.searching.value"
+            :error="evidenceRegistry.error.value"
+            :can-write="auth.permissions.value.canWrite"
+            @refresh="loadEvidenceSummary"
+            @sync="syncEvidence"
+            @create-pack="freezeEvidencePack"
+            @search="searchProjectEvidence"
+          />
+
         </section>
       </section>
 
@@ -470,6 +484,7 @@ import WarRoomReplayModule from '../../components/war-room/WarRoomReplayModule.v
 import WarRoomSandboxModule from '../../components/war-room/WarRoomSandboxModule.vue'
 import WarRoomSettingsModule from '../../components/war-room/WarRoomSettingsModule.vue'
 import WarRoomTrustCenter from '../../components/war-room/WarRoomTrustCenter.vue'
+import WarRoomEvidenceCenter from '../../components/war-room/WarRoomEvidenceCenter.vue'
 import WarRoomTopNav from '../../components/war-room/WarRoomTopNav.vue'
 import { useRunLifecycle } from '../../composables/useRunLifecycle'
 import { useRunLifecycleConsole } from '../../composables/useRunLifecycleConsole'
@@ -479,6 +494,7 @@ import { useWarRoomMapProjection } from '../../composables/useWarRoomMapProjecti
 import { useWarRoomReplayControls } from '../../composables/useWarRoomReplayControls'
 import { useWarRoomScenarioDraft } from '../../composables/useWarRoomScenarioDraft'
 import { useAuthSession } from '../../composables/useAuthSession'
+import { useEvidenceRegistry } from '../../composables/useEvidenceRegistry'
 import { decisionLabels, eventFilterOptions, graphTypeOptions, localizedText, prompts } from './warRoomWorkspaceConfig'
 
 const props = defineProps({ projectId: String, section: String })
@@ -487,6 +503,7 @@ const router = useRouter()
 const warRoomData = useWarRoomData(() => props.projectId)
 const runLifecycle = useRunLifecycle(() => props.projectId)
 const auth = useAuthSession()
+const evidenceRegistry = useEvidenceRegistry(() => props.projectId)
 const detail = ref(null)
 const workspaceState = ref(null)
 const graphEl = ref(null)
@@ -526,7 +543,7 @@ const shortRunId = (runId) => {
   return text ? text.replace(/^run_/, '#').slice(0, 13) : ''
 }
 
-const sectionKeys = ['overview', 'sandbox', 'analysis', 'graph', 'data', 'settings', 'replay', 'trust']
+const sectionKeys = ['overview', 'sandbox', 'analysis', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence']
 const sectionMeta = {
   overview: { key: 'overview', label: '战情总览', title: '全球态势总览', desc: '地图、KPI、Agent 和时间线的指挥台总览。', icon: ShieldAlert },
   sandbox: { key: 'sandbox', label: '推演沙盘', title: '场景构建与推演参数', desc: '集中管理目标国家、供应链、政策动作和高级假设。', icon: MapPinned },
@@ -535,10 +552,11 @@ const sectionMeta = {
   data: { key: 'data', label: '数据中台', title: '运行快照与展示合同', desc: '审计 ui_state、时间线、供应链和快照数据。', icon: Database },
   settings: { key: 'settings', label: '系统设置', title: '显示设置与待上线能力', desc: '管理显示层、策略边界和未上线控件说明。', icon: Settings },
   replay: { key: 'replay', label: '复盘包', title: 'Replay Pack 导出', desc: '生成 Markdown 与 JSON 审计清单。', icon: PackageCheck },
-  trust: { key: 'trust', label: '可信度中心', title: '规则、校准与人工复核', desc: '检查 Rule Pack、晋升门槛、证据覆盖与不可绕过的一致性准入。', icon: ShieldCheck }
+  trust: { key: 'trust', label: '可信度中心', title: '规则、校准与人工复核', desc: '检查 Rule Pack、晋升门槛、证据覆盖与不可绕过的一致性准入。', icon: ShieldCheck },
+  evidence: { key: 'evidence', label: '证据中心', title: '证据注册表与时间截点治理', desc: '统一检索冻结快照、报告声明、引用链和证据包完整性。', icon: FileSearch }
 }
 const topSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.graph, sectionMeta.data]
-const railSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.trust, sectionMeta.replay, sectionMeta.settings]
+const railSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.evidence, sectionMeta.trust, sectionMeta.replay, sectionMeta.settings]
 const isWarRoom = computed(() => detail.value?.project?.mode === 'war_room')
 const activeSection = computed(() => {
   const raw = String(route.params.section || props.section || 'overview')
@@ -1182,6 +1200,7 @@ async function load(runId = selectedRunId.value) {
   prepareCompareDefaults()
   await loadRunDiff()
   await loadTrustSummary()
+  await loadEvidenceSummary()
   await nextTick()
   renderGraph()
 }
@@ -1193,6 +1212,32 @@ async function loadTrustSummary() {
   try { trustSummary.value = await getTrustSummary(props.projectId) }
   catch (error) { trustError.value = error?.response?.data?.detail || error.message }
   finally { trustLoading.value = false }
+}
+
+async function loadEvidenceSummary() {
+  if (!isWarRoom.value) return
+  try { await evidenceRegistry.load() }
+  catch { /* component renders the registry error without breaking the workspace */ }
+}
+
+async function syncEvidence() {
+  try {
+    const result = await evidenceRegistry.sync(selectedRunId.value || null)
+    showToast(`证据链已同步：${result.snapshots_created} 个新快照，${result.claims_created} 条新声明`)
+    await loadTrustSummary()
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function freezeEvidencePack() {
+  try {
+    const pack = await evidenceRegistry.createPack(selectedRunId.value || null)
+    showToast(`证据包已冻结：${pack.manifest_hash.slice(0, 12)}`)
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function searchProjectEvidence(query, cutoffAt) {
+  try { await evidenceRegistry.search(query, cutoffAt || null) }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
 }
 
 async function startTrustCalibration(rulePackId) {
