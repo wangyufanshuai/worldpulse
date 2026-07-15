@@ -2144,6 +2144,14 @@ body:has(.war-room-page) .studio-header {
 .agent-proposal-decisions article.needs_revision header b { color: #ffad45; }
 .agent-proposal-decisions p { margin: 7px 0; color: #c6d5e6; font-size: 12px; line-height: 1.5; }
 .agent-proposal-decisions small { color: #758ba4; }
+.agent-audit-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
+.agent-audit-summary span { border: 1px solid rgba(77, 163, 255, 0.16); border-radius: 7px; padding: 8px; color: #8197b0; font-size: 11px; }
+.agent-audit-summary strong { display: block; margin-top: 3px; color: #dceeff; font-size: 16px; }
+.agent-proposal-v12-audit { display: grid; gap: 7px; margin-top: 10px; }
+.agent-proposal-v12-audit article { display: grid; grid-template-columns: minmax(110px, .7fr) repeat(4, minmax(0, 1fr)); gap: 8px; align-items: center; border: 1px solid rgba(77, 163, 255, 0.14); border-radius: 7px; padding: 8px; color: #9fb3c9; font-size: 11px; }
+.agent-proposal-v12-audit article header { display: flex; gap: 7px; align-items: center; }
+.agent-proposal-v12-audit article header b { color: #58e2a0; }
+.agent-proposal-v12-audit article small { grid-column: 1 / -1; color: #ffad45; }
 .settings-control-card select {
   width: 100%;
   margin-top: 10px;

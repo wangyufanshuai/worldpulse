@@ -16,6 +16,12 @@
         <div><dt>错误 / 警告</dt><dd>{{ report.summary?.error_count || 0 }} / {{ report.summary?.warning_count || 0 }}</dd></div>
         <div><dt>Agent 动作</dt><dd>{{ report.summary?.agent_action_count || 0 }}</dd></div>
       </dl>
+      <div class="agent-audit-summary" data-testid="agent-audit-summary">
+        <span>Action pass rate <strong data-testid="agent-action-pass-rate">{{ passRateLabel }}</strong></span>
+        <span>Rule hits <strong data-testid="agent-action-rule-hit">{{ ruleHitCount }}</strong></span>
+        <span>Constrained <strong>{{ report.summary?.constrained_action_count || 0 }}</strong></span>
+        <span>Expired <strong>{{ report.summary?.expired_action_count || 0 }}</strong></span>
+      </div>
       <div class="consistency-finding-list" data-testid="consistency-findings">
         <article
           v-for="finding in report.findings || []"
@@ -43,6 +49,16 @@
             <small>决策 Hash：{{ shortHash(decision.audit_hash) }}</small>
           </article>
         </div>
+      </section>
+      <section v-if="report.proposal_decisions?.length" class="agent-proposal-v12-audit" data-testid="agent-proposal-v12-audit">
+        <article v-for="decision in report.proposal_decisions" :key="`v12-${decision.proposal_id}`">
+          <header><code>{{ shortId(decision.proposal_id) }}</code><b>{{ decision.outcome || decision.decision }}</b></header>
+          <span>projection: {{ decision.projection_status || 'not_projected' }}</span>
+          <span>rule: {{ decision.rule_version || '--' }}</span>
+          <span>input: {{ shortHash(decision.input_hash) }}</span>
+          <span>rule hits: {{ decision.rule_findings?.length || 0 }}</span>
+          <small v-if="decision.rejection_reason">reason: {{ decision.rejection_reason }}</small>
+        </article>
       </section>
       <footer>
         <span>审计 Hash</span>
@@ -72,6 +88,11 @@ const statusLabel = computed(() => ({
 }[props.report?.overall_status] || '待评估'))
 
 const statusTone = computed(() => props.report?.overall_status || 'pending')
+const passRateLabel = computed(() => {
+  const value = Number(props.report?.summary?.action_pass_rate)
+  return Number.isFinite(value) ? `${Math.round(value * 100)}%` : '--'
+})
+const ruleHitCount = computed(() => (props.report?.proposal_decisions || []).reduce((total, decision) => total + (decision.rule_findings?.length || 0), 0))
 
 function decisionLabel(value) {
   return { accepted: '已接受', rejected: '已拒绝', needs_revision: '需修订', not_evaluated: '未评估' }[value] || value
