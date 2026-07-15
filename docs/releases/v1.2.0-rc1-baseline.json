@@ -1,0 +1,34 @@
+{
+  "captured_at": "2026-07-15",
+  "version": "1.2.0-dev",
+  "test_baseline": {
+    "pytest": 131,
+    "vitest": 4,
+    "playwright": 1,
+    "golden_scenarios": 11
+  },
+  "schema_sha256": "5742e6007d8c7bc4c0e1d244dc17a7ed6347eab0f4b756c58d9a364c9bf9d258",
+  "latency_ms": {
+    "health_median": 5.691,
+    "health_p95": 12.476,
+    "war_room_median": 2.973
+  },
+  "golden_hashes": {
+    "01_strait_baseline": "0051f66af78d684307957c62740ed9f4b6a7e77b65c5daced8de59cfc07d446b",
+    "02_strait_sanctions": "4569cffa38eae7edf2c1b29e11c41e4f931c91629171a31b18c8a71c127e5eac",
+    "03_strait_deescalation": "696c342d02122d6218e7f2758aa9c0df579a5fe3e74b344b7e570f5785ce7e1b",
+    "04_energy_baseline": "23373b150a37195a0fc8dda5ffd39bc05269fc11da6455ff1520d4d821b7d4e3",
+    "05_energy_reroute": "36f004081f20025171b86f7c5de88220c1a455769ca313b65125b5d479ab188e",
+    "06_food_baseline": "d4a31215d53120a4f8e293ca2a295735b2a3a401fbefc417473fadee54fdd7d7",
+    "07_food_humanitarian": "36cb628449d2f2ced69173b2cd4823811c96de5aed796b300895c8cddb14f627",
+    "08_chip_override": "c61788f1e5a24464a3f6784cca94415f4e35436232c1f6aaefb526ea6d7aca9f",
+    "09_energy_country_override": "a7477cf863179eab5cab726d600e956f4429076dbf7aaca3abf396c65a09efe1",
+    "10_multi_policy": "0206cffe253a06e307fd6ab79519c680c23d54aef0047a7619c0ecad2a1bf75b",
+    "11_v12_agent_governance": "df5acaece5f2a04bc544de8d2d252b2e0f1802e76dec31e463a2ac13d3b1d762"
+  },
+  "notes": [
+    "Latency is a local development-machine sample and is a regression signal, not an SLO.",
+    "The canonical API contract remains docs/api/openapi.v1.json.",
+    "Runtime logs, databases, screenshots and frontend build artifacts are excluded."
+  ]
+}
