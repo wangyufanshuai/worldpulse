@@ -19,6 +19,10 @@ V13_TABLES = {
     "users", "auth_sessions", "security_audit_events", "rule_packs", "rule_pack_reviews",
     "calibration_cases", "calibration_runs", "calibration_results", "review_cases", "review_decisions",
 }
+V14_TABLES = {
+    "evidence_sources", "evidence_snapshots", "evidence_claims", "evidence_links",
+    "evidence_packs", "evidence_pack_items",
+}
 
 
 @dataclass(frozen=True)
@@ -219,7 +223,7 @@ def verify_schema(db_path: str | Path) -> dict:
         raise RuntimeError(f"Pending database migrations: {pending}")
     with _connect(target) as conn:
         tables = _tables(conn)
-        missing = (BASELINE_TABLES | V13_TABLES | {"schema_migrations"}) - tables
+        missing = (BASELINE_TABLES | V13_TABLES | V14_TABLES | {"schema_migrations"}) - tables
         if missing:
             raise RuntimeError(f"Schema verification failed; missing tables: {sorted(missing)}")
         integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]

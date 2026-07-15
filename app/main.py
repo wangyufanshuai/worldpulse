@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.api.routes import router
 from app.api.v3 import router as v3_router
+from app.api.v4 import router as v4_router
 from app.services.auth import (
     auth_mode,
     authenticate_request,
@@ -96,6 +97,7 @@ if studio_assets.exists():
 templates = Jinja2Templates(directory="app/templates")
 app.include_router(router, prefix="/api")
 app.include_router(v3_router, prefix="/api/v3")
+app.include_router(v4_router, prefix="/api/v4")
 
 
 @app.get("/favicon.ico")

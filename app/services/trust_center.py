@@ -10,6 +10,7 @@ from app.services.project_store import connect, init_db, loads
 from app.services.reviews import ensure_artifact_integrity_reviews, list_reviews
 from app.services.reviews import create_review_case
 from app.services.rule_packs import active_rule_pack, list_rule_packs
+from app.services.evidence_registry import project_evidence_summary
 
 
 def project_trust_summary(project_id: str) -> TrustSummary:
@@ -25,6 +26,7 @@ def project_trust_summary(project_id: str) -> TrustSummary:
     reviews = list_reviews(status="open")
     metrics = calibration.metrics if calibration else {}
     report_allowed = bool(calibration and calibration.gate_status == "passed" and all(metrics.get("gates", {}).values()))
+    evidence_summary = project_evidence_summary(project_id)
     return TrustSummary(
         project_id=project_id,
         rule_pack=pack,
@@ -43,6 +45,15 @@ def project_trust_summary(project_id: str) -> TrustSummary:
         reviews=reviews[:50],
         rule_pack_history=list_rule_packs(),
         report_allowed=report_allowed,
+        evidence_registry={
+            "source_count": evidence_summary.source_count,
+            "snapshot_count": evidence_summary.snapshot_count,
+            "claim_count": evidence_summary.claim_count,
+            "coverage": evidence_summary.coverage,
+            "integrity_status": evidence_summary.integrity_status,
+            "cutoff_safe": evidence_summary.cutoff_safe,
+            "latest_pack_hash": evidence_summary.latest_pack.manifest_hash if evidence_summary.latest_pack else None,
+        },
         generated_at=datetime.now().isoformat(timespec="milliseconds"),
     )
 

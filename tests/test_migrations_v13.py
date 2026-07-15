@@ -10,11 +10,15 @@ from app.db.migrations import MIGRATIONS_DIR, apply_migrations, migration_status
 def test_fresh_database_applies_versioned_schema(tmp_path):
     database = tmp_path / "fresh.db"
     applied = apply_migrations(database)
-    assert [item.version for item in applied] == ["0001_v12_baseline", "0002_v13_trust_governance"]
+    assert [item.version for item in applied] == [
+        "0001_v12_baseline", "0002_v13_trust_governance", "0003_v14_evidence_registry",
+    ]
     assert verify_schema(database)["status"] == "ok"
     with sqlite3.connect(database) as conn:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(run_jobs)")}
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert {"job_kind", "rule_pack_id", "rule_pack_hash"} <= columns
+    assert {"evidence_sources", "evidence_snapshots", "evidence_claims", "evidence_links", "evidence_packs"} <= tables
 
 
 def test_existing_v12_database_is_registered_without_rebuilding(tmp_path):
@@ -27,7 +31,7 @@ def test_existing_v12_database_is_registered_without_rebuilding(tmp_path):
             (marker,),
         )
     applied = apply_migrations(database)
-    assert [item.version for item in applied] == ["0002_v13_trust_governance"]
+    assert [item.version for item in applied] == ["0002_v13_trust_governance", "0003_v14_evidence_registry"]
     with sqlite3.connect(database) as conn:
         assert conn.execute("SELECT project_id FROM research_projects").fetchone()[0] == marker
     assert all(item["applied"] for item in migration_status(database))

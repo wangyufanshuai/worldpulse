@@ -172,4 +172,5 @@ class TrustSummary(BaseModel):
     reviews: list[ReviewCase] = []
     rule_pack_history: list[RulePackManifest] = []
     report_allowed: bool
+    evidence_registry: dict = {}
     generated_at: str
