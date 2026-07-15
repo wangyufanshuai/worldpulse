@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from app.core.models import RunJobStatus, WarRoomScenarioRequest
 from app.services.agent_contract import build_mock_agent_batch
+from app.services.agent_runtime import run_agent_runtime, runtime_config_from_env
 from app.services.consistency import evaluate_war_room_result
 from app.services.consistency.projector import project_consistency_audit
 from app.services.projects import persist_war_room_result
@@ -73,6 +74,50 @@ def process_job(run_id: str) -> RunJobStatus:
                         "proposal_count": len(proposals),
                         "batch_hash": batch.batch_hash,
                         "artifact_id": artifact.artifact_id,
+                    },
+                )
+            elif job.engine_mode == "controlled_agent":
+                runtime = run_agent_runtime(
+                    result,
+                    run_id=run_id,
+                    config=runtime_config_from_env(job.seed),
+                    should_stop=lambda: repository.get_job(run_id).status in {"pausing", "paused", "cancelling", "cancelled"},
+                )
+                proposals = runtime.proposals
+                constraint_context = runtime.constraint_context
+                runtime_artifact = repository.add_artifact(run_id, "agent_runtime_audit", runtime.schema_version, runtime.model_dump(mode="json"))
+                proposal_artifact = repository.add_artifact(
+                    run_id,
+                    "agent_action_proposals",
+                    "agent-action-batch.v1",
+                    {
+                        "schema_version": "agent-action-batch.v1",
+                        "provider": runtime.provider,
+                        "model": runtime.model,
+                        "mode": runtime.mode,
+                        "runtime_hash": runtime.runtime_hash,
+                        "proposals": [proposal.model_dump(mode="json") for proposal in proposals],
+                        "constraint_context": constraint_context.model_dump(mode="json"),
+                    },
+                )
+                repository.append_event(
+                    run_id,
+                    "AGENT",
+                    "deterministic_run",
+                    "Controlled Agent Runtime completed",
+                    f"受控 Runtime 记录 {len(proposals)} 个结构化提案；模式 {runtime.mode}，失败调用 {runtime.failed_calls}。",
+                    payload={
+                        "provider": runtime.provider,
+                        "model": runtime.model,
+                        "mode": runtime.mode,
+                        "proposal_count": len(proposals),
+                        "call_count": runtime.total_calls,
+                        "estimated_tokens": runtime.total_estimated_tokens,
+                        "failed_calls": runtime.failed_calls,
+                        "runtime_hash": runtime.runtime_hash,
+                        "runtime_artifact_id": runtime_artifact.artifact_id,
+                        "proposal_artifact_id": proposal_artifact.artifact_id,
+                        "fallback_reason": runtime.fallback_reason,
                     },
                 )
         elif phase == "consistency_audit":

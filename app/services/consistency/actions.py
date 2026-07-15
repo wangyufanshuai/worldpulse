@@ -25,7 +25,7 @@ def evaluate_action_proposals(
     context: AgentConstraintContext | None,
 ) -> list[AgentActionDecision]:
     decisions = []
-    consumed: dict[str, int] = {}
+    consumed: dict[tuple[str, int], int] = {}
     for proposal in sorted(proposals, key=lambda item: (item.turn, item.proposal_id)):
         findings = []
         if context is None:
@@ -73,7 +73,8 @@ def evaluate_action_proposals(
                 suggested_action="拒绝动作或使用经过批准的 actor/action 配置。",
             ))
 
-        consumed[proposal.actor_id] = consumed.get(proposal.actor_id, 0) + 1
+        budget_key = (proposal.actor_id, proposal.turn)
+        consumed[budget_key] = consumed.get(budget_key, 0) + 1
         budget = context.action_budgets.get(proposal.actor_id)
         if budget is None:
             findings.append(_finding(
@@ -88,7 +89,7 @@ def evaluate_action_proposals(
                 actual="unavailable",
                 suggested_action="补充显式动作预算后重新评估。",
             ))
-        elif consumed[proposal.actor_id] > budget:
+        elif consumed[budget_key] > budget:
             findings.append(_finding(
                 "CONSISTENCY.ACTION_RESOURCE_BUDGET.V1",
                 category="resource",
@@ -98,7 +99,7 @@ def evaluate_action_proposals(
                 subject_id=proposal.proposal_id,
                 message_zh="actor 在当前回合提交的动作数量超过预算。",
                 expected={"maximum": budget},
-                actual=consumed[proposal.actor_id],
+                actual=consumed[budget_key],
                 evidence_refs=[proposal.actor_id],
                 suggested_action="拒绝超出预算的动作。",
             ))

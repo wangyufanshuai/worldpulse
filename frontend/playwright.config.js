@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 const e2eDb = process.env.WORLDPULSE_E2E_DB || `data/worldpulse-e2e-${process.pid}.db`
 process.env.WORLDPULSE_E2E_DB = e2eDb
+process.env.AGENT_PROVIDER = 'mock'
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -19,7 +20,7 @@ export default defineConfig({
     {
       command: 'python -m uvicorn app.main:app --host 127.0.0.1 --port 8010',
       cwd: '..',
-      env: { WORLDPULSE_DB_PATH: e2eDb },
+      env: { WORLDPULSE_DB_PATH: e2eDb, AGENT_PROVIDER: 'mock' },
       url: 'http://127.0.0.1:8010/api/health',
       reuseExistingServer: false,
       timeout: 60_000,

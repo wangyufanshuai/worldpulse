@@ -33,7 +33,7 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await expect(page.getByTestId('war-room-lifecycle-kpis')).toBeVisible()
 
   await page.getByLabel('设置').click()
-  await page.getByTestId('lifecycle-engine-mode').selectOption('mock_agent')
+  await page.getByTestId('lifecycle-engine-mode').selectOption('controlled_agent')
   await page.getByRole('button', { name: '返回战情总览' }).click()
 
   await page.getByTestId('war-room-run-action').click()

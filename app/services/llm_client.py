@@ -108,6 +108,18 @@ def call_llm_json(messages: list[LLMMessage], schema_hint: dict[str, Any], timeo
     return LLMResult(enabled=False, provider=fallback.provider, model=fallback.model, mode="disabled", content="", error=" | ".join(errors) if errors else None)
 
 
+def call_llm_json_for_provider(provider: str, messages: list[LLMMessage], schema_hint: dict[str, Any], timeout: int = 45) -> LLMResult:
+    config = get_provider_config(provider)
+    if config.provider != str(provider).lower():
+        return LLMResult(enabled=False, provider=str(provider), model="", mode="disabled", content="", error="Provider is not allowlisted")
+    if not config.enabled:
+        return LLMResult(enabled=False, provider=config.provider, model=config.model, mode="disabled", content="", error=f"{config.provider} API key not configured")
+    result, errors = _call_provider_with_retries(config, messages, schema_hint, timeout)
+    if result is not None:
+        return result
+    return LLMResult(enabled=False, provider=config.provider, model=config.model, mode="disabled", content="", error=" | ".join(errors))
+
+
 def smoke_test_llm(timeout: int = 45) -> LLMResult:
     return call_llm_json(
         [
@@ -179,7 +191,7 @@ def _with_json_instruction(messages: list[dict[str, str]]) -> list[dict[str, str
     out = deepcopy(messages)
     out[0]["content"] = (
         out[0].get("content", "")
-        + "\n必须返回合法 JSON object，不要 Markdown，不要解释性前后缀。JSON 字段至少包含 title 和 summary。"
+        + "\n必须返回合法 JSON object，不要 Markdown，不要解释性前后缀；严格遵守调用方提供的字段合同。"
     )
     return out
 

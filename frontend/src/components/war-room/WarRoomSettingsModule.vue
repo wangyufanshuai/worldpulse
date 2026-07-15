@@ -10,6 +10,7 @@
       >
         <option value="deterministic">纯确定性模式</option>
         <option value="mock_agent">可重复 Mock Agent</option>
+        <option value="controlled_agent">受控 Agent Runtime</option>
       </select>
       <p>{{ modeDescription }}</p>
     </article>
@@ -30,8 +31,14 @@ const props = defineProps({
   onEngineModeChange: { type: Function, default: null }
 })
 
-const engineModeLabel = computed(() => props.engineMode === 'mock_agent' ? 'Mock Agent 合同模式' : '纯确定性模式')
-const modeDescription = computed(() => props.engineMode === 'mock_agent'
-  ? '生成可重复的结构化提案并执行一致性准入；不会修改确定性数值。'
-  : '仅运行确定性引擎和只读一致性审计。')
+const engineModeLabel = computed(() => ({
+  deterministic: '纯确定性模式',
+  mock_agent: 'Mock Agent 合同模式',
+  controlled_agent: '受控 Agent Runtime',
+}[props.engineMode] || props.engineMode))
+const modeDescription = computed(() => ({
+  deterministic: '仅运行确定性引擎和只读一致性审计。',
+  mock_agent: '生成可重复的结构化提案并执行一致性准入；不会修改确定性数值。',
+  controlled_agent: '使用 provider allowlist、调用预算、超时和审计；默认安全降级到 Mock Provider。',
+}[props.engineMode] || '未知运行模式。'))
 </script>

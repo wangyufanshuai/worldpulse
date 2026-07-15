@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.services import project_store
 from app.services.run_lifecycle import process_one_queued_job
+from app.services.run_lifecycle import repository as lifecycle_repository
 
 
 def _setup_tmp_db(monkeypatch, tmp_path):
@@ -153,6 +154,32 @@ def test_mock_agent_lifecycle_records_proposals_and_action_decisions(monkeypatch
     agent_events = [event for event in audit["events"] if event["event_type"] == "AGENT"]
     assert agent_events[-1]["payload"]["proposal_count"] == 4
     assert agent_events[-1]["payload"]["batch_hash"]
+
+
+def test_controlled_agent_runtime_defaults_to_audited_mock_provider(monkeypatch, tmp_path):
+    _setup_tmp_db(monkeypatch, tmp_path)
+    monkeypatch.setenv("AGENT_PROVIDER", "mock")
+    client = TestClient(app)
+    project_id = _create_war_room_project(client)
+    created = client.post(
+        f"/api/v2/projects/{project_id}/runs",
+        json={"engine_mode": "controlled_agent", "scenario": {"scenario_key": "strait_blockade_30d"}, "seed": 42},
+    ).json()
+
+    processed = process_one_queued_job()
+    assert processed is not None
+    assert processed.status == "completed"
+    audit = client.get(f"/api/v2/runs/{created['run_id']}/audit").json()
+    artifact_types = {item["artifact_type"] for item in audit["artifacts"]}
+    assert {"agent_runtime_audit", "agent_action_proposals", "consistency_audit"}.issubset(artifact_types)
+    runtime = lifecycle_repository.get_latest_artifact_content(created["run_id"], "agent_runtime_audit")
+    assert runtime["mode"] == "mock"
+    assert runtime["provider"] == "mock"
+    assert runtime["total_calls"] == 4
+    assert len(runtime["invocations"]) == 4
+    assert all(item["prompt_hash"] and item["response_hash"] for item in runtime["invocations"])
+    assert "system_prompt" not in str(runtime)
+    assert audit["consistency_audit"]["summary"]["accepted_action_count"] == 4
 
 
 def test_sse_stream_returns_existing_event(monkeypatch, tmp_path):
