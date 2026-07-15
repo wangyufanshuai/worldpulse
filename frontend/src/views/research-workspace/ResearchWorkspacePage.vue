@@ -418,9 +418,13 @@ import WarRoomSandboxModule from '../../components/war-room/WarRoomSandboxModule
 import WarRoomSettingsModule from '../../components/war-room/WarRoomSettingsModule.vue'
 import WarRoomTopNav from '../../components/war-room/WarRoomTopNav.vue'
 import { useRunLifecycle } from '../../composables/useRunLifecycle'
+import { useRunLifecycleConsole } from '../../composables/useRunLifecycleConsole'
 import { useWarRoomArtifacts } from '../../composables/useWarRoomArtifacts'
 import { useWarRoomData } from '../../composables/useWarRoomData'
+import { useWarRoomMapProjection } from '../../composables/useWarRoomMapProjection'
+import { useWarRoomReplayControls } from '../../composables/useWarRoomReplayControls'
 import { useWarRoomScenarioDraft } from '../../composables/useWarRoomScenarioDraft'
+import { decisionLabels, eventFilterOptions, graphTypeOptions, localizedText, prompts } from './warRoomWorkspaceConfig'
 
 const props = defineProps({ projectId: String, section: String })
 const route = useRoute()
@@ -442,29 +446,18 @@ const focusedEdgeKey = ref('')
 const presets = ref(null)
 const comparePanelEl = ref(null)
 const reportPanelEl = ref(null)
-const visibleMapLayers = ref(['military', 'economic', 'diplomatic', 'events', 'risk', 'causal'])
-const mapZoom = ref(1)
-const layerMenuOpen = ref(true)
-const eventFilterOpen = ref(false)
-const eventFilters = ref([])
 const upcomingFeature = ref(null)
 const toastMessage = ref('')
 const decisionDrawer = ref(null)
 const entityDetailDrawer = ref(null)
 const commandSearchOpen = ref(false)
 const commandQuery = ref('')
-const hoveredMapEntity = ref(null)
 const showDeltaOverlay = ref(false)
 const focusedEntityId = ref('')
 const focusedGraphEdgeId = ref('')
 const activeDataTab = ref('tables')
 const analysisFilter = ref('')
 const graphTypeFilters = ref([])
-const replayPlaying = ref(false)
-const replaySpeed = ref(1)
-const activeReplayIndex = ref(0)
-const selectedMapEntity = ref(null)
-let replayTimer = null
 let toastTimer = null
 const shortRunId = (runId) => {
   const text = String(runId || '')
@@ -483,62 +476,6 @@ const sectionMeta = {
 }
 const topSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.graph, sectionMeta.data]
 const railSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.replay, sectionMeta.settings]
-const eventFilterOptions = [
-  { key: 'military', label: '军事事件', tone: 'blue' },
-  { key: 'diplomatic', label: '外交事件', tone: 'green' },
-  { key: 'economic', label: '经济事件', tone: 'orange' },
-  { key: 'social', label: '社会事件', tone: 'purple' },
-  { key: 'turning', label: '关键拐点', tone: 'red' },
-  { key: 'selected_entity', label: '只看选中实体', tone: 'green' }
-]
-const graphTypeOptions = [
-  { key: 'event', label: '事件' },
-  { key: 'country', label: '国家' },
-  { key: 'supply_chain', label: '供应链' },
-  { key: 'market', label: '市场' },
-  { key: 'public_opinion', label: '舆论' },
-  { key: 'alliance', label: '联盟' },
-  { key: 'policy_response', label: '政策' }
-]
-
-const prompts = ['证据链最弱的一环是什么？', '有没有历史反例？', '如果传播系数降低，结论怎么变？', '哪些国家 Agent 最值得观察？']
-const decisionLabels = { changed: '已变化', new: '新增', unchanged: '未变化' }
-const fallbackMapLayerButtons = [
-  { key: 'military', label: '军事部署' },
-  { key: 'economic', label: '经济联系' },
-  { key: 'diplomatic', label: '外交关系' },
-  { key: 'events', label: '事件热点' },
-  { key: 'risk', label: '风险区域' }
-]
-const countryCoordinates = {
-  USA: { x: 728, y: 216 },
-  BRA: { x: 830, y: 430 },
-  EU: { x: 214, y: 232 },
-  RUS: { x: 322, y: 140 },
-  SAU: { x: 322, y: 330 },
-  IND: { x: 438, y: 322 },
-  CHN: { x: 497, y: 276 },
-  JPN: { x: 603, y: 255 },
-  KOR: { x: 576, y: 250 },
-  TWN: { x: 565, y: 304 }
-}
-const localizedText = {
-  'Scenario initialized; baseline dependencies and alliance posture locked.': '场景初始化，基线依赖与联盟姿态已锁定。',
-  'First-order logistics, deterrence, and market repricing begin.': '一阶物流、威慑与市场重定价开始显现。',
-  'Supply-chain substitution and public narrative become dominant uncertainties.': '供应链替代与公共叙事成为主要不确定性。',
-  'Second-order policy responses, sanctions, and financial stress propagate.': '二阶政策响应、制裁与金融压力继续扩散。',
-  'High import dependency and rising supply-chain pressure make energy substitution the first stabilizer.': '高进口依赖与供应链压力上升，使能源替代成为首要稳定动作。',
-  'Semiconductor exposure dominates the simulated causal chain.': '半导体暴露成为当前因果链中的主导压力。',
-  'Protects critical capacity while raising trade friction.': '保护关键产能，但会抬高贸易摩擦。'
-}
-const chainAnchors = { energy: ['SAU', 'JPN'], food: ['BRA', 'IND'], chips: ['TWN', 'USA'], shipping: ['CHN', 'EU'], settlement: ['USA', 'EU'] }
-const fallbackMilitaryUnits = [
-  { key: 'carrier-1', label: '航母', x: 584, y: 320 },
-  { key: 'ship-1', label: '舰队', x: 740, y: 386 },
-  { key: 'air-1', label: '空巡', x: 630, y: 382 },
-  { key: 'ship-2', label: '护航', x: 456, y: 392 }
-]
-
 const isWarRoom = computed(() => detail.value?.project?.mode === 'war_room')
 const activeSection = computed(() => {
   const raw = String(route.params.section || props.section || 'overview')
@@ -574,106 +511,71 @@ const {
   applySelectedScenarioDefaults,
 } = useWarRoomScenarioDraft({ presets, warRoom, showToast })
 function syncScenarioDraft() { syncScenarioDraftFromDetail(detail.value) }
-const uiMapEntities = computed(() => Array.isArray(warRoomUi.value?.map_entities) ? warRoomUi.value.map_entities : [])
+const {
+  visibleMapLayers,
+  mapZoom,
+  layerMenuOpen,
+  eventFilterOpen,
+  eventFilters,
+  hoveredMapEntity,
+  selectedMapEntity,
+  uiMapEntities,
+  mapLayerButtons,
+  militaryUnits,
+  mapCountries,
+  supplyRoutes,
+  mapCausalEdges,
+  mapEvents,
+  timelineEvents,
+  zoomMap: zoomMapProjection,
+  resetMapView: resetMapProjection,
+  layerLabel,
+  layerActive,
+  toggleMapLayer,
+} = useWarRoomMapProjection({
+  warRoomUi,
+  warRoom,
+  detail,
+  fallbackChains,
+  countryNameShort,
+  localizeText,
+  normalizeRiskValue,
+  averageRisk,
+  countryDelta,
+  edgeKey,
+  showToast,
+})
+const {
+  replayPlaying,
+  replaySpeed,
+  activeReplayIndex,
+  activeTimelineEvent,
+  activeReplayDay,
+  activeReplayProgress,
+  activeEventKeys,
+  selectReplayDay,
+  toggleReplay,
+  cycleReplaySpeed,
+} = useWarRoomReplayControls({ timelineEvents, selectedMapEntity, showToast })
 const entityIndex = computed(() => Array.isArray(workspaceState.value?.entity_index) && workspaceState.value.entity_index.length ? workspaceState.value.entity_index : (Array.isArray(warRoomUi.value?.entity_index) ? warRoomUi.value.entity_index : []))
 const commandActions = computed(() => Array.isArray(workspaceState.value?.command_actions) && workspaceState.value.command_actions.length ? workspaceState.value.command_actions : (Array.isArray(warRoomUi.value?.command_actions) ? warRoomUi.value.command_actions : []))
 const runControl = computed(() => workspaceState.value?.run_control || warRoomUi.value?.run_control || {})
 const lifecycleProjection = computed(() => warRoomData.buildLifecycleProjection(detail.value, workspaceState.value, runDiff.value, replayPack.value))
-const activeLifecycleRun = computed(() => runLifecycle.activeRun.value)
-const lifecycleStages = computed(() => {
-  const job = activeLifecycleRun.value
-  if (!job) return lifecycleProjection.value.stages
-  const order = ['scenario_compile', 'environment_prepare', 'deterministic_run', 'consistency_audit', 'report_generate', 'replay_archive']
-  const index = Math.max(0, order.indexOf(job.current_phase))
-  const titles = {
-    scenario_compile: ['01', '场景编译', '解析剧本与约束'],
-    environment_prepare: ['02', '环境准备', '加载数据与初始化'],
-    deterministic_run: ['03', '混合推演', '确定性规则推演中'],
-    consistency_audit: ['04', '一致性审计', '规则校验与修正'],
-    report_generate: ['05', '报告生成', '汇总洞察与图表'],
-    replay_archive: ['06', '复盘归档', '固化结果与溯源'],
-  }
-  return order.map((phase, phaseIndex) => {
-    const [stageIndex, title, desc] = titles[phase]
-    const terminalDone = job.status === 'completed'
-    const stopped = ['failed', 'cancelled', 'paused'].includes(job.status)
-    return {
-      key: phase,
-      index: stageIndex,
-      title,
-      desc,
-      status: terminalDone || phaseIndex < index ? 'done' : phaseIndex === index && !stopped ? 'current' : 'pending',
-    }
-  })
-})
-const lifecycleControl = computed(() => {
-  const base = lifecycleProjection.value.control
-  const job = activeLifecycleRun.value
-  if (!job) {
-    const historicalStatus = base.replayReady ? 'completed' : 'ready'
-    return {
-      ...base,
-      statusZh: historicalStatus,
-      runStatus: historicalStatus,
-      currentPhaseZh: base.replayReady ? '历史完成' : '等待运行',
-      progress: base.replayReady ? 100 : 0,
-      resultRunId: base.runId,
-      canPause: false,
-      canCancel: false,
-      canResume: false,
-      canRetry: false,
-      busy: running.value,
-      disclaimer: base.replayReady
-        ? '历史 v1 run：可复盘/对比；新运行将进入 v2 生命周期队列。'
-        : base.disclaimer,
-    }
-  }
-  const status = job.status
-  const resultRunId = job.result_run_id
-  const phaseZh = {
-    scenario_compile: '场景编译',
-    environment_prepare: '环境准备',
-    deterministic_run: '确定性推演',
-    consistency_audit: '一致性审计',
-    report_generate: '报告生成',
-    replay_archive: '复盘归档',
-  }[job.current_phase] || job.current_phase
-  return {
-    ...base,
-    runId: job.run_id,
-    resultRunId,
-    runStatus: status,
-    statusZh: status,
-    currentPhase: job.current_phase,
-    currentPhaseZh: phaseZh,
-    progress: job.progress,
-    engineMode: job.engine_mode,
-    startedAt: job.started_at || job.created_at,
-    checkpointAt: job.updated_at,
-    checkpointId: resultRunId ? `SNAP-${String(resultRunId).slice(-8)}` : `JOB-${String(job.run_id).slice(-8)}`,
-    checkpointStatus: status,
-    replayReady: status === 'completed' && !!resultRunId,
-    compareReady: base.compareReady || (status === 'completed' && !!resultRunId && runVersions.value.length > 0),
-    canPause: ['queued', 'preparing', 'running'].includes(status),
-    canCancel: ['queued', 'preparing', 'running', 'pausing', 'paused'].includes(status),
-    canResume: ['paused', 'pausing'].includes(status),
-    canRetry: ['failed', 'cancelled'].includes(status),
-    busy: ['queued', 'preparing', 'running', 'pausing', 'cancelling'].includes(status),
-    disclaimer: status === 'completed'
-      ? '真实生命周期任务已完成；结果已投影回 v1 workspace / Run Diff / Replay Pack。'
-      : '当前为真实本地 Run Lifecycle：状态、事件、检查点来自 SQLite + 独立 worker。',
-  }
-})
-const lifecycleEventsForDisplay = computed(() => runLifecycle.events.value.length ? runLifecycle.events.value : lifecycleProjection.value.events)
-const lifecycleEventMode = computed(() => runLifecycle.events.value.length ? 'live' : 'projection')
+const {
+  activeLifecycleRun,
+  lifecycleControl,
+  lifecycleEventMode,
+  lifecycleEventsForDisplay,
+  lifecycleStages,
+  pauseLifecycleRun,
+  resumeLifecycleRun,
+  cancelLifecycleRun,
+  retryLifecycleRun,
+} = useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runVersions, running, showToast, onCompleted: load })
 const insightCards = computed(() => Array.isArray(workspaceState.value?.insight_cards) && workspaceState.value.insight_cards.length ? workspaceState.value.insight_cards : (Array.isArray(warRoomUi.value?.insight_cards) ? warRoomUi.value.insight_cards : []))
 const entityDetails = computed(() => workspaceState.value?.entity_details || warRoomUi.value?.entity_details || {})
 const topRiskCountry = computed(() => [...(warRoom.value?.risk_heatmap || [])].sort((a, b) => Number(b.risk || 0) - Number(a.risk || 0))[0] || null)
 const topChainPressure = computed(() => [...(warRoom.value?.supply_chains || [])].sort((a, b) => Number(b.pressure || b.disruption || 0) - Number(a.pressure || a.disruption || 0))[0] || null)
-const activeTimelineEvent = computed(() => timelineEvents.value[Math.min(activeReplayIndex.value, Math.max(0, timelineEvents.value.length - 1))] || timelineEvents.value[0] || null)
-const activeReplayDay = computed(() => activeTimelineEvent.value?.day ?? 0)
-const activeReplayProgress = computed(() => activeTimelineEvent.value?.position ?? 0)
-const activeEventKeys = computed(() => activeTimelineEvent.value?.eventKeys || [])
 const filteredTimelineEvents = computed(() => {
   if (!eventFilters.value.length) return timelineEvents.value
   return timelineEvents.value.filter(event => eventMatchesFilters(event))
@@ -764,185 +666,6 @@ const currentGlobalRisk = computed(() => {
 })
 const currentReplayTime = computed(() => {
   return activeTimelineEvent.value?.time || '2025-05-16 14:30'
-})
-const mapLayerButtons = computed(() => {
-  const layers = Array.isArray(warRoomUi.value?.map_layers) ? warRoomUi.value.map_layers : []
-  return layers.length
-    ? layers.map(layer => ({ key: layer.key, label: layer.label_zh || layer.label || layer.key, enabled: layer.enabled !== false }))
-    : fallbackMapLayerButtons
-})
-const militaryUnits = computed(() => {
-  const units = uiMapEntities.value.filter(entity => entity.type === 'unit')
-  return units.length
-    ? units.map(entity => ({ key: entity.key || entity.id?.replace('unit:', ''), label: entity.label_zh || entity.label, x: entity.x, y: entity.y, ...entity }))
-    : fallbackMilitaryUnits
-})
-const kpiCards = computed(() => {
-  const uiKpis = Array.isArray(warRoomUi.value?.kpis) ? warRoomUi.value.kpis : []
-  if (uiKpis.length) {
-    return uiKpis.map(card => ({
-      key: card.key,
-      label: card.label_zh || card.label || card.key,
-      value: `${card.value}${card.unit || ''}`,
-      detail: card.detail_zh || card.detail || '',
-      tone: card.tone || 'neutral',
-      delta: card.delta,
-      active: true,
-      sparkline: card.sparkline || []
-    }))
-  }
-  return [
-  { key: 'risk', label: '全球风险指数', value: `${Math.round(currentGlobalRisk.value)}/100`, detail: `D+${activeReplayDay.value} 动态态势`, tone: 'risk', delta: activeTimelineEvent.value?.riskDelta, active: true },
-  { key: 'volatility', label: '局势波动', value: currentGlobalRisk.value > 70 ? '高' : '中高', detail: activeTimelineEvent.value?.turning ? '关键拐点' : '趋势上升', tone: 'alert', delta: activeTimelineEvent.value?.turning ? 3 : 1, active: activeTimelineEvent.value?.turning },
-  { key: 'events', label: '关键事件 (7日内)', value: String(timelineEvents.value.length || 12), detail: `${activeTimelineEvent.value?.title || '态势更新'}`, tone: 'neutral', active: true },
-  { key: 'countries', label: '影响国家/地区', value: String(warRoom.value?.risk_heatmap?.length ? Math.max(37, warRoom.value.risk_heatmap.length) : 37), detail: activeCountryCodes.value.map(countryNameShort).join(' / '), tone: 'neutral', active: !!activeCountryCodes.value.length },
-  { key: 'economy', label: '经济影响 (全球)', value: '-1.2%', detail: 'GDP 预期影响', tone: 'positive', delta: warRoomDiff.value?.global_risk_delta ? -Math.abs(Number(warRoomDiff.value.global_risk_delta) / 10) : null },
-  { key: 'reaction', label: '连锁反应强度', value: currentGlobalRisk.value > 70 ? '强' : '中高', detail: '多米诺效应显著', tone: 'warning', active: activeTimelineEvent.value?.turning }
-  ]
-})
-const mapCountries = computed(() => {
-  const uiCountries = uiMapEntities.value.filter(entity => entity.type === 'country')
-  if (uiCountries.length) {
-    return uiCountries.map((entity, index) => {
-      const code = entity.key || entity.id?.replace('country:', '') || entity.country_code
-      return {
-        ...entity,
-        code,
-        country_code: code,
-        country_name: entity.label_zh || countryNameShort(code),
-        x: Number(entity.x ?? coordinateForCode(code, index).x),
-        y: Number(entity.y ?? coordinateForCode(code, index).y),
-        risk: Number(entity.risk || 0),
-        dominant_channel: entity.dominant_channel,
-        radius: 7 + Math.min(20, Number(entity.risk || 0) / 5),
-        delta: countryDelta(code)
-      }
-    })
-  }
-  const riskRows = warRoom.value?.risk_heatmap?.length ? warRoom.value.risk_heatmap : [
-    { country_code: 'CHN', country_name: '中国', risk: 82, dominant_channel: 'military' },
-    { country_code: 'TWN', country_name: '台湾', risk: 88, dominant_channel: 'military' },
-    { country_code: 'USA', country_name: '美国', risk: 64, dominant_channel: 'financial' },
-    { country_code: 'JPN', country_name: '日本', risk: 62, dominant_channel: 'energy' },
-    { country_code: 'EU', country_name: '欧盟', risk: 41, dominant_channel: 'trade' },
-    { country_code: 'RUS', country_name: '俄罗斯', risk: 45, dominant_channel: 'energy' },
-    { country_code: 'IND', country_name: '印度', risk: 38, dominant_channel: 'trade' },
-    { country_code: 'SAU', country_name: '中东', risk: 36, dominant_channel: 'energy' },
-    { country_code: 'BRA', country_name: '巴西', risk: 28, dominant_channel: 'food' }
-  ]
-  return riskRows.map((cell, index) => {
-    const code = cell.country_code || cell.code
-    const point = coordinateForCode(code, index)
-    return { ...cell, code, x: point.x, y: point.y, risk: Number(cell.risk || 0), radius: 7 + Math.min(20, Number(cell.risk || 0) / 5), delta: countryDelta(code) }
-  })
-})
-const supplyRoutes = computed(() => {
-  const chains = warRoom.value?.supply_chains?.length ? warRoom.value.supply_chains : fallbackChains
-  return chains.map((chain, index) => {
-    const [startCode, endCode] = chainRouteEndpoints(chain, index)
-    const start = coordinateForCode(startCode, index)
-    const end = coordinateForCode(endCode, index + 2)
-    return {
-      key: chain.key,
-      chain,
-      start,
-      end,
-      mid: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 },
-      path: arcPath(start, end, index % 2 === 0 ? -1 : 1)
-    }
-  })
-})
-const mapCausalEdges = computed(() => {
-  const uiEdges = uiMapEntities.value.filter(entity => entity.type === 'causal_edge')
-  if (uiEdges.length) {
-    return uiEdges.slice(0, 24).map((entity, index) => ({
-      id: entity.id || `edge:${entity.source}->${entity.target}`,
-      entity,
-      edge: {
-        source: entity.source,
-        target: entity.target,
-        relation: entity.label_zh,
-        mechanism: entity.mechanism_zh,
-        weight: entity.weight,
-        lag_days: entity.lag_days,
-        related_countries: entity.related_countries,
-        related_chains: entity.related_chains
-      },
-      path: arcPath(coordinateForEntity(entity.source, index), coordinateForEntity(entity.target, index + 4), index % 2 === 0 ? 1 : -1, 0.18)
-    }))
-  }
-  const edges = warRoom.value?.impact_graph?.edges || detail.value?.graph?.edges || []
-  const fallback = edges.length ? edges : [
-    { source: 'CHN', target: 'TWN', relation: '军事压力', mechanism: '区域军事活动推升风险' },
-    { source: 'USA', target: 'TWN', relation: '战略支援', mechanism: '外部支援改变威慑结构' },
-    { source: 'TWN', target: 'JPN', relation: '供应链外溢', mechanism: '芯片与航运压力传导' }
-  ]
-  return fallback.slice(0, 12).map((edge, index) => ({ id: `${edgeKey(edge)}-${index}`, edge, path: arcPath(coordinateForEntity(edge.source, index), coordinateForEntity(edge.target, index + 4), index % 2 === 0 ? 1 : -1, 0.18) }))
-})
-const mapEvents = computed(() => {
-  const uiEvents = uiMapEntities.value.filter(entity => entity.type === 'event')
-  if (uiEvents.length) {
-    return uiEvents.map(entity => ({
-      ...entity,
-      key: entity.key || entity.id?.replace('event:', ''),
-      label: entity.label_zh || entity.label,
-      title: entity.title_zh || entity.title || entity.label_zh,
-      detail: entity.detail_zh || entity.detail,
-      relatedCountries: entity.related_countries || [],
-      relatedChains: entity.related_chains || []
-    }))
-  }
-  return [
-    { key: 'taiwan', label: '台湾', title: '经济封锁加码', x: 586, y: 332, tone: 'red', day: 21, country_code: 'TWN', relatedCountries: ['TWN', 'CHN', 'JPN'] },
-    { key: 'china', label: '中国', title: '军事演习升级', x: 531, y: 249, tone: 'blue', day: 3, country_code: 'CHN', relatedCountries: ['CHN', 'TWN', 'USA'] },
-    { key: 'japan', label: '日本', title: '加强西南部署', x: 632, y: 230, tone: 'orange', day: 14, country_code: 'JPN', relatedCountries: ['JPN', 'TWN', 'USA'] },
-    { key: 'us', label: '美国', title: '宣布对台警戒', x: 760, y: 236, tone: 'blue', day: 7, country_code: 'USA', relatedCountries: ['USA', 'TWN', 'CHN'] }
-  ]
-})
-const timelineEvents = computed(() => {
-  const uiEvents = Array.isArray(warRoomUi.value?.timeline_events) ? warRoomUi.value.timeline_events : []
-  if (uiEvents.length) {
-    return uiEvents.map((event, index) => ({
-      key: event.key || `day-${event.day ?? index}`,
-      day: Number(event.day || index),
-      time: event.time || `D+${event.day ?? index}`,
-      title: event.title_zh || event.title || '态势更新',
-      detail: event.detail_zh || event.detail || '',
-      tone: event.tone || (event.turning_point ? 'red' : 'blue'),
-      position: Number(event.position ?? Math.min(95, index / Math.max(1, uiEvents.length - 1) * 100)),
-      globalRisk: normalizeRiskValue(event.global_risk ?? averageRisk()),
-      riskDelta: Number(event.global_risk_delta || 0),
-      turning: !!event.turning_point,
-      eventKeys: event.event_keys || event.eventKeys || [],
-      relatedCountries: event.related_countries || event.relatedCountries || [],
-      relatedChains: event.related_chains || event.relatedChains || []
-    }))
-  }
-  const timeline = warRoom.value?.timeline || []
-  if (!timeline.length) {
-    return [
-      { key: 'e1', day: 0, time: 'D+0', title: '美国宣布对台警戒', detail: '扩大对台军事支援范围', tone: 'red', position: 6, globalRisk: 68, riskDelta: 0, turning: false, eventKeys: ['us'], relatedCountries: ['USA', 'TWN'] },
-      { key: 'e2', day: 3, time: 'D+3', title: '中国军演升级', detail: '多军兵种联合演习', tone: 'blue', position: 24, globalRisk: 72, riskDelta: 4, turning: true, eventKeys: ['china'], relatedCountries: ['CHN', 'TWN'] },
-      { key: 'e3', day: 7, time: 'D+7', title: '外交紧急磋商', detail: '联合国安理会紧急会议', tone: 'green', position: 42, globalRisk: 70, riskDelta: -2, turning: false, eventKeys: ['us', 'japan'], relatedCountries: ['USA', 'EU', 'JPN'] },
-      { key: 'e4', day: 14, time: 'D+14', title: '日本加强西南部署', detail: '自卫队警戒级别提升', tone: 'orange', position: 64, globalRisk: 76, riskDelta: 6, turning: true, eventKeys: ['japan'], relatedCountries: ['JPN', 'TWN', 'USA'] },
-      { key: 'e5', day: 21, time: 'D+21', title: '经济封锁加码', detail: '多国扩大对华出口限制', tone: 'red', position: 82, globalRisk: 81, riskDelta: 5, turning: true, eventKeys: ['taiwan'], relatedCountries: ['TWN', 'CHN', 'USA'] },
-      { key: 'e6', day: 30, time: 'D+30', title: '二阶压力扩散', detail: '金融结算与供应链替代压力进入复盘窗口', tone: 'red', position: 95, globalRisk: 78, riskDelta: -3, turning: true, eventKeys: ['taiwan', 'china'], relatedCountries: ['CHN', 'TWN', 'JPN'] }
-    ]
-  }
-  return timeline.slice(0, 6).map((point, index) => ({
-    key: `day-${point.day}`,
-    day: Number(point.day || index),
-    time: `D+${point.day}`,
-    title: point.turning_point ? '关键拐点' : '态势更新',
-    detail: localizeText(point.key_development),
-    tone: point.turning_point ? 'red' : index % 2 ? 'green' : 'blue',
-    position: Math.min(95, (index / Math.max(1, Math.min(6, timeline.length) - 1)) * 100),
-    globalRisk: normalizeRiskValue(point.global_risk ?? averageRisk()),
-    riskDelta: index ? normalizeRiskValue(point.global_risk || 0) - normalizeRiskValue(timeline[index - 1]?.global_risk || 0) : 0,
-    turning: !!point.turning_point,
-    eventKeys: eventKeysForTimelineIndex(index),
-    relatedCountries: countriesForTimelineIndex(index)
-  }))
 })
 const activeAgent = computed(() => {
   const selectedCode = selectedMapEntity.value?.type === 'country' ? selectedMapEntity.value.id : selected.value?.country_code || selected.value?.code
@@ -1144,12 +867,11 @@ function showUpcoming(title, body) {
   showToast(`${title}：已打开说明`)
 }
 function zoomMap(delta) {
-  mapZoom.value = Math.max(0.78, Math.min(1.42, Number((mapZoom.value + delta).toFixed(2))))
+  zoomMapProjection(delta)
   showToast(`地图缩放 ${Math.round(mapZoom.value * 100)}%`)
 }
 function resetMapView() {
-  mapZoom.value = 1
-  selectedMapEntity.value = null
+  resetMapProjection()
   selected.value = null
   entityDetailDrawer.value = null
   activeReplayIndex.value = 0
@@ -1292,12 +1014,6 @@ function eventVisible(event) {
   const linked = timelineEvents.value.filter(item => item.eventKeys?.includes(event.key))
   return linked.length ? linked.some(eventMatchesFilters) : eventFilters.value.includes(event.tone === 'red' ? 'turning' : 'military')
 }
-function layerLabel(key) { return mapLayerButtons.value.find(item => item.key === key)?.label || key }
-function layerActive(key) { return visibleMapLayers.value.includes(key) }
-function toggleMapLayer(key) {
-  visibleMapLayers.value = layerActive(key) ? visibleMapLayers.value.filter(item => item !== key) : [...visibleMapLayers.value, key]
-  showToast(`${layerLabel(key)}${layerActive(key) ? '已显示' : '已隐藏'}`)
-}
 function setAnalysisCountry(code) {
   focusedEntityId.value = `country:${code}`
   const country = mapCountries.value.find(item => item.code === code) || { code, risk: 0 }
@@ -1335,79 +1051,12 @@ function entityTypeLabel(type) {
   return ({ country: '国家节点', supply_chain: '供应链', causal_edge: '因果边', event: '事件热点', unit: '军事单元', timeline: '时间线' })[type] || '地图实体'
 }
 function isCountryHot(code) { return activeCountryCodes.value.includes(code) }
-function eventKeysForTimelineIndex(index) {
-  const keys = ['us', 'china', 'us', 'japan', 'taiwan', 'taiwan']
-  return [keys[index % keys.length]].filter(Boolean)
-}
-function countriesForTimelineIndex(index) {
-  const presets = [
-    ['USA', 'TWN'],
-    ['CHN', 'TWN'],
-    ['USA', 'EU', 'JPN'],
-    ['JPN', 'TWN', 'USA'],
-    ['TWN', 'CHN', 'USA'],
-    ['CHN', 'TWN', 'JPN']
-  ]
-  return presets[index % presets.length]
-}
 function relatedEventLabels(countryCode) {
   const labels = timelineEvents.value
     .filter(event => event.relatedCountries?.includes(countryCode))
     .slice(0, 3)
     .map(event => `${event.time} ${event.title}`)
   return labels.length ? labels : [`D+${activeReplayDay.value} ${activeTimelineEvent.value?.title || '态势更新'}`]
-}
-function selectReplayDay(day) {
-  const target = timelineEvents.value.findIndex(event => Number(event.day) >= Number(day))
-  activeReplayIndex.value = target >= 0 ? target : Math.max(0, timelineEvents.value.length - 1)
-  replayPlaying.value = false
-  showToast(`已切换到 D+${day} 阶段`)
-}
-function toggleReplay() { replayPlaying.value = !replayPlaying.value }
-function cycleReplaySpeed() {
-  replaySpeed.value = replaySpeed.value === 1 ? 2 : replaySpeed.value === 2 ? 4 : 1
-  if (replayPlaying.value) restartReplayTimer()
-}
-function advanceReplay() {
-  if (!timelineEvents.value.length) return
-  activeReplayIndex.value = (activeReplayIndex.value + 1) % timelineEvents.value.length
-  selectedMapEntity.value = null
-}
-function stopReplayTimer() {
-  if (replayTimer) {
-    window.clearInterval(replayTimer)
-    replayTimer = null
-  }
-}
-function restartReplayTimer() {
-  stopReplayTimer()
-  if (!replayPlaying.value) return
-  replayTimer = window.setInterval(advanceReplay, Math.max(650, 1800 / replaySpeed.value))
-}
-function coordinateForCode(code, index = 0) {
-  const normalized = String(code || '').toUpperCase()
-  if (countryCoordinates[normalized]) return countryCoordinates[normalized]
-  const angle = (index / 10) * Math.PI * 2
-  return { x: 500 + Math.cos(angle) * 260, y: 280 + Math.sin(angle) * 150 }
-}
-function coordinateForEntity(entity, index = 0) {
-  const raw = typeof entity === 'object' ? entity.id || entity.code || entity.key || entity.label : entity
-  const value = String(raw || '').toUpperCase()
-  const countryCode = Object.keys(countryCoordinates).find(code => value.includes(code))
-  if (countryCode) return countryCoordinates[countryCode]
-  return coordinateForCode('', index)
-}
-function chainRouteEndpoints(chain, index = 0) {
-  const affected = (chain.affected_countries || chain.affected_country_codes || []).filter(Boolean)
-  const defaults = chainAnchors[chain.key] || ['USA', 'CHN']
-  return [affected[0] || defaults[0], affected[affected.length - 1] || defaults[1] || defaults[0]]
-}
-function arcPath(start, end, direction = 1, lift = 0.28) {
-  const dx = end.x - start.x
-  const dy = end.y - start.y
-  const mx = (start.x + end.x) / 2
-  const my = (start.y + end.y) / 2
-  return `M ${start.x} ${start.y} Q ${mx - dy * lift * direction} ${my + dx * lift * direction} ${end.x} ${end.y}`
 }
 function riskColor(value) {
   const risk = Number(value || 0)
@@ -1500,25 +1149,6 @@ async function run() {
   }
 }
 
-async function pauseLifecycleRun() {
-  await runLifecycle.pause()
-  showToast('暂停请求已写入生命周期状态')
-}
-
-async function resumeLifecycleRun() {
-  await runLifecycle.resume()
-  showToast('生命周期任务已恢复排队')
-}
-
-async function cancelLifecycleRun() {
-  await runLifecycle.cancel()
-  showToast('取消请求已写入生命周期状态')
-}
-
-async function retryLifecycleRun() {
-  await runLifecycle.retry()
-  showToast('已创建 retry 生命周期任务')
-}
 async function send() {
   chatting.value = true
   try {
@@ -1750,13 +1380,6 @@ function renderSectionGraph() {
 }
 
 watch(() => detail.value?.graph?.graph_id, () => nextTick(renderGraph))
-watch(() => activeLifecycleRun.value?.status, async (status, previous) => {
-  const job = activeLifecycleRun.value
-  if (status === 'completed' && previous !== 'completed' && job?.result_run_id) {
-    await load(job.result_run_id)
-    showToast('生命周期任务已完成，workspace 已刷新')
-  }
-})
 watch(activeSection, section => {
   if (!sectionKeys.includes(section)) router.replace(sectionPath('overview'))
   if (section === 'graph') nextTick(renderSectionGraph)
@@ -1768,21 +1391,8 @@ watch(focusedGraphEdgeId, () => {
   if (activeSection.value === 'graph') nextTick(renderSectionGraph)
 })
 watch(() => scenarioDraft.scenario_key, applySelectedScenarioDefaults)
-watch(replayPlaying, restartReplayTimer)
-watch(replaySpeed, () => {
-  if (replayPlaying.value) restartReplayTimer()
-})
-watch(() => timelineEvents.value.length, length => {
-  if (!length) {
-    activeReplayIndex.value = 0
-    replayPlaying.value = false
-    return
-  }
-  if (activeReplayIndex.value >= length) activeReplayIndex.value = length - 1
-})
 onMounted(load)
 onUnmounted(() => {
-  stopReplayTimer()
   runLifecycle.stop()
   if (toastTimer) window.clearTimeout(toastTimer)
 })

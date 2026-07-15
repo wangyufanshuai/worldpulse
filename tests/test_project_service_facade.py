@@ -1,6 +1,10 @@
+import inspect
+
+from app.api import routes
 from app.services import projects
 from app.services.project_app import repository
 from app.services.project_app import service
+from app.services.run_lifecycle import executor
 
 
 def test_projects_module_remains_public_facade():
@@ -19,3 +23,12 @@ def test_project_repository_owns_row_mapping_helpers():
     assert callable(repository.run_by_id)
     assert callable(repository.latest_graph)
     assert callable(repository.report_for_run)
+
+
+def test_routes_and_worker_depend_only_on_public_project_facade():
+    route_source = inspect.getsource(routes)
+    worker_source = inspect.getsource(executor)
+    assert "from app.services.projects import" in route_source
+    assert "from app.services.projects import" in worker_source
+    assert "app.services.project_app.service" not in route_source
+    assert "app.services.project_app.service" not in worker_source

@@ -1,9 +1,12 @@
 import json
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.models import WarRoomScenarioRequest
 from app.services import project_store
+from app.services.war_room_engine import run_war_room
 
 
 def _setup_tmp_db(monkeypatch, tmp_path):
@@ -80,6 +83,22 @@ def test_war_room_same_input_is_deterministic():
     assert first.json()["agent_decisions"] == second.json()["agent_decisions"]
     assert first.json()["impact_graph"] == second.json()["impact_graph"]
     assert first.json()["ui_state"] == second.json()["ui_state"]
+
+
+def test_war_room_golden_scenario_contract():
+    golden = json.loads((Path(__file__).parent / "golden" / "war_room_strait_blockade_v1.json").read_text(encoding="utf-8"))
+    result = run_war_room(WarRoomScenarioRequest(**golden["scenario_input"]))
+    actual = {
+        "risk_heatmap": [[item.country_code, item.risk, item.dominant_channel] for item in result.risk_heatmap],
+        "supply_chains": [[item.key, item.pressure_score, item.lag_days] for item in result.supply_chains],
+        "timeline_global_risk": [[item.day, item.global_risk] for item in result.timeline],
+        "graph": {
+            "node_count": len(result.impact_graph.nodes),
+            "edge_count": len(result.impact_graph.edges),
+            "confidence": result.impact_graph.confidence,
+        },
+    }
+    assert actual == {key: golden[key] for key in actual}
 
 
 def test_energy_export_cut_prioritizes_energy_chain():
@@ -326,6 +345,9 @@ def test_war_room_replay_pack_single_run(monkeypatch, tmp_path):
         f"/api/projects/{project_id}/war-room/run",
         json={"scenario_key": "strait_blockade_30d", "duration_days": 30, "intensity": 0.7, "propagation": 0.45},
     ).json()
+    from app.services.project_app import service as project_service
+
+    monkeypatch.setattr(project_service, "request_structured_analysis", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("Replay Pack must not call an LLM")))
     response = client.get(f"/api/projects/{project_id}/war-room/replay-pack", params={"run_id": run["latest_run"]["run_id"]})
     assert response.status_code == 200
     payload = response.json()
@@ -381,6 +403,7 @@ def test_war_room_replay_pack_counterfactual_diff(monkeypatch, tmp_path):
     assert payload["manifest"]["base_run_id"] == base["latest_run"]["run_id"]
     assert payload["manifest"]["target_run_id"] == target["latest_run"]["run_id"]
     assert payload["model_outputs"]["diff_metrics"]["base_run_id"] == base["latest_run"]["run_id"]
+    assert {"project_id", "run_id", "base_run_id", "target_run_id", "scenario", "risk_heatmap", "supply_chain_delta", "agent_decisions", "timeline", "timeline_delta", "impact_graph", "manifest", "model_inputs", "model_outputs", "audit_trail", "artifacts", "markdown", "disclaimer"}.issubset(payload)
     manifest = json.loads(payload["artifacts"]["json_manifest"])
     assert manifest["manifest"]["base_run_id"] == base["latest_run"]["run_id"]
     assert manifest["manifest"]["target_run_id"] == target["latest_run"]["run_id"]

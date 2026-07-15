@@ -1,0 +1,21 @@
+{
+  "scenario_input": {
+    "scenario_key": "strait_blockade_30d",
+    "duration_days": 30,
+    "intensity": 0.75,
+    "propagation": 0.48,
+    "policy_actions": ["alliance_deterrence", "public_messaging"]
+  },
+  "risk_heatmap": [
+    ["TWN", 100.0, "military"], ["CHN", 92.3, "military"], ["KOR", 88.1, "military"],
+    ["JPN", 82.9, "chips"], ["RUS", 81.6, "military"], ["EU", 76.6, "chips"],
+    ["IND", 74.1, "military"], ["USA", 72.8, "chips"], ["BRA", 63.9, "chips"],
+    ["SAU", 62.9, "military"]
+  ],
+  "supply_chains": [
+    ["chips", 77.8, 21], ["shipping", 56.5, 8], ["energy", 51.3, 5],
+    ["settlement", 44.4, 3], ["food", 38.8, 12]
+  ],
+  "timeline_global_risk": [[0, 16.0], [3, 23.9], [7, 34.8], [14, 54.0], [21, 71.4], [30, 89.0]],
+  "graph": {"node_count": 16, "edge_count": 28, "confidence": 74.8}
+}
