@@ -106,6 +106,7 @@
       </div>
       <button class="primary-action" type="button" @click="props.onDownloadUiState?.()"><Download :size="16" /> 下载 ui_state.json</button>
       <button class="secondary full" type="button" @click="props.onOpenReplayShortcut?.()"><PackageCheck :size="16" /> 导出复盘包</button>
+      <button class="secondary full" type="button" data-testid="open-run-details" @click="props.onOpenRunDetails?.()">查看运行详情</button>
       <div class="audit-note-list">
         <article><strong>用户输入</strong><p>场景、政策动作、国家和供应链参数来自 Scenario Builder。</p></article>
         <article><strong>确定性规则</strong><p>风险、Agent 决策和图谱边权重由本地规则引擎生成。</p></article>
@@ -140,6 +141,7 @@ const props = defineProps({
   onCopyRunId: { type: Function, default: null },
   onDownloadUiState: { type: Function, default: null },
   onOpenReplayShortcut: { type: Function, default: null },
+  onOpenRunDetails: { type: Function, default: null },
   lifecycleAudit: { type: Object, default: null }
 })
 

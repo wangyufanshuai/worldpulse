@@ -131,6 +131,7 @@
             :on-copy-run-id="copyRunId"
             :on-download-ui-state="downloadUiState"
             :on-open-replay-shortcut="openReplayShortcut"
+            :on-open-run-details="() => { runDetailsDrawer = true }"
             :on-set-active-data-tab="value => activeDataTab = value"
             :risk-channel="riskChannel"
             :selected-run-id="selectedRunId"
@@ -206,6 +207,27 @@
             {{ action.label_zh }}
           </button>
         </div>
+      </aside>
+
+      <aside v-if="runDetailsDrawer" class="feature-drawer entity-detail-drawer" data-testid="run-details-drawer">
+        <button class="drawer-close" type="button" @click="runDetailsDrawer = false"><X :size="16" /> 关闭</button>
+        <div class="section-kicker">Lifecycle Run Details</div>
+        <h2>{{ lifecycleAudit?.run?.run_id || selectedRunId || '当前运行' }}</h2>
+        <p>只读检查点详情：不重新执行模型、不修改确定性结果。</p>
+        <dl v-if="lifecycleAudit?.run" class="drawer-metric-grid">
+          <div><dt>状态</dt><dd>{{ lifecycleAudit.run.status }}</dd></div>
+          <div><dt>当前阶段</dt><dd>{{ lifecycleAudit.run.current_phase }}</dd></div>
+          <div><dt>Attempt</dt><dd>{{ lifecycleAudit.run.current_attempt_id || '--' }}</dd></div>
+          <div><dt>恢复点</dt><dd>{{ lifecycleAudit.run.terminal_reason || lifecycleAudit.run.next_attempt_at || '--' }}</dd></div>
+        </dl>
+        <section v-if="lifecycleAudit?.steps?.length" class="drawer-mini-section">
+          <h3>阶段 Hash 与耗时</h3>
+          <div v-for="step in lifecycleAudit.steps" :key="step.step_id" class="drawer-step-row">
+            <strong>{{ step.step_key }} · {{ step.status }}</strong>
+            <span>{{ step.duration_ms }} ms · {{ String(step.input_hash || '').slice(0, 12) }} → {{ String(step.output_hash || '').slice(0, 12) }}</span>
+            <small v-if="step.error_code">{{ step.error_code }}</small>
+          </div>
+        </section>
       </aside>
 
       <aside v-if="upcomingFeature" class="feature-drawer">
@@ -463,6 +485,7 @@ const upcomingFeature = ref(null)
 const toastMessage = ref('')
 const decisionDrawer = ref(null)
 const entityDetailDrawer = ref(null)
+const runDetailsDrawer = ref(false)
 const commandSearchOpen = ref(false)
 const commandQuery = ref('')
 const showDeltaOverlay = ref(false)
