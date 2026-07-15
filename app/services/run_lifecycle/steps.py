@@ -22,6 +22,10 @@ STEP_DEFINITIONS = (
     StepDefinition("consistency_audit", "consistency-audit-step.v1"),
     StepDefinition("report_generate", "report-generate.v1"),
     StepDefinition("replay_archive", "replay-archive.v1"),
+    StepDefinition("case_prepare", "calibration-case-prepare.v1"),
+    StepDefinition("deterministic_replay", "calibration-deterministic-replay.v1"),
+    StepDefinition("metric_compare", "calibration-metric-compare.v1"),
+    StepDefinition("review_package", "calibration-review-package.v1"),
 )
 STEP_BY_KEY = {item.key: item for item in STEP_DEFINITIONS}
 

@@ -5,6 +5,9 @@ import os
 from fastapi import APIRouter, Request, Response
 
 from app.core.trust_models import (
+    CalibrationCase,
+    CalibrationRunRequest,
+    CalibrationRunStatus,
     LoginRequest,
     RulePackCreateRequest,
     RulePackManifest,
@@ -21,6 +24,7 @@ from app.services.auth import (
     logout,
 )
 from app.services import rule_packs
+from app.services import calibration
 
 
 router = APIRouter()
@@ -85,3 +89,18 @@ def rule_pack_approve(rule_pack_id: str, payload: RulePackReviewRequest, request
 @router.post("/rule-packs/{rule_pack_id}/activate", response_model=RulePackManifest)
 def rule_pack_activate(rule_pack_id: str, request: Request) -> RulePackManifest:
     return rule_packs.activate_rule_pack(rule_pack_id, _actor(request))
+
+
+@router.get("/calibration/cases", response_model=list[CalibrationCase])
+def calibration_case_list() -> list[CalibrationCase]:
+    return calibration.list_calibration_cases()
+
+
+@router.post("/calibration/runs", response_model=CalibrationRunStatus)
+def calibration_run_create(payload: CalibrationRunRequest, request: Request) -> CalibrationRunStatus:
+    return calibration.create_calibration_run(payload.rule_pack_id, payload.case_ids, _actor(request))
+
+
+@router.get("/calibration/runs/{calibration_run_id}", response_model=CalibrationRunStatus)
+def calibration_run_detail(calibration_run_id: str) -> CalibrationRunStatus:
+    return calibration.get_calibration_run(calibration_run_id)

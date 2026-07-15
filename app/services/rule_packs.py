@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import hashlib
 import sqlite3
 from uuid import uuid4
 
@@ -173,10 +174,19 @@ def trust_manifest_for_job(lifecycle_job_id: str | None = None) -> dict:
 def _calibration_passed(rule_pack_id: str) -> bool:
     with connect() as conn:
         row = conn.execute(
-            "SELECT gate_status FROM calibration_runs WHERE rule_pack_id = ? AND status = 'completed' ORDER BY completed_at DESC LIMIT 1",
+            "SELECT gate_status, lifecycle_run_id, metrics_json FROM calibration_runs WHERE rule_pack_id = ? AND status = 'completed' ORDER BY completed_at DESC LIMIT 1",
             (rule_pack_id,),
         ).fetchone()
-    return bool(row and row["gate_status"] == "passed")
+        artifact = conn.execute(
+            "SELECT content_json, sha256 FROM run_artifacts WHERE run_id = ? AND artifact_type = 'calibration_metrics' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (row["lifecycle_run_id"],),
+        ).fetchone() if row else None
+    if not row or row["gate_status"] != "passed" or not artifact:
+        return False
+    if hashlib.sha256(artifact["content_json"].encode("utf-8")).hexdigest() != artifact["sha256"]:
+        return False
+    metrics = loads(artifact["content_json"], {})
+    return metrics == loads(row["metrics_json"], {}) and metrics.get("gate_status") == "passed" and all(metrics.get("gates", {}).values())
 
 
 def _from_row(row) -> RulePackManifest:

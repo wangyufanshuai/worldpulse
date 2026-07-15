@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from uuid import uuid4
-
 import pytest
 from fastapi import HTTPException
 
@@ -9,6 +7,7 @@ from app.core.models import ResearchProjectCreate, RunJobCreateRequest
 from app.core.trust_models import RulePackCreateRequest
 from app.services import project_store
 from app.services.auth import create_user
+from app.services.calibration import create_calibration_run
 from app.services.projects import create_project
 from app.services.rule_packs import (
     active_rule_pack,
@@ -19,6 +18,7 @@ from app.services.rule_packs import (
     submit_rule_pack,
 )
 from app.services.run_lifecycle.repository import create_job, get_job
+from app.services.run_lifecycle import process_one_queued_job
 
 
 def _draft(actor, suffix: str = "candidate"):
@@ -37,16 +37,14 @@ def _draft(actor, suffix: str = "candidate"):
     )
 
 
-def _pass_calibration(rule_pack_id: str, actor_id: str):
-    with project_store.connect() as conn:
-        conn.execute(
-            """
-            INSERT INTO calibration_runs
-            (calibration_run_id, rule_pack_id, status, metrics_json, gate_status, created_by_user_id, created_at, completed_at)
-            VALUES (?, ?, 'completed', '{}', 'passed', ?, 'now', 'now')
-            """,
-            (f"cal_{uuid4().hex[:12]}", rule_pack_id, actor_id),
-        )
+def _pass_calibration(rule_pack_id: str, actor):
+    calibration = create_calibration_run(rule_pack_id, [], actor)
+    for _ in range(5):
+        completed = process_one_queued_job(worker_id="rule_pack_calibration")
+        if completed and completed.run_id == calibration.lifecycle_run_id:
+            assert completed.status == "completed"
+            return
+    raise AssertionError("calibration lifecycle job was not processed")
 
 
 def test_v12_pack_is_seeded_active_and_immutable(monkeypatch, tmp_path):
@@ -74,7 +72,7 @@ def test_two_person_approval_calibration_gate_and_activation(monkeypatch, tmp_pa
     with pytest.raises(HTTPException) as gate:
         approve_rule_pack(draft.rule_pack_id, reviewer)
     assert gate.value.status_code == 422
-    _pass_calibration(draft.rule_pack_id, creator.user_id)
+    _pass_calibration(draft.rule_pack_id, creator)
     candidate = approve_rule_pack(draft.rule_pack_id, reviewer, "calibration reviewed")
     assert candidate.status == "candidate"
     activated = activate_rule_pack(draft.rule_pack_id, admin)
@@ -91,7 +89,7 @@ def test_lifecycle_job_pins_rule_pack_hash(monkeypatch, tmp_path):
     old = active_rule_pack()
     old_job = create_job(project.project_id, RunJobCreateRequest())
     draft = submit_rule_pack(_draft(creator, "pin").rule_pack_id, creator)
-    _pass_calibration(draft.rule_pack_id, creator.user_id)
+    _pass_calibration(draft.rule_pack_id, creator)
     approve_rule_pack(draft.rule_pack_id, reviewer)
     new_pack = activate_rule_pack(draft.rule_pack_id, admin)
     new_job = create_job(project.project_id, RunJobCreateRequest())

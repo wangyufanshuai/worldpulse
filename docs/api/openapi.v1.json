@@ -243,6 +243,186 @@
         "title": "AlertItem",
         "type": "object"
       },
+      "CalibrationCase": {
+        "properties": {
+          "case_hash": {
+            "title": "Case Hash",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "cutoff_date": {
+            "title": "Cutoff Date",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "input_snapshot": {
+            "additionalProperties": true,
+            "title": "Input Snapshot",
+            "type": "object"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "label_confidence": {
+            "title": "Label Confidence",
+            "type": "number"
+          },
+          "labels": {
+            "additionalProperties": true,
+            "title": "Labels",
+            "type": "object"
+          },
+          "observation_window_days": {
+            "title": "Observation Window Days",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "version",
+          "category",
+          "title",
+          "cutoff_date",
+          "observation_window_days",
+          "input_snapshot",
+          "labels",
+          "evidence",
+          "label_confidence",
+          "case_hash"
+        ],
+        "title": "CalibrationCase",
+        "type": "object"
+      },
+      "CalibrationRunRequest": {
+        "properties": {
+          "case_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Case Ids",
+            "type": "array"
+          },
+          "rule_pack_id": {
+            "maxLength": 80,
+            "minLength": 3,
+            "title": "Rule Pack Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_pack_id"
+        ],
+        "title": "CalibrationRunRequest",
+        "type": "object"
+      },
+      "CalibrationRunStatus": {
+        "properties": {
+          "calibration_run_id": {
+            "title": "Calibration Run Id",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "gate_status": {
+            "title": "Gate Status",
+            "type": "string"
+          },
+          "lifecycle_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lifecycle Run Id"
+          },
+          "lifecycle_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lifecycle Status"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Metrics",
+            "type": "object"
+          },
+          "rule_pack_id": {
+            "title": "Rule Pack Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "calibration_run_id",
+          "rule_pack_id",
+          "status",
+          "gate_status",
+          "created_at"
+        ],
+        "title": "CalibrationRunStatus",
+        "type": "object"
+      },
       "CausalAnalysisRequest": {
         "properties": {
           "event_type": {
@@ -7402,6 +7582,105 @@
           }
         },
         "summary": "Local Me"
+      }
+    },
+    "/api/v3/calibration/cases": {
+      "get": {
+        "operationId": "calibration_case_list_api_v3_calibration_cases_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CalibrationCase"
+                  },
+                  "title": "Response Calibration Case List Api V3 Calibration Cases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Calibration Case List"
+      }
+    },
+    "/api/v3/calibration/runs": {
+      "post": {
+        "operationId": "calibration_run_create_api_v3_calibration_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalibrationRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationRunStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calibration Run Create"
+      }
+    },
+    "/api/v3/calibration/runs/{calibration_run_id}": {
+      "get": {
+        "operationId": "calibration_run_detail_api_v3_calibration_runs__calibration_run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "calibration_run_id",
+            "required": true,
+            "schema": {
+              "title": "Calibration Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationRunStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Calibration Run Detail"
       }
     },
     "/api/v3/rule-packs": {

@@ -85,3 +85,44 @@ class RulePackReview(BaseModel):
 
 class RulePackReviewRequest(BaseModel):
     comment: str = Field(default="", max_length=2000)
+
+
+class CalibrationCase(BaseModel):
+    case_id: str
+    version: str
+    category: str
+    title: str
+    cutoff_date: str
+    observation_window_days: int
+    input_snapshot: dict
+    labels: dict
+    evidence: list[dict]
+    label_confidence: float
+    case_hash: str
+    is_active: bool = True
+
+
+class CalibrationRunRequest(BaseModel):
+    rule_pack_id: str = Field(min_length=3, max_length=80)
+    case_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class CalibrationMetric(BaseModel):
+    key: str
+    value: float | int
+    threshold: float | int | None = None
+    passed: bool
+    unit: str = "ratio"
+
+
+class CalibrationRunStatus(BaseModel):
+    calibration_run_id: str
+    rule_pack_id: str
+    lifecycle_run_id: str | None = None
+    status: str
+    metrics: dict = {}
+    gate_status: str
+    created_by_user_id: str | None = None
+    created_at: str
+    completed_at: str | None = None
+    lifecycle_status: str | None = None

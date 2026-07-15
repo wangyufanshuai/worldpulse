@@ -58,6 +58,9 @@ def process_one_queued_job(worker_id: str | None = None) -> RunJobStatus | None:
 
 def process_job(run_id: str) -> RunJobStatus:
     job = repository.get_job(run_id)
+    if job.job_kind == "calibration":
+        from app.services.calibration import process_calibration_job
+        return process_calibration_job(run_id)
     worker_id = job.worker_id
     projected_run_id = repository.get_projected_result_run_id(run_id)
     if projected_run_id:
