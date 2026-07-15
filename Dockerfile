@@ -13,6 +13,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY config ./config
+COPY tests/calibration_cases ./tests/calibration_cases
 COPY README.md LICENSE ./
 COPY --from=frontend /src/frontend/dist ./frontend/dist
 RUN mkdir -p data/cache data/reports

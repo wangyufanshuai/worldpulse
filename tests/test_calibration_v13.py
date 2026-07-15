@@ -5,7 +5,7 @@ import hashlib
 from app.core.trust_models import RulePackCreateRequest
 from app.services import project_store
 from app.services.auth import create_user
-from app.services.calibration import create_calibration_run, get_calibration_run, list_calibration_cases
+from app.services.calibration import CORPUS_PATH, create_calibration_run, get_calibration_run, list_calibration_cases
 from app.services.rule_packs import active_rule_pack, approve_rule_pack, create_rule_pack, submit_rule_pack
 from app.services.run_lifecycle import process_one_queued_job
 from app.services.run_lifecycle.repository import get_artifacts, get_job, pause_job, resume_job
@@ -19,6 +19,7 @@ def test_versioned_corpus_has_thirty_hashed_cases_without_future_data(monkeypatc
     assert len({case.case_hash for case in cases}) == 30
     assert all(case.cutoff_date < "2026-01-01" for case in cases)
     assert all(case.evidence and all(item.get("future_data") is not True for item in case.evidence) for case in cases)
+    assert CORPUS_PATH.exists()
 
 
 def test_calibration_uses_worker_and_passes_fixed_gates(monkeypatch, tmp_path):

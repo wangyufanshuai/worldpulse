@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -23,14 +25,7 @@ CALIBRATION_PHASES = (
     ("metric_compare", 82, "CONSISTENCY", "Calibration metrics compared"),
     ("review_package", 100, "SNAPSHOT", "Calibration review package ready"),
 )
-CATEGORIES = (
-    ("strait", "strait_blockade_30d", 30, []),
-    ("energy", "energy_export_cut", 30, []),
-    ("food", "food_shortfall", 45, []),
-    ("sanctions", "strait_blockade_30d", 30, ["sanctions"]),
-    ("trade", "strait_blockade_30d", 30, ["reroute_shipping"]),
-    ("finance", "energy_export_cut", 30, ["financial_backstop"]),
-)
+CORPUS_PATH = Path(__file__).resolve().parents[2] / "tests" / "calibration_cases" / "v1_cases.json"
 SUPPORTED = {
     "war_room_rule_version": "war-room-rules.v1.1",
     "consistency_rule_version": "worldpulse-consistency.v1.2",
@@ -45,56 +40,33 @@ def ensure_calibration_cases() -> None:
     with connect() as conn:
         if conn.execute("SELECT COUNT(*) FROM calibration_cases").fetchone()[0] >= 30:
             return
-    for category_index, (category, scenario_key, duration, policies) in enumerate(CATEGORIES):
-        for variant in range(5):
-            case_id = f"cal_v1_{category}_{variant + 1:02d}"
-            with connect() as conn:
-                if conn.execute("SELECT 1 FROM calibration_cases WHERE case_id = ?", (case_id,)).fetchone():
-                    continue
-            scenario = WarRoomScenarioRequest(
-                scenario_key=scenario_key,
-                duration_days=duration + (variant - 2) * 3,
-                intensity=round(0.5 + variant * 0.08, 2),
-                propagation=round(0.32 + variant * 0.06, 2),
-                policy_actions=policies,
-                seed=1000 + category_index * 10 + variant,
+    records = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
+    if len(records) != 30:
+        raise RuntimeError("Calibration corpus v1 must contain exactly 30 cases")
+    for record in records:
+        expected_hash = stable_hash({
+            key: record[key] for key in (
+                "case_id", "version", "category", "input_snapshot", "labels", "evidence",
+                "cutoff_date", "observation_window_days", "label_confidence",
             )
-            result = run_war_room(scenario)
-            batch = build_mock_agent_batch(result, run_id=f"baseline_{case_id}", seed=scenario.seed)
-            decisions = evaluate_action_proposals(batch.proposals, batch.constraint_context)
-            labels = {
-                "result_hash": stable_hash(result.model_dump(mode="json")),
-                "risk_ranking": [item.code for item in sorted(result.country_agents, key=lambda item: item.risk_score, reverse=True)],
-                "top3_countries": [item.code for item in sorted(result.country_agents, key=lambda item: item.risk_score, reverse=True)[:3]],
-                "supply_chain_directions": _chain_directions(result),
-                "turning_points": [item.day for item in result.timeline if item.turning_point],
-                "agent_outcomes": _outcome_counts(decisions),
-                "critical_probe_expected": "rejected",
-            }
-            evidence = [
-                {"source": "WorldPulse V1.2 frozen benchmark corpus", "reference": f"WP-V12-{category.upper()}-{variant + 1:02d}", "cutoff_enforced": True},
-                {"source": "Deterministic scenario snapshot", "reference": stable_hash(scenario.model_dump(mode="json")), "future_data": False},
-            ]
-            payload = {
-                "case_id": case_id, "version": "calibration-case.v1", "category": category,
-                "input_snapshot": scenario.model_dump(mode="json"), "labels": labels, "evidence": evidence,
-                "cutoff_date": f"{2019 + category_index}-{(variant + 1) * 2:02d}-01",
-                "observation_window_days": duration, "label_confidence": 0.72,
-            }
-            with connect() as conn:
-                conn.execute(
-                    """
-                    INSERT INTO calibration_cases
-                    (case_id, version, category, title, cutoff_date, observation_window_days, input_snapshot,
-                     labels_json, evidence_json, label_confidence, case_hash, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        case_id, payload["version"], category, f"{category.title()} frozen case {variant + 1}",
-                        payload["cutoff_date"], duration, dumps(payload["input_snapshot"]), dumps(labels), dumps(evidence),
-                        payload["label_confidence"], stable_hash(payload), _now(),
-                    ),
-                )
+        })
+        if expected_hash != record["case_hash"]:
+            raise RuntimeError(f"Calibration case hash mismatch: {record['case_id']}")
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO calibration_cases
+                (case_id, version, category, title, cutoff_date, observation_window_days, input_snapshot,
+                 labels_json, evidence_json, label_confidence, case_hash, is_active, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record["case_id"], record["version"], record["category"], record["title"],
+                    record["cutoff_date"], record["observation_window_days"], dumps(record["input_snapshot"]),
+                    dumps(record["labels"]), dumps(record["evidence"]), record["label_confidence"],
+                    record["case_hash"], int(record.get("is_active", True)), _now(),
+                ),
+            )
 
 
 def list_calibration_cases() -> list[CalibrationCase]:
