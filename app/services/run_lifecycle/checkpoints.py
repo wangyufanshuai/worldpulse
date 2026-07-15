@@ -6,6 +6,8 @@ from app.core.models import RunJobStatus, RunStepRecord, WarRoomRun
 from app.services.agent_contract.models import AgentActionProposal, AgentConstraintContext
 from app.services.consistency.hashing import stable_hash
 from app.services.consistency.models import ConsistencyAuditReport
+from app.services.consistency.models import AgentActionProjectionAudit
+from app.services.consistency.projection import verify_action_projection_audit
 
 from . import repository, steps
 
@@ -18,6 +20,7 @@ class CheckpointState:
     proposals: list[AgentActionProposal] = field(default_factory=list)
     constraint_context: AgentConstraintContext | None = None
     report: ConsistencyAuditReport | None = None
+    projection_audit: AgentActionProjectionAudit | None = None
     result_run_id: str | None = None
 
     @property
@@ -109,6 +112,11 @@ def _restore_execution_state(job: RunJobStatus, state: CheckpointState) -> None:
     audit = state.artifacts.get("consistency_audit")
     if audit:
         state.report = ConsistencyAuditReport.model_validate(audit)
+
+    projection_audit = state.artifacts.get("agent_action_projection_audit")
+    if projection_audit:
+        state.projection_audit = AgentActionProjectionAudit.model_validate(projection_audit)
+        verify_action_projection_audit(state.projection_audit)
 
     if job.engine_mode == "hybrid" and state.artifacts.get("hybrid_war_room_result"):
         state.result = WarRoomRun.model_validate(state.artifacts["hybrid_war_room_result"])

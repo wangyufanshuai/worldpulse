@@ -69,3 +69,17 @@ def build_action_projection_audit(
         "expired_count": sum(record.projection_status == "expired" for record in records),
     }
     return AgentActionProjectionAudit(**payload, audit_hash=stable_hash(payload))
+
+
+def verify_action_projection_audit(audit: AgentActionProjectionAudit) -> None:
+    payload = audit.model_dump(mode="json", exclude={"audit_hash"})
+    if stable_hash(payload) != audit.audit_hash:
+        raise ValueError("Agent action projection audit hash mismatch")
+    if audit.projected_count != sum(item.projection_status == "projected" for item in audit.records):
+        raise ValueError("Agent action projection audit projected count mismatch")
+    if audit.constrained_count != sum(item.projection_status == "constrained" for item in audit.records):
+        raise ValueError("Agent action projection audit constrained count mismatch")
+    if audit.blocked_count != sum(item.projection_status == "blocked" for item in audit.records):
+        raise ValueError("Agent action projection audit blocked count mismatch")
+    if audit.expired_count != sum(item.projection_status == "expired" for item in audit.records):
+        raise ValueError("Agent action projection audit expired count mismatch")

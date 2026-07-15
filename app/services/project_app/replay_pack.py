@@ -6,12 +6,15 @@ import hashlib
 from app.core.models import CausalGraphSnapshot, ResearchRun
 from app.services.project_store import connect, loads
 from app.services.war_room_engine import WAR_ROOM_DISCLAIMER
+from app.services.consistency.models import AgentActionProjectionAudit
+from app.services.consistency.projection import verify_action_projection_audit
 
 
 HYBRID_REPLAY_ARTIFACTS = (
     "agent_runtime_audit",
     "agent_action_proposals",
     "consistency_audit",
+    "agent_action_projection_audit",
     "deterministic_action_modifiers",
     "hybrid_replay_record",
 )
@@ -45,6 +48,9 @@ def _replay_pack_lifecycle_artifacts(target: ResearchRun) -> dict:
             "sha256": row["sha256"],
             "content": loads(row["content_json"], {}),
         }
+        if row["artifact_type"] == "agent_action_projection_audit":
+            projection_audit = AgentActionProjectionAudit.model_validate(verified[row["artifact_type"]]["content"])
+            verify_action_projection_audit(projection_audit)
     if "hybrid_replay_record" not in verified:
         return {}
     return {"lifecycle_job_id": lifecycle_job_id, "artifacts": verified}

@@ -4,7 +4,8 @@ from app.core.models import WarRoomRun, WarRoomScenarioRequest
 from app.services.agent_contract.models import AgentActionProposal
 from app.services.consistency.hashing import stable_hash
 from app.services.consistency.models import AgentActionDecision, ConsistencyAuditReport
-from app.services.consistency.projection import build_action_projection_audit
+from app.services.consistency.projection import build_action_projection_audit, verify_action_projection_audit
+from app.services.consistency.models import AgentActionProjectionAudit
 from app.services.war_room_engine import run_war_room
 
 from .adapter import build_modifier_bundle, verify_modifier_bundle
@@ -76,12 +77,14 @@ def replay_hybrid_from_artifacts(
     audit_payload: dict,
     modifier_payload: dict,
     replay_payload: dict,
+    projection_audit_payload: dict | None = None,
 ) -> WarRoomRun:
     baseline = WarRoomRun(**baseline_payload)
     proposals = [AgentActionProposal(**item) for item in proposal_payload.get("proposals", [])]
     audit = ConsistencyAuditReport(**audit_payload)
     bundle = HybridModifierBundle(**modifier_payload)
     record = HybridReplayRecord(**replay_payload)
+    projection_audit = AgentActionProjectionAudit.model_validate(projection_audit_payload) if projection_audit_payload else None
     verify_modifier_bundle(bundle)
 
     proposal_ids = {proposal.proposal_id for proposal in proposals}
@@ -94,6 +97,12 @@ def replay_hybrid_from_artifacts(
         raise ValueError("Stored hybrid baseline hash mismatch")
     if bundle.bundle_hash != record.modifier_bundle_hash or audit.audit_hash != record.consistency_audit_hash:
         raise ValueError("Stored hybrid audit chain hash mismatch")
+    if projection_audit is not None:
+        verify_action_projection_audit(projection_audit)
+        if projection_audit.consistency_audit_hash != audit.audit_hash:
+            raise ValueError("Stored action projection audit consistency hash mismatch")
+        if projection_audit.final_result_hash != record.final_result_hash:
+            raise ValueError("Stored action projection audit final hash mismatch")
 
     replayed = run_war_room(WarRoomScenarioRequest(**bundle.scenario_patch))
     if stable_hash(replayed.model_dump(mode="json")) != record.final_result_hash:
