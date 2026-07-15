@@ -373,7 +373,7 @@
 
 <script setup>
 import * as d3 from 'd3'
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Activity,
@@ -418,7 +418,9 @@ import WarRoomSandboxModule from '../../components/war-room/WarRoomSandboxModule
 import WarRoomSettingsModule from '../../components/war-room/WarRoomSettingsModule.vue'
 import WarRoomTopNav from '../../components/war-room/WarRoomTopNav.vue'
 import { useRunLifecycle } from '../../composables/useRunLifecycle'
+import { useWarRoomArtifacts } from '../../composables/useWarRoomArtifacts'
 import { useWarRoomData } from '../../composables/useWarRoomData'
+import { useWarRoomScenarioDraft } from '../../composables/useWarRoomScenarioDraft'
 
 const props = defineProps({ projectId: String, section: String })
 const route = useRoute()
@@ -438,13 +440,6 @@ const selectedRunId = ref('')
 const evidenceDrawer = ref(null)
 const focusedEdgeKey = ref('')
 const presets = ref(null)
-const runDiff = ref(null)
-const runDiffLoading = ref(false)
-const compareBaseRunId = ref('')
-const compareTargetRunId = ref('')
-const replayPack = ref(null)
-const replayPackLoading = ref(false)
-const replayPreviewOpen = ref(false)
 const comparePanelEl = ref(null)
 const reportPanelEl = ref(null)
 const visibleMapLayers = ref(['military', 'economic', 'diplomatic', 'events', 'risk', 'causal'])
@@ -507,20 +502,6 @@ const graphTypeOptions = [
 ]
 
 const prompts = ['证据链最弱的一环是什么？', '有没有历史反例？', '如果传播系数降低，结论怎么变？', '哪些国家 Agent 最值得观察？']
-const fallbackCountries = ['USA', 'CHN', 'JPN', 'KOR', 'TWN', 'IND', 'EU', 'RUS', 'SAU', 'BRA'].map(code => ({ code }))
-const fallbackChains = ['energy', 'food', 'chips', 'shipping', 'settlement'].map(key => ({ key }))
-const policyActions = [
-  { key: 'sanctions', label: '制裁', desc: '提高金融结算和贸易压力。' },
-  { key: 'counter_sanctions', label: '反制裁', desc: '触发互惠贸易与金融压力。' },
-  { key: 'energy_reroute', label: '能源改道', desc: '降低能源风险，但增加物流负载。' },
-  { key: 'food_export_limit', label: '粮食出口限制', desc: '提高粮食与舆论压力。' },
-  { key: 'alliance_deterrence', label: '联盟威慑', desc: '把部分风险转向军事信号。' },
-  { key: 'liquidity_support', label: '流动性支持', desc: '缓冲金融结算压力。' },
-  { key: 'public_messaging', label: '舆论沟通', desc: '降低公众情绪压力。' }
-]
-const chainLabels = { energy: '能源', food: '粮食', chips: '关键芯片', shipping: '海运贸易', settlement: '金融结算' }
-const channelLabels = { energy: '能源', food: '粮食', trade: '贸易', chips: '芯片', financial: '金融', public_opinion: '舆论', military: '军事', settlement: '结算', shipping: '海运', social_stability: '社会稳定' }
-const scenarioLabels = { strait_blockade_30d: '海峡危机升级推演', energy_export_cut: '能源出口中断', food_shortfall: '粮食减产与出口限制' }
 const decisionLabels = { changed: '已变化', new: '新增', unchanged: '未变化' }
 const fallbackMapLayerButtons = [
   { key: 'military', label: '军事部署' },
@@ -541,7 +522,6 @@ const countryCoordinates = {
   KOR: { x: 576, y: 250 },
   TWN: { x: 565, y: 304 }
 }
-const countryNames = { USA: '美国', CHN: '中国', JPN: '日本', KOR: '韩国', TWN: '台湾', IND: '印度', EU: '欧盟', RUS: '俄罗斯', SAU: '中东', BRA: '巴西' }
 const localizedText = {
   'Scenario initialized; baseline dependencies and alliance posture locked.': '场景初始化，基线依赖与联盟姿态已锁定。',
   'First-order logistics, deterrence, and market repricing begin.': '一阶物流、威慑与市场重定价开始显现。',
@@ -559,24 +539,6 @@ const fallbackMilitaryUnits = [
   { key: 'ship-2', label: '护航', x: 456, y: 392 }
 ]
 
-const scenarioDraft = reactive({
-  scenario_key: 'strait_blockade_30d',
-  duration_days: 30,
-  intensity: 0.65,
-  propagation: 0.42,
-  target_countries: [],
-  target_chains: [],
-  policy_actions: [],
-  country_overrides: { JPN: { energy_dependency: 92 } },
-  chain_overrides: { energy: { substitution: 38 }, settlement: { lag_days: 3 } }
-})
-const scenarioTitle = ref('台海危机升级推演 · 2025 Q3')
-const scenarioBackground = ref('台湾局势持续紧张，周边军事活动增加，美中战略博弈加剧。')
-const influenceFactor = ref(80)
-const retaliationFactor = ref(70)
-const supplyFactor = ref(60)
-const pressureFactor = ref(40)
-
 const isWarRoom = computed(() => detail.value?.project?.mode === 'war_room')
 const activeSection = computed(() => {
   const raw = String(route.params.section || props.section || 'overview')
@@ -587,6 +549,31 @@ const runVersions = computed(() => detail.value?.runs || [])
 const workflowEvents = computed(() => detail.value?.latest_run?.data_snapshot?.workflow_events || [])
 const warRoom = computed(() => detail.value?.latest_run?.simulation_snapshot || detail.value?.latest_run?.data_snapshot?.war_room || null)
 const warRoomUi = computed(() => workspaceState.value?.ui_state || warRoom.value?.ui_state || {})
+const {
+  chainLabels,
+  countryNames,
+  fallbackChains,
+  policyActions,
+  scenarioDraft,
+  scenarioTitle,
+  scenarioBackground,
+  factorControls,
+  countryOptions,
+  chainOptions,
+  presetScenarios,
+  chainName,
+  riskChannel,
+  scenarioLabel,
+  policyActionLabel,
+  countryNameShort,
+  scenarioPayload,
+  toggleDraftList,
+  clearPolicyActions,
+  selectAllCountries,
+  syncScenarioDraft: syncScenarioDraftFromDetail,
+  applySelectedScenarioDefaults,
+} = useWarRoomScenarioDraft({ presets, warRoom, showToast })
+function syncScenarioDraft() { syncScenarioDraftFromDetail(detail.value) }
 const uiMapEntities = computed(() => Array.isArray(warRoomUi.value?.map_entities) ? warRoomUi.value.map_entities : [])
 const entityIndex = computed(() => Array.isArray(workspaceState.value?.entity_index) && workspaceState.value.entity_index.length ? workspaceState.value.entity_index : (Array.isArray(warRoomUi.value?.entity_index) ? warRoomUi.value.entity_index : []))
 const commandActions = computed(() => Array.isArray(workspaceState.value?.command_actions) && workspaceState.value.command_actions.length ? workspaceState.value.command_actions : (Array.isArray(warRoomUi.value?.command_actions) ? warRoomUi.value.command_actions : []))
@@ -681,9 +668,6 @@ const lifecycleEventsForDisplay = computed(() => runLifecycle.events.value.lengt
 const lifecycleEventMode = computed(() => runLifecycle.events.value.length ? 'live' : 'projection')
 const insightCards = computed(() => Array.isArray(workspaceState.value?.insight_cards) && workspaceState.value.insight_cards.length ? workspaceState.value.insight_cards : (Array.isArray(warRoomUi.value?.insight_cards) ? warRoomUi.value.insight_cards : []))
 const entityDetails = computed(() => workspaceState.value?.entity_details || warRoomUi.value?.entity_details || {})
-const warRoomDiff = computed(() => runDiff.value?.changed_metrics?.war_room || null)
-const countryOptions = computed(() => presets.value?.countries || warRoom.value?.country_agents || fallbackCountries)
-const chainOptions = computed(() => presets.value?.supply_chains || warRoom.value?.supply_chains || fallbackChains)
 const topRiskCountry = computed(() => [...(warRoom.value?.risk_heatmap || [])].sort((a, b) => Number(b.risk || 0) - Number(a.risk || 0))[0] || null)
 const topChainPressure = computed(() => [...(warRoom.value?.supply_chains || [])].sort((a, b) => Number(b.pressure || b.disruption || 0) - Number(a.pressure || a.disruption || 0))[0] || null)
 const activeTimelineEvent = computed(() => timelineEvents.value[Math.min(activeReplayIndex.value, Math.max(0, timelineEvents.value.length - 1))] || timelineEvents.value[0] || null)
@@ -711,14 +695,6 @@ const activeRunControlItems = computed(() => [
   { label: '运行数', value: String(runControl.value.run_count ?? runVersions.value.length) },
   { label: '状态', value: runControl.value.status_zh || (runVersions.value.length > 1 ? '可对比复盘' : '等待对比样本') }
 ])
-const presetScenarios = computed(() => {
-  const scenarios = presets.value?.scenarios || []
-  return scenarios.length ? scenarios : [
-    { key: 'strait_blockade_30d', name: '30-day Strait Blockade' },
-    { key: 'energy_export_cut', name: 'Energy Export Interruption' },
-    { key: 'food_shortfall', name: 'Food Shortfall / Export Controls' }
-  ]
-})
 const filteredAnalysisCountries = computed(() => {
   const query = analysisFilter.value.trim().toLowerCase()
   const countries = [...mapCountries.value].sort((a, b) => Number(b.risk || 0) - Number(a.risk || 0))
@@ -755,6 +731,28 @@ const dataJsonPreview = computed(() => JSON.stringify({
   timeline_events: timelineEvents.value,
   disclaimer: warRoom.value?.disclaimer || workspaceState.value?.disclaimer
 }, null, 2))
+const {
+  runDiff,
+  runDiffLoading,
+  compareBaseRunId,
+  compareTargetRunId,
+  replayPack,
+  replayPackLoading,
+  replayPreviewOpen,
+  warRoomDiff,
+  markdownUrl,
+  replayPackUrl,
+  replayPackJsonUrl,
+  replayPackFilename,
+  replayPackJsonFilename,
+  markdownPreview,
+  prepareCompareDefaults,
+  loadRunDiff,
+  exportReplayPack,
+  copyRunId,
+  downloadUiState,
+  resetReplayArtifacts,
+} = useWarRoomArtifacts({ detail, isWarRoom, runVersions, selectedRunId, warRoomData, dataJsonPreview, showToast })
 const activeCountryCodes = computed(() => {
   if (selectedMapEntity.value?.type === 'country') return [selectedMapEntity.value.id]
   return activeTimelineEvent.value?.relatedCountries?.length ? activeTimelineEvent.value.relatedCountries : [topRiskCountry.value?.country_code || 'CHN']
@@ -802,12 +800,6 @@ const kpiCards = computed(() => {
   { key: 'reaction', label: '连锁反应强度', value: currentGlobalRisk.value > 70 ? '强' : '中高', detail: '多米诺效应显著', tone: 'warning', active: activeTimelineEvent.value?.turning }
   ]
 })
-const factorControls = computed(() => [
-  { key: 'influence', label: '美国介入力度', value: influenceFactor.value, model: influenceFactor },
-  { key: 'retaliation', label: '中国反制强度', value: retaliationFactor.value, model: retaliationFactor },
-  { key: 'supply', label: '日本响应程度', value: supplyFactor.value, model: supplyFactor },
-  { key: 'pressure', label: '全球舆论压力', value: pressureFactor.value, model: pressureFactor }
-])
 const mapCountries = computed(() => {
   const uiCountries = uiMapEntities.value.filter(entity => entity.type === 'country')
   if (uiCountries.length) {
@@ -1123,19 +1115,7 @@ const steps = computed(() => isWarRoom.value ? [
   { index: '04', key: 'backtest', title: '历史验证', desc: '相似事件窗口回测', done: !!detail.value?.latest_run?.backtest_snapshot?.sample_count },
   { index: '05', key: 'report', title: '报告追问', desc: '生成报告并继续对话', done: !!detail.value?.report }
 ])
-const markdownUrl = computed(() => URL.createObjectURL(new Blob([detail.value?.report?.markdown || ''], { type: 'text/markdown;charset=utf-8' })))
-const replayPackUrl = computed(() => URL.createObjectURL(new Blob([replayPack.value?.markdown || ''], { type: 'text/markdown;charset=utf-8' })))
-const replayPackJsonUrl = computed(() => URL.createObjectURL(new Blob([replayPack.value?.artifacts?.json_manifest || '{}'], { type: 'application/json;charset=utf-8' })))
-const replayPackFilename = computed(() => `${String(detail.value?.project?.title || 'worldpulse').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${replayPack.value?.run_id || 'war-room'}-replay-pack.md`)
-const replayPackJsonFilename = computed(() => replayPackFilename.value.replace(/\.md$/, '-manifest.json'))
-const markdownPreview = computed(() => (replayPack.value?.markdown || '').slice(0, 6000))
-
-function chainName(key, fallback = '') { return chainLabels[key] || fallback || key || '--' }
-function riskChannel(key) { return channelLabels[key] || key || '--' }
-function scenarioLabel(scenario) { return scenario ? scenarioLabels[scenario.key || scenario.scenario_key] || scenario.name || scenario.key : '' }
-function policyActionLabel(key) { return policyActions.find(item => item.key === key)?.label || key }
 function decisionStatus(status) { return decisionLabels[status] || status || '--' }
-function countryNameShort(code) { return countryNames[code] || code }
 function averageRisk() {
   const risks = warRoom.value?.risk_heatmap || []
   return risks.length ? risks.reduce((sum, item) => sum + Number(item.risk || 0), 0) / risks.length : 68
@@ -1437,10 +1417,6 @@ function riskColor(value) {
   return '#21d69b'
 }
 function riskOpacity(value) { return Math.min(0.86, Math.max(0.18, Number(value || 0) / 100)) }
-function selectAllCountries() {
-  scenarioDraft.target_countries = countryOptions.value.map(item => item.code || item.country_code).filter(Boolean).slice(0, 10)
-  showToast('已添加全部国家 Agent 可变因素')
-}
 function goDeepAnalysis() {
   navigateSection('analysis')
   showToast(`已进入深度分析：${activeAgent.value.name}`)
@@ -1513,8 +1489,7 @@ async function run() {
     detail.value = await runProject(props.projectId, runMode.value)
     selectedRunId.value = detail.value?.latest_run?.run_id || ''
     await loadWorkspaceState(selectedRunId.value)
-    replayPack.value = null
-    replayPreviewOpen.value = false
+    resetReplayArtifacts()
     syncScenarioDraft()
     prepareCompareDefaults(true)
     await loadRunDiff()
@@ -1544,29 +1519,6 @@ async function retryLifecycleRun() {
   await runLifecycle.retry()
   showToast('已创建 retry 生命周期任务')
 }
-async function loadRunDiff() {
-  if (!isWarRoom.value || !compareBaseRunId.value || !compareTargetRunId.value || compareBaseRunId.value === compareTargetRunId.value) {
-    runDiff.value = null
-    return
-  }
-  runDiffLoading.value = true
-  try {
-    runDiff.value = await warRoomData.compareRuns(compareBaseRunId.value, compareTargetRunId.value)
-  } finally {
-    runDiffLoading.value = false
-  }
-}
-async function exportReplayPack() {
-  if (!isWarRoom.value || !detail.value?.latest_run) return
-  replayPackLoading.value = true
-  try {
-    const params = warRoomDiff.value ? { base_run_id: compareBaseRunId.value, target_run_id: compareTargetRunId.value } : { run_id: selectedRunId.value || detail.value.latest_run.run_id }
-    replayPack.value = await warRoomData.exportReplayPack(params)
-    replayPreviewOpen.value = true
-  } finally {
-    replayPackLoading.value = false
-  }
-}
 async function send() {
   chatting.value = true
   try {
@@ -1576,38 +1528,6 @@ async function send() {
   } finally {
     chatting.value = false
   }
-}
-function syncScenarioDraft() {
-  const config = detail.value?.latest_run?.data_snapshot?.scenario_config || detail.value?.project?.scenario_config || {}
-  Object.assign(scenarioDraft, {
-    scenario_key: config.scenario_key || config.key || scenarioDraft.scenario_key,
-    duration_days: Number(config.duration_days || scenarioDraft.duration_days),
-    intensity: Number(config.intensity ?? scenarioDraft.intensity),
-    propagation: Number(config.propagation ?? scenarioDraft.propagation),
-    target_countries: [...(config.target_countries || scenarioDraft.target_countries || [])],
-    target_chains: [...(config.target_chains || scenarioDraft.target_chains || [])],
-    policy_actions: [...(config.policy_actions || scenarioDraft.policy_actions || [])],
-    country_overrides: { ...scenarioDraft.country_overrides, ...(config.country_overrides || {}) },
-    chain_overrides: { ...scenarioDraft.chain_overrides, ...(config.chain_overrides || {}) }
-  })
-}
-function scenarioPayload() { return JSON.parse(JSON.stringify(scenarioDraft)) }
-function prepareCompareDefaults(forceLatest = false) {
-  if (!isWarRoom.value || runVersions.value.length < 2) return
-  const runs = [...runVersions.value]
-  const latest = selectedRunId.value || runs[0]?.run_id
-  const previous = runs.find(run => run.run_id !== latest)?.run_id
-  if (forceLatest || !compareTargetRunId.value) compareTargetRunId.value = latest
-  if (forceLatest || !compareBaseRunId.value || compareBaseRunId.value === compareTargetRunId.value) compareBaseRunId.value = previous || ''
-}
-function toggleDraftList(field, value) {
-  const list = scenarioDraft[field]
-  scenarioDraft[field] = list.includes(value) ? list.filter(item => item !== value) : [...list, value]
-  if (field === 'policy_actions') showToast(`${policyActionLabel(value)}${scenarioDraft[field].includes(value) ? '已启用' : '已移除'}`)
-}
-function clearPolicyActions() {
-  scenarioDraft.policy_actions = []
-  showToast('触发条件已重置')
 }
 function selectMapCountry(country) {
   replayPlaying.value = false
@@ -1677,13 +1597,6 @@ function deltaClass(value) {
   if (num > 0) return 'up'
   if (num < 0) return 'down'
   return 'flat'
-}
-function applySelectedScenarioDefaults() {
-  const scenario = presets.value?.scenarios?.find(item => item.key === scenarioDraft.scenario_key)
-  if (!scenario) return
-  scenarioDraft.duration_days = Number(scenario.duration_days || scenarioDraft.duration_days)
-  scenarioDraft.target_countries = [...(scenario.target_countries || [])]
-  scenarioDraft.target_chains = [...(scenario.target_chains || [])]
 }
 function versionLabel(run) {
   const mode = run.data_snapshot?.run_mode === 'war_room' ? 'War Room' : run.data_snapshot?.run_mode === 'full' ? '完整' : '快速'
@@ -1834,50 +1747,6 @@ function renderSectionGraph() {
       .attr('y2', item => item.target.y)
     node.attr('transform', item => `translate(${item.x},${item.y})`)
   })
-}
-
-async function copyRunId() {
-  const runId = selectedRunId.value || detail.value?.latest_run?.run_id
-  if (!runId) {
-    showToast('当前没有可复制的运行 ID')
-    return
-  }
-  try {
-    await navigator.clipboard.writeText(runId)
-  } catch {
-    const input = document.createElement('textarea')
-    input.value = runId
-    input.style.position = 'fixed'
-    input.style.opacity = '0'
-    document.body.appendChild(input)
-    input.select()
-    document.execCommand('copy')
-    input.remove()
-  }
-  showToast('运行 ID 已复制')
-}
-
-function downloadUiState() {
-  const runId = selectedRunId.value || detail.value?.latest_run?.run_id
-  if (!runId) {
-    showToast('请先运行一次沙盘')
-    return
-  }
-  const payload = JSON.stringify({
-    project_id: props.projectId,
-    run_id: runId,
-    ui_state: warRoomUi.value,
-    disclaimer: warRoom.value?.disclaimer || workspaceState.value?.disclaimer
-  }, null, 2)
-  const url = URL.createObjectURL(new Blob([payload], { type: 'application/json;charset=utf-8' }))
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = `worldpulse_${props.projectId}_${runId}_ui_state.json`
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
-  showToast('ui_state.json 已生成')
 }
 
 watch(() => detail.value?.graph?.graph_id, () => nextTick(renderGraph))
