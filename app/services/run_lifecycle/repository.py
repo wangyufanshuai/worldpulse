@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from app.core.models import (
+    LifecycleHealthSummary,
     RunAttemptRecord,
     RunArtifactSummary,
     RunJobCreateRequest,
@@ -714,6 +715,55 @@ def get_audit(run_id: str) -> dict:
     }
 
 
+def get_health_summary() -> LifecycleHealthSummary:
+    init_db()
+    now = datetime.now()
+    with connect() as conn:
+        jobs = conn.execute(
+            "SELECT status, created_at, started_at, lease_expires_at, worker_id FROM run_jobs"
+        ).fetchall()
+        steps_rows = conn.execute(
+            "SELECT step_key, duration_ms FROM run_steps WHERE status = 'completed' AND completed_at IS NOT NULL"
+        ).fetchall()
+        artifacts = conn.execute("SELECT content_json, sha256 FROM run_artifacts").fetchall()
+        recoveries = conn.execute(
+            "SELECT COUNT(*) AS count FROM run_events WHERE title = 'Stale worker lease recovered'"
+        ).fetchone()["count"]
+
+    counts = {"queued": 0, "running": 0, "stale": 0, "failed": 0, "completed": 0}
+    queue_waits: list[float] = []
+    workers: set[str] = set()
+    for row in jobs:
+        status = row["status"]
+        if status in {"preparing", "running", "pausing", "cancelling"}:
+            counts["running"] += 1
+            if row["lease_expires_at"] and row["lease_expires_at"] < now.isoformat(timespec="milliseconds"):
+                counts["stale"] += 1
+        elif status in counts:
+            counts[status] += 1
+        if row["worker_id"]:
+            workers.add(row["worker_id"])
+        if row["started_at"]:
+            queue_waits.append(max(0.0, (datetime.fromisoformat(row["started_at"]) - datetime.fromisoformat(row["created_at"])).total_seconds() * 1000))
+
+    durations: dict[str, list[float]] = {}
+    for row in steps_rows:
+        durations.setdefault(row["step_key"], []).append(float(row["duration_ms"] or 0))
+    phase_durations = {
+        key: {"count": len(values), "p50": _percentile(values, 0.50), "p95": _percentile(values, 0.95)}
+        for key, values in sorted(durations.items())
+    }
+    invalid = sum(1 for row in artifacts if _artifact_digest(row["content_json"]) != row["sha256"])
+    return LifecycleHealthSummary(
+        **counts,
+        avg_queue_wait_ms=round(sum(queue_waits) / len(queue_waits), 2) if queue_waits else 0,
+        recoveries=int(recoveries or 0),
+        artifact_integrity_failures=invalid,
+        phase_durations_ms=phase_durations,
+        worker_count=len(workers),
+    )
+
+
 def _scenario_payload(raw: WarRoomScenarioRequest | dict, seed: int | None) -> dict:
     if isinstance(raw, WarRoomScenarioRequest):
         payload = raw.model_dump()
@@ -816,3 +866,11 @@ def _normalize_idempotency_key(value: str | None) -> str | None:
     if any(ord(char) < 33 or ord(char) > 126 for char in normalized):
         raise HTTPException(status_code=400, detail="Idempotency-Key must contain printable ASCII characters only")
     return normalized
+
+
+def _percentile(values: list[float], quantile: float) -> float:
+    if not values:
+        return 0
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, max(0, int(round((len(ordered) - 1) * quantile))))
+    return round(ordered[index], 2)

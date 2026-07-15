@@ -16,6 +16,7 @@
           <span>{{ event.type }}</span>
           <strong>{{ event.title }}</strong>
           <p>{{ event.detail }}</p>
+          <small v-if="event.marker" data-testid="lifecycle-event-marker">{{ event.marker }}</small>
         </div>
       </article>
     </div>
@@ -42,6 +43,7 @@ const normalizedEvents = computed(() => {
     title: event.title || '--',
     detail: event.detail || '',
     tone: event.tone || toneFor(event.event_type || event.type)
+    ,marker: markerFor(event)
   }))
 })
 
@@ -58,5 +60,16 @@ function toneFor(type) {
     CONSISTENCY: 'orange',
     SNAPSHOT: 'blue',
   }[String(type || '').toUpperCase()] || 'blue'
+}
+
+function markerFor(event) {
+  const payload = event.payload || {}
+  const title = String(event.title || '').toLowerCase()
+  if (payload.recovered_by || title.includes('checkpoint')) return '检查点恢复'
+  if (payload.idempotent) return '幂等命中'
+  if (payload.attempt_number > 1 || title.includes('retry')) return '重试'
+  if (title.includes('failed') || title.includes('failure')) return '失败'
+  if (payload.attempt_number === 1 || title.includes('queued')) return '首次执行'
+  return ''
 }
 </script>

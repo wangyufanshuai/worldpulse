@@ -149,6 +149,7 @@
             :on-engine-mode-change="value => lifecycleEngineMode = value"
             :visible-map-layers="visibleMapLayers"
             :runtime-audit="lifecycleAudit?.agent_runtime"
+            :lifecycle-audit="lifecycleAudit"
           />
 
           <WarRoomReplayModule

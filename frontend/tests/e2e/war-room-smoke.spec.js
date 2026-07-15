@@ -42,7 +42,8 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await expect(page.getByTestId('war-room-resume-action')).toBeEnabled()
   await page.getByTestId('war-room-resume-action').click()
   await page.getByTestId('war-room-cancel-action').click()
-  await expect(page.getByTestId('war-room-retry-action')).toBeEnabled()
+  await expect(page.getByTestId('war-room-lifecycle-control')).toContainText('cancelled', { timeout: 15_000 })
+  await expect(page.getByTestId('war-room-retry-action')).toBeEnabled({ timeout: 15_000 })
   await page.getByTestId('war-room-retry-action').click()
 
   await execFileAsync('python', ['-m', 'app.workers.run_worker', '--once'], {
@@ -73,9 +74,12 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await expect(page.getByTestId('agent-negotiation-proposal')).toHaveCount(4)
   await page.getByRole('link', { name: '数据中台' }).click()
   await expect(page.getByTestId('lifecycle-artifact-table')).toBeVisible()
+  await expect(page.getByTestId('lifecycle-step-table')).toBeVisible()
+  await expect(page.getByTestId('lifecycle-attempt-table')).toBeVisible()
   await expect(page.getByTestId('lifecycle-invocations')).toBeVisible()
   await page.getByLabel('设置').click()
   await expect(page.getByTestId('agent-provider-setting')).toContainText('mock')
+  await expect(page.getByTestId('worker-status-setting')).toContainText('completed')
 
   const modules = {
     sandbox: 'war-room-sandbox-module', analysis: 'war-room-analysis-module',

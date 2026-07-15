@@ -36,6 +36,7 @@ from app.core.models import (
     RiskPoint,
     RunArtifactSummary,
     RunControlResponse,
+    LifecycleHealthSummary,
     RunJobCreateRequest,
     RunJobStatus,
     RunLifecycleEvent,
@@ -192,6 +193,11 @@ def lifecycle_run_steps(run_id: str) -> list[RunStepRecord]:
 @router.get("/v2/runs/{run_id}/audit")
 def lifecycle_run_audit(run_id: str) -> dict:
     return run_lifecycle.get_audit(run_id)
+
+
+@router.get("/v2/lifecycle/health", response_model=LifecycleHealthSummary)
+def lifecycle_health_summary() -> LifecycleHealthSummary:
+    return run_lifecycle.get_health_summary()
 
 
 @router.get("/projects/{project_id}/war-room/replay-pack", response_model=WarRoomReplayPack)

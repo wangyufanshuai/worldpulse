@@ -19,6 +19,7 @@
     <article><span>策略边界</span><strong>策略沙盘</strong><p>不是现实战争预测、投资建议或政策建议。</p></article>
     <article><span>显示设置</span><strong>{{ props.visibleMapLayers.length }} 个图层</strong><p>当前可见：{{ props.visibleMapLayers.map(layerLabel).join('、') }}</p></article>
     <article data-testid="agent-provider-setting"><span>Agent Provider（只读）</span><strong>{{ runtime.provider }}</strong><p>只允许 mock / siliconflow / deepseek；密钥永不回传前端。</p></article>
+    <article data-testid="worker-status-setting"><span>本地 Worker 状态</span><strong>{{ workerStatus }}</strong><p>Attempt {{ props.lifecycleAudit?.run?.attempt_count || 0 }} / max {{ props.lifecycleAudit?.run?.max_attempts || 3 }}；当前阶段 {{ props.lifecycleAudit?.run?.current_phase || '尚无任务' }}。</p></article>
     <article><span>模型</span><strong>{{ runtime.model }}</strong><p>{{ runtime.fallbackReason }}</p></article>
     <article><span>调用预算</span><strong>{{ runtime.config.max_calls }} calls / {{ runtime.config.token_budget }} tokens</strong><p>最多 {{ runtime.config.max_turns }} 轮、{{ runtime.config.max_agents }} 个 Agent。</p></article>
     <article><span>超时与输出</span><strong>{{ runtime.config.timeout_seconds }}s</strong><p>输入 {{ runtime.config.max_input_chars }} 字符；输出 {{ runtime.config.max_output_chars }} 字符。</p></article>
@@ -37,6 +38,7 @@ const props = defineProps({
   engineMode: { type: String, default: 'deterministic' },
   onEngineModeChange: { type: Function, default: null },
   runtimeAudit: { type: Object, default: null }
+  ,lifecycleAudit: { type: Object, default: null }
 })
 
 const runtime = computed(() => ({
@@ -66,4 +68,8 @@ const modeDescription = computed(() => ({
   controlled_agent: '使用 provider allowlist、调用预算、超时和审计；默认安全降级到 Mock Provider。',
   hybrid: 'Agent 只提出动作，经一致性准入和固定适配后，由确定性引擎重算并生成离线 Replay 证据链。',
 }[props.engineMode] || '未知运行模式。'))
+const workerStatus = computed(() => {
+  const status = props.lifecycleAudit?.run?.status
+  return status ? `${status} · ${props.lifecycleAudit.run.current_attempt_id ? '有 active attempt' : '待领取'}` : '待机（本地）'
+})
 </script>

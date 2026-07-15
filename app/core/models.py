@@ -780,6 +780,19 @@ class RunControlResponse(BaseModel):
     events: list[RunLifecycleEvent] = []
 
 
+class LifecycleHealthSummary(BaseModel):
+    queued: int = 0
+    running: int = 0
+    stale: int = 0
+    failed: int = 0
+    completed: int = 0
+    avg_queue_wait_ms: float = 0
+    recoveries: int = 0
+    artifact_integrity_failures: int = 0
+    phase_durations_ms: dict[str, dict[str, float | int]] = Field(default_factory=dict)
+    worker_count: int = 0
+
+
 class AgentDecision(BaseModel):
     country_code: str
     country_name: str

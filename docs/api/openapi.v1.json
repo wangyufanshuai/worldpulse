@@ -1319,6 +1319,74 @@
         "title": "IndicatorLibraryItem",
         "type": "object"
       },
+      "LifecycleHealthSummary": {
+        "properties": {
+          "artifact_integrity_failures": {
+            "default": 0,
+            "title": "Artifact Integrity Failures",
+            "type": "integer"
+          },
+          "avg_queue_wait_ms": {
+            "default": 0,
+            "title": "Avg Queue Wait Ms",
+            "type": "number"
+          },
+          "completed": {
+            "default": 0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "phase_durations_ms": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Phase Durations Ms",
+            "type": "object"
+          },
+          "queued": {
+            "default": 0,
+            "title": "Queued",
+            "type": "integer"
+          },
+          "recoveries": {
+            "default": 0,
+            "title": "Recoveries",
+            "type": "integer"
+          },
+          "running": {
+            "default": 0,
+            "title": "Running",
+            "type": "integer"
+          },
+          "stale": {
+            "default": 0,
+            "title": "Stale",
+            "type": "integer"
+          },
+          "worker_count": {
+            "default": 0,
+            "title": "Worker Count",
+            "type": "integer"
+          }
+        },
+        "title": "LifecycleHealthSummary",
+        "type": "object"
+      },
       "MarketImpact": {
         "properties": {
           "asset_key": {
@@ -6409,6 +6477,24 @@
           }
         },
         "summary": "Species Profile"
+      }
+    },
+    "/api/v2/lifecycle/health": {
+      "get": {
+        "operationId": "lifecycle_health_summary_api_v2_lifecycle_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleHealthSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Lifecycle Health Summary"
       }
     },
     "/api/v2/projects/{project_id}/runs": {

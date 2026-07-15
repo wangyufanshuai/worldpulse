@@ -34,6 +34,38 @@
             </table>
           </div>
         </section>
+        <section v-if="props.lifecycleAudit?.steps?.length" data-testid="lifecycle-step-table">
+          <h4>阶段执行与检查点</h4>
+          <div class="data-table">
+            <table>
+              <thead><tr><th>阶段</th><th>Attempt</th><th>状态</th><th>耗时</th><th>输入/输出 Hash</th><th>Artifact refs</th></tr></thead>
+              <tbody>
+                <tr v-for="step in props.lifecycleAudit.steps" :key="step.step_id">
+                  <td>{{ step.step_key }}<small>{{ step.step_version }}</small></td>
+                  <td><code>{{ shortHash(step.attempt_id) }}</code></td>
+                  <td :class="step.status === 'completed' ? 'positive' : 'negative'">{{ step.status }}</td>
+                  <td>{{ step.duration_ms }} ms</td>
+                  <td><code>{{ shortHash(step.input_hash) }} / {{ shortHash(step.output_hash) }}</code></td>
+                  <td>{{ (step.artifact_refs || []).length }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section v-if="props.lifecycleAudit?.attempts?.length" data-testid="lifecycle-attempt-table">
+          <h4>Worker Attempt 与恢复关系</h4>
+          <div class="data-table">
+            <table>
+              <thead><tr><th>Attempt</th><th>Worker</th><th>编号</th><th>状态</th><th>恢复阶段</th><th>失败原因</th></tr></thead>
+              <tbody>
+                <tr v-for="attempt in props.lifecycleAudit.attempts" :key="attempt.attempt_id">
+                  <td><code>{{ shortHash(attempt.attempt_id) }}</code></td><td>{{ attempt.worker_id }}</td><td>{{ attempt.attempt_number }}</td>
+                  <td>{{ attempt.status }}</td><td>{{ attempt.resume_from_step || '--' }}</td><td>{{ attempt.error_code || '--' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
         <section v-if="props.lifecycleAudit?.agent_runtime" data-testid="lifecycle-invocations">
           <h4>模型调用审计（不保存原始 Prompt / Response）</h4>
           <div class="data-table">
