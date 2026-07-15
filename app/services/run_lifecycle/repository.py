@@ -18,6 +18,7 @@ from app.core.models import (
 from app.services.consistency.hashing import stable_hash
 from app.services.project_store import connect, dumps, init_db, loads
 from app.services.security import redact_secrets, redact_structure
+from app.services.rule_packs import active_rule_pack, get_rule_pack
 
 
 TERMINAL_STATUSES = {"completed", "cancelled", "failed"}
@@ -33,11 +34,13 @@ def create_job(
     request: RunJobCreateRequest,
     *,
     idempotency_key: str | None = None,
+    pinned_rule_pack_id: str | None = None,
 ) -> RunJobStatus:
     init_db()
     scenario = _scenario_payload(request.scenario, request.seed)
     engine_mode = _engine_mode(request.engine_mode)
     normalized_key = _normalize_idempotency_key(idempotency_key)
+    rule_pack = get_rule_pack(pinned_rule_pack_id) if pinned_rule_pack_id else active_rule_pack()
     request_hash = stable_hash(
         {
             "project_id": project_id,
@@ -46,6 +49,7 @@ def create_job(
             "seed": request.seed,
             "parent_run_id": request.parent_run_id,
             "max_attempts": request.max_attempts,
+            "rule_pack_hash": rule_pack.manifest_hash,
         }
     )
     run_id = f"job_{uuid4().hex[:12]}"
@@ -70,8 +74,9 @@ def create_job(
             """
             INSERT INTO run_jobs
             (run_id, project_id, engine_mode, status, current_phase, progress, seed, parent_run_id,
-             scenario_json, created_at, updated_at, max_attempts, request_hash, idempotency_key)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             scenario_json, created_at, updated_at, max_attempts, request_hash, idempotency_key,
+             job_kind, rule_pack_id, rule_pack_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'war_room', ?, ?)
             """,
             (
                 run_id,
@@ -88,6 +93,8 @@ def create_job(
                 request.max_attempts,
                 request_hash,
                 normalized_key,
+                rule_pack.rule_pack_id,
+                rule_pack.manifest_hash,
                 ),
             )
     if existing_run_id is not None:
@@ -490,6 +497,7 @@ def retry_job(run_id: str) -> RunJobStatus:
             parent_run_id=job.run_id,
             max_attempts=job.max_attempts,
         ),
+        pinned_rule_pack_id=job.rule_pack_id,
     )
 
 
@@ -814,6 +822,9 @@ def _job_from_row(row) -> RunJobStatus:
         max_attempts=int(row["max_attempts"] or 3),
         next_attempt_at=row["next_attempt_at"],
         terminal_reason=row["terminal_reason"],
+        job_kind=row["job_kind"] if "job_kind" in row.keys() else "war_room",
+        rule_pack_id=row["rule_pack_id"] if "rule_pack_id" in row.keys() else None,
+        rule_pack_hash=row["rule_pack_hash"] if "rule_pack_hash" in row.keys() else None,
     )
 
 

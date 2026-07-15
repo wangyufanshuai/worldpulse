@@ -773,6 +773,9 @@ class RunJobStatus(BaseModel):
     max_attempts: int = 3
     next_attempt_at: str | None = None
     terminal_reason: str | None = None
+    job_kind: str = "war_room"
+    rule_pack_id: str | None = None
+    rule_pack_hash: str | None = None
 
 
 class RunControlResponse(BaseModel):

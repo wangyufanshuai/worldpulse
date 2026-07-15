@@ -128,6 +128,9 @@ def process_job(run_id: str) -> RunJobStatus:
             "previous_step_id": previous_step.step_id if previous_step else None,
             "previous_output_hash": previous_step.output_hash if previous_step else None,
             "previous_artifact_refs": previous_step.artifact_refs if previous_step else [],
+            "job_kind": job.job_kind,
+            "rule_pack_id": job.rule_pack_id,
+            "rule_pack_hash": job.rule_pack_hash,
         }
         step = steps.begin_step(run_id, phase, attempt_id, step_input)
         artifacts_before = {item.artifact_id for item in repository.get_artifacts(run_id)}
@@ -146,6 +149,8 @@ def process_job(run_id: str) -> RunJobStatus:
                     "target_chains": scenario.target_chains,
                     "policy_actions": scenario.policy_actions,
                     "seed": scenario.seed,
+                    "rule_pack_id": job.rule_pack_id,
+                    "rule_pack_hash": job.rule_pack_hash,
                 },
             )
         elif phase == "deterministic_run":

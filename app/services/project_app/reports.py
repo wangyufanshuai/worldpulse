@@ -53,6 +53,7 @@ def build_project_report(project: ResearchProject, run: ResearchRun, graph: Caus
 
 
 def build_war_room_project_report(project: ResearchProject, run: ResearchRun, graph: CausalGraphSnapshot, result: WarRoomRun) -> ProjectAIReport:
+    trust_manifest = (run.data_snapshot or {}).get("trust_manifest") or {}
     top_agents = result.country_agents[:3]
     top_chains = result.supply_chains[:3]
     key_findings = [
@@ -97,6 +98,13 @@ def build_war_room_project_report(project: ResearchProject, run: ResearchRun, gr
         disclaimer=WAR_ROOM_DISCLAIMER,
     )
     markdown = render_project_markdown(ai, citations)
+    if trust_manifest:
+        markdown += (
+            "\n\n## Trust Manifest\n"
+            f"- Rule Pack: `{trust_manifest.get('rule_pack_version')}`\n"
+            f"- Rule Pack ID: `{trust_manifest.get('rule_pack_id')}`\n"
+            f"- Manifest Hash: `{trust_manifest.get('rule_pack_hash')}`"
+        )
     return ProjectAIReport(
         report_id=f"report_{uuid4().hex[:12]}",
         project_id=project.project_id,

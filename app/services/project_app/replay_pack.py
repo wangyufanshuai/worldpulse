@@ -57,6 +57,7 @@ def _replay_pack_lifecycle_artifacts(target: ResearchRun) -> dict:
 
 
 def _replay_pack_manifest(project_id: str, project_title: str, target: ResearchRun, base: ResearchRun | None, diff: dict | None, generated_at: str, lifecycle_artifacts: dict | None = None) -> dict:
+    trust_manifest = (target.data_snapshot or {}).get("trust_manifest") or (target.simulation_snapshot or {}).get("trust_manifest")
     return {
         "pack_version": "war-room-replay-pack.audit.v1",
         "project_id": project_id,
@@ -72,6 +73,7 @@ def _replay_pack_manifest(project_id: str, project_title: str, target: ResearchR
         "lifecycle_job_id": (lifecycle_artifacts or {}).get("lifecycle_job_id"),
         "verified_lifecycle_artifacts": sorted((lifecycle_artifacts or {}).get("artifacts", {})),
         "disclaimer": WAR_ROOM_DISCLAIMER,
+        "trust_manifest": trust_manifest,
     }
 
 

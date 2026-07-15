@@ -17,6 +17,7 @@ from app.core.models import (
 )
 from app.services.project_app.reports import build_war_room_project_report, chain_pressure
 from app.services.project_store import connect, dumps
+from app.services.rule_packs import trust_manifest_for_job
 from app.services.war_room_engine import WAR_ROOM_DISCLAIMER
 
 
@@ -37,6 +38,7 @@ def persist_war_room_result(
     completed = completed or now_factory()
     run_id = run_id or f"run_{uuid4().hex[:12]}"
     workflow_events = _war_room_workflow_events(result, now_factory)
+    trust_manifest = trust_manifest_for_job(lifecycle_job_id)
     risk = build_war_room_risk_overview(result)
     run = ResearchRun(
         run_id=run_id,
@@ -59,10 +61,11 @@ def persist_war_room_result(
             "sources": ["WorldPulse War Room deterministic sandbox", "WorldPulse built-in country agents", "WorldPulse supply-chain rules"],
             "disclaimer": result.disclaimer,
             "lifecycle_job_id": lifecycle_job_id,
+            "trust_manifest": trust_manifest,
         },
         risk_snapshot=risk.model_dump(),
         event_snapshot=[build_war_room_event_snapshot(result)],
-        simulation_snapshot=build_war_room_simulation_snapshot(result),
+        simulation_snapshot={**build_war_room_simulation_snapshot(result), "trust_manifest": trust_manifest},
         backtest_snapshot={"event_type": result.scenario.key, "sample_count": 0, "hit_rate": 0, "max_error": 0, "error_attribution": [WAR_ROOM_DISCLAIMER]},
     )
     graph = build_war_room_graph_snapshot(project.project_id, run_id, result, now_factory)

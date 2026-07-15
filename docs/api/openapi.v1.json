@@ -2403,6 +2403,206 @@
         "title": "RiskPoint",
         "type": "object"
       },
+      "RulePackCreateRequest": {
+        "properties": {
+          "action_adapter_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Action Adapter Version",
+            "type": "string"
+          },
+          "consistency_rule_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Consistency Rule Version",
+            "type": "string"
+          },
+          "evidence_policy_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Evidence Policy Version",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "scoring_weights_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Scoring Weights Version",
+            "type": "string"
+          },
+          "supersedes_rule_pack_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Rule Pack Id"
+          },
+          "version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          },
+          "war_room_rule_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "War Room Rule Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "war_room_rule_version",
+          "consistency_rule_version",
+          "action_adapter_version",
+          "scoring_weights_version",
+          "evidence_policy_version"
+        ],
+        "title": "RulePackCreateRequest",
+        "type": "object"
+      },
+      "RulePackManifest": {
+        "properties": {
+          "action_adapter_version": {
+            "title": "Action Adapter Version",
+            "type": "string"
+          },
+          "activated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "consistency_rule_version": {
+            "title": "Consistency Rule Version",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "creator_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creator User Id"
+          },
+          "evidence_policy_version": {
+            "title": "Evidence Policy Version",
+            "type": "string"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rule_pack_id": {
+            "title": "Rule Pack Id",
+            "type": "string"
+          },
+          "scoring_weights_version": {
+            "title": "Scoring Weights Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "candidate",
+              "active",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "supersedes_rule_pack_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Rule Pack Id"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "war_room_rule_version": {
+            "title": "War Room Rule Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_pack_id",
+          "name",
+          "version",
+          "war_room_rule_version",
+          "consistency_rule_version",
+          "action_adapter_version",
+          "scoring_weights_version",
+          "evidence_policy_version",
+          "manifest",
+          "manifest_hash",
+          "status",
+          "created_at"
+        ],
+        "title": "RulePackManifest",
+        "type": "object"
+      },
+      "RulePackReviewRequest": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          }
+        },
+        "title": "RulePackReviewRequest",
+        "type": "object"
+      },
       "RunArtifactSummary": {
         "properties": {
           "artifact_id": {
@@ -2625,6 +2825,11 @@
             ],
             "title": "Error Message"
           },
+          "job_kind": {
+            "default": "war_room",
+            "title": "Job Kind",
+            "type": "string"
+          },
           "lease_expires_at": {
             "anyOf": [
               {
@@ -2693,6 +2898,28 @@
               }
             ],
             "title": "Result Run Id"
+          },
+          "rule_pack_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Pack Hash"
+          },
+          "rule_pack_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Pack Id"
           },
           "run_id": {
             "title": "Run Id",
@@ -7175,6 +7402,230 @@
           }
         },
         "summary": "Local Me"
+      }
+    },
+    "/api/v3/rule-packs": {
+      "get": {
+        "operationId": "rule_pack_list_api_v3_rule_packs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RulePackManifest"
+                  },
+                  "title": "Response Rule Pack List Api V3 Rule Packs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Rule Pack List"
+      },
+      "post": {
+        "operationId": "rule_pack_create_api_v3_rule_packs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RulePackCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulePackManifest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rule Pack Create"
+      }
+    },
+    "/api/v3/rule-packs/{rule_pack_id}": {
+      "get": {
+        "operationId": "rule_pack_detail_api_v3_rule_packs__rule_pack_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_pack_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulePackManifest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rule Pack Detail"
+      }
+    },
+    "/api/v3/rule-packs/{rule_pack_id}/activate": {
+      "post": {
+        "operationId": "rule_pack_activate_api_v3_rule_packs__rule_pack_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_pack_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulePackManifest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rule Pack Activate"
+      }
+    },
+    "/api/v3/rule-packs/{rule_pack_id}/approve": {
+      "post": {
+        "operationId": "rule_pack_approve_api_v3_rule_packs__rule_pack_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_pack_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RulePackReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulePackManifest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rule Pack Approve"
+      }
+    },
+    "/api/v3/rule-packs/{rule_pack_id}/submit": {
+      "post": {
+        "operationId": "rule_pack_submit_api_v3_rule_packs__rule_pack_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_pack_id",
+            "required": true,
+            "schema": {
+              "title": "Rule Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulePackManifest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rule Pack Submit"
       }
     },
     "/api/version": {

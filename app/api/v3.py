@@ -4,7 +4,13 @@ import os
 
 from fastapi import APIRouter, Request, Response
 
-from app.core.trust_models import LoginRequest, SessionStatus
+from app.core.trust_models import (
+    LoginRequest,
+    RulePackCreateRequest,
+    RulePackManifest,
+    RulePackReviewRequest,
+    SessionStatus,
+)
 from app.services.auth import (
     ABSOLUTE_HOURS,
     CSRF_COOKIE,
@@ -14,6 +20,7 @@ from app.services.auth import (
     login,
     logout,
 )
+from app.services import rule_packs
 
 
 router = APIRouter()
@@ -44,3 +51,37 @@ def local_logout(request: Request, response: Response) -> dict[str, bool]:
 def local_me(request: Request) -> SessionStatus:
     identity = getattr(request.state, "user", None) or ensure_system_user()
     return SessionStatus(authenticated=True, user=identity)
+
+
+def _actor(request: Request):
+    return getattr(request.state, "user", None) or ensure_system_user()
+
+
+@router.get("/rule-packs", response_model=list[RulePackManifest])
+def rule_pack_list() -> list[RulePackManifest]:
+    return rule_packs.list_rule_packs()
+
+
+@router.post("/rule-packs", response_model=RulePackManifest)
+def rule_pack_create(payload: RulePackCreateRequest, request: Request) -> RulePackManifest:
+    return rule_packs.create_rule_pack(payload, _actor(request))
+
+
+@router.get("/rule-packs/{rule_pack_id}", response_model=RulePackManifest)
+def rule_pack_detail(rule_pack_id: str) -> RulePackManifest:
+    return rule_packs.get_rule_pack(rule_pack_id)
+
+
+@router.post("/rule-packs/{rule_pack_id}/submit", response_model=RulePackManifest)
+def rule_pack_submit(rule_pack_id: str, request: Request) -> RulePackManifest:
+    return rule_packs.submit_rule_pack(rule_pack_id, _actor(request))
+
+
+@router.post("/rule-packs/{rule_pack_id}/approve", response_model=RulePackManifest)
+def rule_pack_approve(rule_pack_id: str, payload: RulePackReviewRequest, request: Request) -> RulePackManifest:
+    return rule_packs.approve_rule_pack(rule_pack_id, _actor(request), payload.comment)
+
+
+@router.post("/rule-packs/{rule_pack_id}/activate", response_model=RulePackManifest)
+def rule_pack_activate(rule_pack_id: str, request: Request) -> RulePackManifest:
+    return rule_packs.activate_rule_pack(rule_pack_id, _actor(request))
