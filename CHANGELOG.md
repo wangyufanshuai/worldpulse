@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0-rc1 - 2026-07-16
+
+- Added an immutable Evidence Registry for sources, frozen snapshots, provenance claims, citation links, and hash-addressed evidence packs.
+- Added cutoff-aware evidence search and fail-closed checks that reject future observations and surface content tampering.
+- Added v4 Evidence APIs for source/snapshot/claim registration, project and calibration synchronization, evidence search, packs, and project summaries.
+- Connected project report citations, deterministic runs, causal graphs, Trust Summary, and Replay Pack manifests to one evidence lineage without rerunning an LLM.
+- Added the War Room Evidence Center with source health, snapshot hashes, claim coverage, cutoff search, project synchronization, and pack freezing.
+- Expanded release gates to 154 backend tests, 33 Vitest tests, and 8 Playwright flows while preserving all v1/v2/v3 contracts and deterministic Golden Scenarios.
+- External evidence acquisition remains explicit and source-governed; V1.4 does not silently browse, overwrite snapshots, or treat model-generated prose as ground truth.
+
 ## 1.3.0-rc1 - 2026-07-15
 
 - Added checksum-verified numbered SQLite migrations, baseline import, backup/restore, and migration CLI verification.

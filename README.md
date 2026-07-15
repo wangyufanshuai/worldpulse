@@ -1,5 +1,7 @@
 # WorldPulse 全球综合风险指数
 
+V1.4.0-rc1 新增不可变、时间截点安全的 Evidence Registry 与 War Room 证据中心。已保存的确定性运行、因果图、报告引用和冻结校准案例可同步为带哈希的快照、声明和 Evidence Pack；该过程不会静默联网、重新调用 LLM，也不会改写风险或供应链数值。详见 [`V1.4 架构`](docs/architecture/v1.4-evidence-registry.md) 与 [`V4 API`](docs/api/v4-evidence-registry.md)。V1/V2/V3 接口保持兼容，新能力位于 `/api/v4`。
+
 WorldPulse 是一个基于 FastAPI 的全球多源风险监测与预测看板。它不是“预测未来一切”的神秘模型，而是一个可扩展的数据工程项目：
 
 V1.3.0-rc1 将 V1.2 受控混合引擎升级为面向小型内部团队的可信决策平台：确定性规则引擎继续独占风险与供应链数值权威；本地账户、RBAC、不可变 Rule Pack、30 案例校准生命周期、append-only 人工复核和可信度中心共同约束规则晋升与报告发布。Replay Pack 与离线复盘仍不会重新调用 LLM。

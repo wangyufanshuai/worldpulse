@@ -1274,6 +1274,209 @@
         "title": "EventTopic",
         "type": "object"
       },
+      "EvidenceClaim": {
+        "properties": {
+          "claim_hash": {
+            "title": "Claim Hash",
+            "type": "string"
+          },
+          "claim_id": {
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "claim_type": {
+            "title": "Claim Type",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          }
+        },
+        "required": [
+          "claim_id",
+          "statement",
+          "claim_type",
+          "confidence",
+          "cutoff_at",
+          "claim_hash",
+          "created_at"
+        ],
+        "title": "EvidenceClaim",
+        "type": "object"
+      },
+      "EvidenceClaimCreate": {
+        "properties": {
+          "claim_type": {
+            "default": "finding",
+            "maxLength": 80,
+            "title": "Claim Type",
+            "type": "string"
+          },
+          "confidence": {
+            "default": 0.72,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "relation": {
+            "default": "supports",
+            "enum": [
+              "supports",
+              "contradicts",
+              "context"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "snapshot_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Snapshot Ids",
+            "type": "array"
+          },
+          "statement": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Statement",
+            "type": "string"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          }
+        },
+        "required": [
+          "statement",
+          "cutoff_at"
+        ],
+        "title": "EvidenceClaimCreate",
+        "type": "object"
+      },
       "EvidenceItem": {
         "properties": {
           "interpretation": {
@@ -1300,6 +1503,604 @@
           "interpretation"
         ],
         "title": "EvidenceItem",
+        "type": "object"
+      },
+      "EvidencePack": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pack_id": {
+            "title": "Pack Id",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "required": [
+          "pack_id",
+          "name",
+          "cutoff_at",
+          "manifest",
+          "manifest_hash",
+          "created_at"
+        ],
+        "title": "EvidencePack",
+        "type": "object"
+      },
+      "EvidencePackCreate": {
+        "properties": {
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Claim Ids",
+            "type": "array"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "snapshot_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Snapshot Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "cutoff_at"
+        ],
+        "title": "EvidencePackCreate",
+        "type": "object"
+      },
+      "EvidenceSearchResult": {
+        "properties": {
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceClaim"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "cutoff_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cutoff At"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceSnapshotSummary"
+            },
+            "title": "Snapshots",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query",
+          "total"
+        ],
+        "title": "EvidenceSearchResult",
+        "type": "object"
+      },
+      "EvidenceSnapshot": {
+        "properties": {
+          "captured_at": {
+            "title": "Captured At",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "content_text": {
+            "title": "Content Text",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "external_ref": {
+            "title": "External Ref",
+            "type": "string"
+          },
+          "integrity_status": {
+            "default": "verified",
+            "enum": [
+              "verified",
+              "failed"
+            ],
+            "title": "Integrity Status",
+            "type": "string"
+          },
+          "observed_at": {
+            "title": "Observed At",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "source_id",
+          "external_ref",
+          "title",
+          "category",
+          "content",
+          "content_text",
+          "observed_at",
+          "cutoff_at",
+          "captured_at",
+          "content_hash"
+        ],
+        "title": "EvidenceSnapshot",
+        "type": "object"
+      },
+      "EvidenceSnapshotCreate": {
+        "properties": {
+          "category": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "content_text": {
+            "default": "",
+            "maxLength": 200000,
+            "title": "Content Text",
+            "type": "string"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "external_ref": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "External Ref",
+            "type": "string"
+          },
+          "observed_at": {
+            "title": "Observed At",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "source_id": {
+            "maxLength": 80,
+            "minLength": 3,
+            "title": "Source Id",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "external_ref",
+          "title",
+          "category",
+          "content",
+          "observed_at",
+          "cutoff_at"
+        ],
+        "title": "EvidenceSnapshotCreate",
+        "type": "object"
+      },
+      "EvidenceSnapshotSummary": {
+        "properties": {
+          "captured_at": {
+            "title": "Captured At",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "external_ref": {
+            "title": "External Ref",
+            "type": "string"
+          },
+          "integrity_status": {
+            "default": "verified",
+            "enum": [
+              "verified",
+              "failed"
+            ],
+            "title": "Integrity Status",
+            "type": "string"
+          },
+          "observed_at": {
+            "title": "Observed At",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "source_id",
+          "external_ref",
+          "title",
+          "category",
+          "observed_at",
+          "cutoff_at",
+          "captured_at",
+          "content_hash"
+        ],
+        "title": "EvidenceSnapshotSummary",
+        "type": "object"
+      },
+      "EvidenceSource": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "degraded",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trust_tier": {
+            "title": "Trust Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "source_type",
+          "name",
+          "locator",
+          "publisher",
+          "status",
+          "trust_tier",
+          "created_at"
+        ],
+        "title": "EvidenceSource",
+        "type": "object"
+      },
+      "EvidenceSourceCreate": {
+        "properties": {
+          "locator": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Locator",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "publisher": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Publisher",
+            "type": "string"
+          },
+          "source_type": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Source Type",
+            "type": "string"
+          },
+          "trust_tier": {
+            "default": "internal",
+            "maxLength": 40,
+            "title": "Trust Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_type",
+          "name",
+          "locator"
+        ],
+        "title": "EvidenceSourceCreate",
+        "type": "object"
+      },
+      "EvidenceSyncResult": {
+        "properties": {
+          "claims_created": {
+            "default": 0,
+            "title": "Claims Created",
+            "type": "integer"
+          },
+          "links_created": {
+            "default": 0,
+            "title": "Links Created",
+            "type": "integer"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "snapshots_created": {
+            "default": 0,
+            "title": "Snapshots Created",
+            "type": "integer"
+          },
+          "sources_created": {
+            "default": 0,
+            "title": "Sources Created",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ProjectEvidenceSummary"
+          }
+        },
+        "required": [
+          "project_id",
+          "summary"
+        ],
+        "title": "EvidenceSyncResult",
         "type": "object"
       },
       "GraphEditRequest": {
@@ -1887,6 +2688,111 @@
           "project"
         ],
         "title": "ProjectDetail",
+        "type": "object"
+      },
+      "ProjectEvidenceSummary": {
+        "properties": {
+          "claim_count": {
+            "title": "Claim Count",
+            "type": "integer"
+          },
+          "coverage": {
+            "title": "Coverage",
+            "type": "number"
+          },
+          "cutoff_safe": {
+            "title": "Cutoff Safe",
+            "type": "boolean"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "integrity_status": {
+            "enum": [
+              "verified",
+              "failed",
+              "empty"
+            ],
+            "title": "Integrity Status",
+            "type": "string"
+          },
+          "latest_cutoff_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Cutoff At"
+          },
+          "latest_pack": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidencePack"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked_claim_count": {
+            "title": "Linked Claim Count",
+            "type": "integer"
+          },
+          "pack_count": {
+            "title": "Pack Count",
+            "type": "integer"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "recent_claims": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceClaim"
+            },
+            "title": "Recent Claims",
+            "type": "array"
+          },
+          "recent_snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceSnapshotSummary"
+            },
+            "title": "Recent Snapshots",
+            "type": "array"
+          },
+          "snapshot_count": {
+            "title": "Snapshot Count",
+            "type": "integer"
+          },
+          "source_count": {
+            "title": "Source Count",
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "project_id",
+          "source_count",
+          "snapshot_count",
+          "claim_count",
+          "linked_claim_count",
+          "pack_count",
+          "coverage",
+          "integrity_status",
+          "cutoff_safe",
+          "generated_at"
+        ],
+        "title": "ProjectEvidenceSummary",
         "type": "object"
       },
       "ReplayAssetMove": {
@@ -4356,6 +5262,12 @@
             "title": "Data Coverage",
             "type": "number"
           },
+          "evidence_registry": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Evidence Registry",
+            "type": "object"
+          },
           "generated_at": {
             "title": "Generated At",
             "type": "string"
@@ -5341,7 +6253,7 @@
   "info": {
     "description": "全球多源综合风险指数与世界局势情景模拟器",
     "title": "WorldPulse",
-    "version": "1.3.0-rc1"
+    "version": "1.4.0-rc1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8327,6 +9239,592 @@
           }
         },
         "summary": "Rule Pack Submit"
+      }
+    },
+    "/api/v4/evidence/calibration/sync": {
+      "post": {
+        "operationId": "evidence_calibration_sync_api_v4_evidence_calibration_sync_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Evidence Calibration Sync Api V4 Evidence Calibration Sync Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Evidence Calibration Sync"
+      }
+    },
+    "/api/v4/evidence/claims": {
+      "post": {
+        "operationId": "evidence_claim_create_api_v4_evidence_claims_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceClaimCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceClaim"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Claim Create"
+      }
+    },
+    "/api/v4/evidence/claims/{claim_id}": {
+      "get": {
+        "operationId": "evidence_claim_detail_api_v4_evidence_claims__claim_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "claim_id",
+            "required": true,
+            "schema": {
+              "title": "Claim Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceClaim"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Claim Detail"
+      }
+    },
+    "/api/v4/evidence/packs": {
+      "post": {
+        "operationId": "evidence_pack_create_api_v4_evidence_packs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidencePackCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePack"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Pack Create"
+      }
+    },
+    "/api/v4/evidence/packs/{pack_id}": {
+      "get": {
+        "operationId": "evidence_pack_detail_api_v4_evidence_packs__pack_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidencePack"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Pack Detail"
+      }
+    },
+    "/api/v4/evidence/search": {
+      "get": {
+        "operationId": "evidence_search_api_v4_evidence_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cutoff_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cutoff At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceSearchResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Search"
+      }
+    },
+    "/api/v4/evidence/snapshots": {
+      "post": {
+        "operationId": "evidence_snapshot_create_api_v4_evidence_snapshots_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceSnapshotCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Snapshot Create"
+      }
+    },
+    "/api/v4/evidence/snapshots/{snapshot_id}": {
+      "get": {
+        "operationId": "evidence_snapshot_detail_api_v4_evidence_snapshots__snapshot_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Snapshot Detail"
+      }
+    },
+    "/api/v4/evidence/sources": {
+      "get": {
+        "operationId": "evidence_sources_api_v4_evidence_sources_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvidenceSource"
+                  },
+                  "title": "Response Evidence Sources Api V4 Evidence Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Sources"
+      },
+      "post": {
+        "operationId": "evidence_source_create_api_v4_evidence_sources_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceSourceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceSource"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Source Create"
+      }
+    },
+    "/api/v4/evidence/sources/{source_id}": {
+      "get": {
+        "operationId": "evidence_source_detail_api_v4_evidence_sources__source_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceSource"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Source Detail"
+      }
+    },
+    "/api/v4/projects/{project_id}/evidence-summary": {
+      "get": {
+        "operationId": "project_evidence_summary_api_v4_projects__project_id__evidence_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectEvidenceSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Project Evidence Summary"
+      }
+    },
+    "/api/v4/projects/{project_id}/evidence/sync": {
+      "post": {
+        "operationId": "project_evidence_sync_api_v4_projects__project_id__evidence_sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceSyncResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Project Evidence Sync"
       }
     },
     "/api/version": {
