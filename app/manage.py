@@ -30,17 +30,23 @@ def main() -> int:
     create_admin.add_argument("--username", required=True)
     create_admin.add_argument("--display-name", default="WorldPulse Admin")
     create_admin.add_argument("--password")
+    create_user_parser = sub.add_parser("create-user", help="Create a local user with an explicit role")
+    create_user_parser.add_argument("--username", required=True)
+    create_user_parser.add_argument("--display-name", default="WorldPulse User")
+    create_user_parser.add_argument("--role", required=True, choices=("admin", "analyst", "reviewer", "viewer"))
+    create_user_parser.add_argument("--password")
     args = parser.parse_args()
     if args.command in {"migrate", "status", "verify"}:
         action = args.action if args.command == "migrate" else args.command
         return _migration_command(action)
-    if args.command == "create-admin":
+    if args.command in {"create-admin", "create-user"}:
         from app.services.auth import create_user
         password = args.password or getpass("Admin password: ")
         confirmation = args.password or getpass("Confirm password: ")
         if password != confirmation:
             parser.error("Passwords do not match")
-        user = create_user(args.username, password, args.display_name, "admin")
+        role = "admin" if args.command == "create-admin" else args.role
+        user = create_user(args.username, password, args.display_name, role)
         print(json.dumps(user.model_dump(mode="json"), ensure_ascii=False))
         return 0
     return 2

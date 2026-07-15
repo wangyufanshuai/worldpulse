@@ -7,6 +7,10 @@ services:
       - ./data:/app/data
     environment:
       WORLDPULSE_DB_PATH: /app/data/worldpulse.db
+      WORLDPULSE_ENV: ${WORLDPULSE_ENV:-development}
+      WORLDPULSE_AUTO_MIGRATE: ${WORLDPULSE_AUTO_MIGRATE:-1}
+      WORLDPULSE_AUTH_MODE: ${WORLDPULSE_AUTH_MODE:-disabled}
+      WORLDPULSE_CORS_ORIGINS: ${WORLDPULSE_CORS_ORIGINS:-http://127.0.0.1:8010}
       AGENT_PROVIDER: ${AGENT_PROVIDER:-mock}
       AGENT_FALLBACK_MODE: ${AGENT_FALLBACK_MODE:-mock}
     healthcheck:
@@ -23,6 +27,9 @@ services:
       - ./data:/app/data
     environment:
       WORLDPULSE_DB_PATH: /app/data/worldpulse.db
+      WORLDPULSE_ENV: ${WORLDPULSE_ENV:-development}
+      WORLDPULSE_AUTO_MIGRATE: ${WORLDPULSE_AUTO_MIGRATE:-1}
+      WORLDPULSE_AUTH_MODE: ${WORLDPULSE_AUTH_MODE:-disabled}
       AGENT_PROVIDER: ${AGENT_PROVIDER:-mock}
       AGENT_FALLBACK_MODE: ${AGENT_FALLBACK_MODE:-mock}
     depends_on:

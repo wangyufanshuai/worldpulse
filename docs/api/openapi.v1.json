@@ -1553,6 +1553,20 @@
             "title": "Running",
             "type": "integer"
           },
+          "security_metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Security Metrics",
+            "type": "object"
+          },
           "stale": {
             "default": 0,
             "title": "Stale",
@@ -5327,7 +5341,7 @@
   "info": {
     "description": "全球多源综合风险指数与世界局势情景模拟器",
     "title": "WorldPulse",
-    "version": "1.2.0-dev"
+    "version": "1.3.0-rc1"
   },
   "openapi": "3.1.0",
   "paths": {

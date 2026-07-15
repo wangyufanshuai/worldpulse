@@ -794,6 +794,7 @@ class LifecycleHealthSummary(BaseModel):
     artifact_integrity_failures: int = 0
     phase_durations_ms: dict[str, dict[str, float | int]] = Field(default_factory=dict)
     worker_count: int = 0
+    security_metrics: dict[str, float | int] = Field(default_factory=dict)
 
 
 class AgentDecision(BaseModel):

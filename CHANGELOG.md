@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0-rc1 - 2026-07-15
+
+- Added checksum-verified numbered SQLite migrations, baseline import, backup/restore, and migration CLI verification.
+- Added Argon2id local accounts, opaque server-side sessions, CSRF, CORS allowlists, rate limits, security audit events, and four-role RBAC.
+- Added immutable Rule Pack manifests, two-person approval, calibration-gated candidate activation, and per-run Rule Pack pinning.
+- Added a four-stage calibration lifecycle with 30 frozen V1.2 benchmark cases, deterministic metrics, checkpoint artifacts, tamper detection, and fail-closed promotion gates.
+- Added append-only Review Cases/Decisions for action admission, calibration failure, Rule Pack promotion, artifact integrity, material Run Diff, and evidence coverage.
+- Added the War Room Trust Center, overview trust summary, login/session UI, role-aware controls, and report/Replay trust manifests.
+- Expanded release gates to 148 backend tests, 26 Vitest tests, 7 Playwright flows, migration/OpenAPI verification, dependency audit, artifact scan, and Docker Compose smoke test.
+- The bundled calibration corpus is an internal frozen regression corpus, not independent real-world ground truth; external evidence ingestion remains a future milestone.
+
 ## 1.1.0-dev - Unreleased
 
 - Added versioned six-stage lifecycle step contracts and verified checkpoint recovery.

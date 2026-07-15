@@ -95,11 +95,6 @@ def _import_known_legacy_schema(conn: sqlite3.Connection, migration: Path) -> No
     This is deliberately bounded to the tables and additive columns that the old
     startup initializer supported. Unknown structures still fail baseline checks.
     """
-    sql = migration.read_text(encoding="utf-8")
-    sql = sql.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")
-    sql = sql.replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX IF NOT EXISTS ")
-    sql = sql.replace("CREATE INDEX ", "CREATE INDEX IF NOT EXISTS ")
-    conn.executescript(sql)
     additions = {
         "ai_reports": {"citations": "TEXT NOT NULL DEFAULT '[]'"},
         "research_projects": {
@@ -118,6 +113,19 @@ def _import_known_legacy_schema(conn: sqlite3.Connection, migration: Path) -> No
             "supersedes_artifact_id": "TEXT",
         },
     }
+    existing_tables = _tables(conn)
+    for table, columns in additions.items():
+        if table not in existing_tables:
+            continue
+        actual = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for column, definition in columns.items():
+            if column not in actual:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    sql = migration.read_text(encoding="utf-8")
+    sql = sql.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")
+    sql = sql.replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX IF NOT EXISTS ")
+    sql = sql.replace("CREATE INDEX ", "CREATE INDEX IF NOT EXISTS ")
+    conn.executescript(sql)
     for table, columns in additions.items():
         actual = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
         for column, definition in columns.items():

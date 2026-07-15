@@ -2,7 +2,7 @@
 
 WorldPulse 是一个基于 FastAPI 的全球多源风险监测与预测看板。它不是“预测未来一切”的神秘模型，而是一个可扩展的数据工程项目：
 
-V1.2.0-dev 在可信生命周期之上增加逐 action 治理审计：确定性规则引擎继续负责所有风险和供应链数值，受控 Agent 只提交结构化行动提案，一致性评估器负责准入，固定适配器再触发确定性重算。每个 action 都保存输入 hash、规则版本、评估结果、拒绝原因和最终投影状态；Replay Pack 与离线复盘不会重新调用 LLM。
+V1.3.0-rc1 将 V1.2 受控混合引擎升级为面向小型内部团队的可信决策平台：确定性规则引擎继续独占风险与供应链数值权威；本地账户、RBAC、不可变 Rule Pack、30 案例校准生命周期、append-only 人工复核和可信度中心共同约束规则晋升与报告发布。Replay Pack 与离线复盘仍不会重新调用 LLM。
 
 ```text
 公开数据源 -> 指标标准化 -> 分项风险 -> 综合指数 -> 30天基线预测 -> 看板/Markdown报告
@@ -46,6 +46,7 @@ V1.2.0-dev 在可信生命周期之上增加逐 action 治理审计：确定性�
 ```powershell
 cd E:\xuexi\worldpulse
 pip install -r requirements.txt
+python -m app.manage migrate
 uvicorn app.main:app --reload --port 8010
 ```
 
@@ -62,6 +63,16 @@ npm --prefix frontend install
 npm --prefix frontend run dev
 ```
 
+启用本地账户与 RBAC：
+
+```powershell
+$env:WORLDPULSE_AUTH_MODE="local"
+python -m app.manage create-admin --username admin
+uvicorn app.main:app --port 8010
+```
+
+首个管理员只能通过 CLI 创建；production 必须启用 `WORLDPULSE_AUTH_MODE=local`，并显式配置 `WORLDPULSE_CORS_ORIGINS`。密码使用 Argon2id，数据库只保存 Session/CSRF Hash。
+
 本地发布与数据库运维：
 
 ```powershell
@@ -69,6 +80,8 @@ python scripts/local_health.py
 python scripts/verify_database.py --database data/worldpulse.db
 python scripts/backup_database.py --source data/worldpulse.db --output data/backups/worldpulse.backup.db
 python scripts/export_openapi.py
+python -m app.manage migrate verify
+python scripts/verify_release_artifacts.py
 ```
 
 `AI_PROVIDER` 服务于旧版解释/报告层；`AGENT_PROVIDER` 只服务于受控生命周期 Agent Runtime。两者都不能修改确定性风险和供应链数值，开发环境推荐 `AGENT_PROVIDER=mock`。
@@ -84,6 +97,8 @@ http://127.0.0.1:8010
 V1.1 可信运行文档：[`lifecycle-step-contract.md`](docs/architecture/lifecycle-step-contract.md)、[`checkpoint-and-recovery.md`](docs/architecture/checkpoint-and-recovery.md)、[`idempotent-run-creation.md`](docs/api/idempotent-run-creation.md)。Golden Scenario、故障注入、备份和事故响应见 `docs/testing` 与 `docs/runbooks`。
 
 V2 生命周期 API 参见 [`docs/api/v2-run-lifecycle.md`](docs/api/v2-run-lifecycle.md)，混合引擎边界参见 [`docs/architecture/v1-hybrid-engine.md`](docs/architecture/v1-hybrid-engine.md)。
+
+V3 可信治理接口包含 `/api/v3/auth`、`/api/v3/rule-packs`、`/api/v3/calibration`、`/api/v3/reviews` 与项目 `trust-summary`。架构与运维说明见 [`v1.3-trust-governance.md`](docs/architecture/v1.3-trust-governance.md) 和 [`v1.3-operations.md`](docs/runbooks/v1.3-operations.md)。
 
 - `GET /api/health`：健康检查
 - `GET /api/version`：应用与 API 合同版本

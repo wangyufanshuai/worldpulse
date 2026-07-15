@@ -738,6 +738,11 @@ def get_health_summary() -> LifecycleHealthSummary:
         recoveries = conn.execute(
             "SELECT COUNT(*) AS count FROM run_events WHERE title = 'Stale worker lease recovered'"
         ).fetchone()["count"]
+        auth_failures = conn.execute("SELECT COUNT(*) FROM security_audit_events WHERE event_type = 'auth.login.failed'").fetchone()[0]
+        access_denied = conn.execute("SELECT COUNT(*) FROM security_audit_events WHERE event_type = 'api.access' AND outcome = 'denied'").fetchone()[0]
+        calibration_rows = conn.execute("SELECT created_at, completed_at, metrics_json FROM calibration_runs WHERE completed_at IS NOT NULL").fetchall()
+        promotions = conn.execute("SELECT COUNT(*) FROM rule_packs WHERE activated_at IS NOT NULL").fetchone()[0]
+        review_rows = conn.execute("SELECT created_at, closed_at, status FROM review_cases").fetchall()
 
     counts = {"queued": 0, "running": 0, "stale": 0, "failed": 0, "completed": 0}
     queue_waits: list[float] = []
@@ -763,6 +768,15 @@ def get_health_summary() -> LifecycleHealthSummary:
         for key, values in sorted(durations.items())
     }
     invalid = sum(1 for row in artifacts if _artifact_digest(row["content_json"]) != row["sha256"])
+    calibration_durations = [
+        max(0.0, (datetime.fromisoformat(row["completed_at"]) - datetime.fromisoformat(row["created_at"])).total_seconds() * 1000)
+        for row in calibration_rows
+    ]
+    false_accepts = sum(int(loads(row["metrics_json"], {}).get("critical_false_accept", 0)) for row in calibration_rows)
+    review_durations = [
+        max(0.0, (datetime.fromisoformat(row["closed_at"]) - datetime.fromisoformat(row["created_at"])).total_seconds() * 1000)
+        for row in review_rows if row["closed_at"]
+    ]
     return LifecycleHealthSummary(
         **counts,
         avg_queue_wait_ms=round(sum(queue_waits) / len(queue_waits), 2) if queue_waits else 0,
@@ -770,6 +784,15 @@ def get_health_summary() -> LifecycleHealthSummary:
         artifact_integrity_failures=invalid,
         phase_durations_ms=phase_durations,
         worker_count=len(workers),
+        security_metrics={
+            "auth_failures": int(auth_failures),
+            "access_denied_401_403": int(access_denied),
+            "calibration_avg_duration_ms": round(sum(calibration_durations) / len(calibration_durations), 2) if calibration_durations else 0,
+            "rule_pack_activations": int(promotions),
+            "critical_false_accepts": int(false_accepts),
+            "pending_reviews": sum(1 for row in review_rows if row["status"] == "open"),
+            "review_avg_resolution_ms": round(sum(review_durations) / len(review_durations), 2) if review_durations else 0,
+        },
     )
 
 

@@ -18,22 +18,45 @@ jobs:
           node-version: "20"
       - name: Install Python dependencies
         run: pip install -r requirements.txt
+      - name: Verify numbered migrations
+        env:
+          WORLDPULSE_DB_PATH: data/ci-migration.db
+          WORLDPULSE_AUTO_MIGRATE: "1"
+        run: |
+          python -m app.manage migrate
+          python -m app.manage migrate verify
       - name: Python compile
         run: python -m compileall app
       - name: Python tests
         run: python -m pytest -q
+      - name: OpenAPI snapshot
+        run: |
+          python scripts/export_openapi.py
+          git diff --exit-code docs/api/openapi.v1.json
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
       - name: Frontend build
         working-directory: frontend
         run: npm run build
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: npm run test:unit
       - name: Install Chromium
         working-directory: frontend
         run: npx playwright install --with-deps chromium
       - name: Frontend E2E
         working-directory: frontend
         run: npm run test:e2e
-      - name: Secret scan
+      - name: Dependency audit
         run: |
-          ! grep -R -E "sk-[A-Za-z0-9_-]{24,}|DEEPSEEK_API_KEY=sk-|SILICONFLOW_API_KEY=sk-" . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=data
+          pip install pip-audit
+          pip-audit -r requirements.txt
+          npm --prefix frontend audit --audit-level=critical
+      - name: Forbidden artifact and secret scan
+        run: python scripts/verify_release_artifacts.py
+      - name: Docker Compose smoke test
+        run: |
+          docker compose up -d --build
+          python -c "import time,urllib.request; time.sleep(3); print(urllib.request.urlopen('http://127.0.0.1:8010/api/health', timeout=10).read().decode())"
+          docker compose down -v
