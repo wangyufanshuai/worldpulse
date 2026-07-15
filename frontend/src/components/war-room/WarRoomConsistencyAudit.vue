@@ -53,7 +53,7 @@
       <section v-if="report.proposal_decisions?.length" class="agent-proposal-v12-audit" data-testid="agent-proposal-v12-audit">
         <article v-for="decision in report.proposal_decisions" :key="`v12-${decision.proposal_id}`">
           <header><code>{{ shortId(decision.proposal_id) }}</code><b>{{ decision.outcome || decision.decision }}</b></header>
-          <span>projection: {{ decision.projection_status || 'not_projected' }}</span>
+          <span data-testid="agent-action-projection-status">projection: {{ decision.projection_status || 'not_projected' }}</span>
           <span>rule: {{ decision.rule_version || '--' }}</span>
           <span>input: {{ shortHash(decision.input_hash) }}</span>
           <span>rule hits: {{ decision.rule_findings?.length || 0 }}</span>

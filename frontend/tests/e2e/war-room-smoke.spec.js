@@ -58,6 +58,8 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await expect(page.getByTestId('lifecycle-kpi-agent_proposals')).toContainText('4')
   await expect(page.getByTestId('agent-action-pass-rate')).toHaveText('100%')
   await expect(page.getByTestId('agent-action-rule-hit')).toHaveText('0')
+  await expect(page.getByTestId('agent-action-projection-status')).toHaveCount(4)
+  await expect(page.getByTestId('agent-action-projection-status').first()).toContainText('projected')
   await expect(page.getByTestId('lifecycle-kpi-consistency')).toContainText('部分评估')
   await expect(page.getByTestId('hybrid-result-summary')).toBeVisible()
   await expect(page.getByTestId('hybrid-accepted-count')).toHaveText('4')

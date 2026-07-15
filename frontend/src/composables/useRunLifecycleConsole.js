@@ -22,7 +22,24 @@ export function lifecycleControlMatrix(status) {
 
 export function useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runVersions, running, showToast, onCompleted }) {
   const activeLifecycleRun = computed(() => runLifecycle.activeRun.value)
-  const consistencyAudit = computed(() => runLifecycle.audit.value?.consistency_audit || null)
+  const consistencyAudit = computed(() => {
+    const report = runLifecycle.audit.value?.consistency_audit
+    if (!report) return null
+    const projectionRecords = runLifecycle.audit.value?.action_projection_audit?.records || []
+    const projectionById = new Map(projectionRecords.map(item => [item.proposal_id, item]))
+    return {
+      ...report,
+      proposal_decisions: (report.proposal_decisions || []).map((decision) => {
+        const projection = projectionById.get(decision.proposal_id)
+        return projection ? {
+          ...decision,
+          projection_status: projection.projection_status,
+          projection_hash: projection.projection_hash,
+          rejection_reason: projection.rejection_reason || decision.rejection_reason,
+        } : decision
+      }),
+    }
+  })
   const hybridTrace = computed(() => runLifecycle.audit.value?.hybrid?.replay_record || null)
   const lifecycleStages = computed(() => {
     const job = activeLifecycleRun.value
