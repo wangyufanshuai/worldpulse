@@ -58,6 +58,7 @@ from app.services.project_app.diffing import (
 from app.services.project_app.replay_pack import (
     _render_war_room_replay_markdown,
     _replay_pack_audit_trail,
+    _replay_pack_lifecycle_artifacts,
     _replay_pack_manifest,
     _replay_pack_model_inputs,
     _replay_pack_model_outputs,
@@ -457,12 +458,13 @@ def war_room_replay_pack(project_id: str, run_id: str | None = None, base_run_id
     base = _run_by_id(project_id, base_run_id) if base_run_id else None
     base_graph = _graph_for_run(project_id, base.run_id) if base else None
     diff = build_war_room_run_diff(base, target, base_graph, target_graph) if base else None
-    summary = _replay_pack_summary(target, diff)
+    lifecycle_artifacts = _replay_pack_lifecycle_artifacts(target)
+    summary = _replay_pack_summary(target, diff, lifecycle_artifacts)
     generated_at = _now()
-    manifest = _replay_pack_manifest(project_id, project.title, target, base, diff, generated_at)
+    manifest = _replay_pack_manifest(project_id, project.title, target, base, diff, generated_at, lifecycle_artifacts)
     model_inputs = _replay_pack_model_inputs(target_sim)
-    model_outputs = _replay_pack_model_outputs(target_sim, target_graph, diff)
-    audit_trail = _replay_pack_audit_trail(base, target, diff)
+    model_outputs = _replay_pack_model_outputs(target_sim, target_graph, diff, lifecycle_artifacts)
+    audit_trail = _replay_pack_audit_trail(base, target, diff, lifecycle_artifacts)
     markdown = _render_war_room_replay_markdown(project.title, target, target_graph, diff, summary, manifest, model_inputs, audit_trail)
     json_manifest = json.dumps(
         {

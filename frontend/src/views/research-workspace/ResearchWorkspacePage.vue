@@ -23,6 +23,7 @@
           :events="mapEvents"
           :image-src="worldMapCommand"
           :consistency-audit="consistencyAudit"
+          :hybrid-trace="hybridTrace"
           :kpis="lifecycleKpis"
           :lifecycle-event-mode="lifecycleEventMode"
           :lifecycle-events="lifecycleEventsForDisplay"
@@ -568,6 +569,7 @@ const lifecycleProjection = computed(() => warRoomData.buildLifecycleProjection(
 const {
   activeLifecycleRun,
   consistencyAudit,
+  hybridTrace,
   lifecycleControl,
   lifecycleEventMode,
   lifecycleEventsForDisplay,

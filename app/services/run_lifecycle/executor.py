@@ -7,6 +7,7 @@ from app.services.agent_contract import build_mock_agent_batch
 from app.services.agent_runtime import run_agent_runtime, runtime_config_from_env
 from app.services.consistency import evaluate_war_room_result
 from app.services.consistency.projector import project_consistency_audit
+from app.services.hybrid_simulation import run_hybrid_simulation
 from app.services.projects import persist_war_room_result
 from app.services.war_room_engine import run_war_room
 
@@ -76,7 +77,7 @@ def process_job(run_id: str) -> RunJobStatus:
                         "artifact_id": artifact.artifact_id,
                     },
                 )
-            elif job.engine_mode == "controlled_agent":
+            elif job.engine_mode in {"controlled_agent", "hybrid"}:
                 runtime = run_agent_runtime(
                     result,
                     run_id=run_id,
@@ -131,6 +132,44 @@ def process_job(run_id: str) -> RunJobStatus:
                 constraint_context=constraint_context,
             )
             project_consistency_audit(run_id, report, repository)
+            if job.engine_mode == "hybrid":
+                outcome = run_hybrid_simulation(result, proposals, report, seed=job.seed or 42)
+                modifier_artifact = repository.add_artifact(
+                    run_id,
+                    "deterministic_action_modifiers",
+                    outcome.modifier_bundle.schema_version,
+                    outcome.modifier_bundle.model_dump(mode="json"),
+                )
+                final_artifact = repository.add_artifact(
+                    run_id,
+                    "hybrid_war_room_result",
+                    "war-room-result.hybrid.v1",
+                    outcome.final_result.model_dump(mode="json"),
+                )
+                replay_artifact = repository.add_artifact(
+                    run_id,
+                    "hybrid_replay_record",
+                    outcome.replay_record.schema_version,
+                    outcome.replay_record.model_dump(mode="json"),
+                )
+                repository.append_event(
+                    run_id,
+                    "ENGINE",
+                    "consistency_audit",
+                    "Audited actions applied by deterministic adapter",
+                    f"{len(outcome.modifier_bundle.accepted_proposal_ids)} 个已接受提案完成固定映射与确定性重算。",
+                    payload={
+                        "accepted_proposal_count": len(outcome.modifier_bundle.accepted_proposal_ids),
+                        "modifier_bundle_hash": outcome.modifier_bundle.bundle_hash,
+                        "baseline_result_hash": outcome.replay_record.baseline_result_hash,
+                        "final_result_hash": outcome.replay_record.final_result_hash,
+                        "replay_hash": outcome.replay_record.replay_hash,
+                        "modifier_artifact_id": modifier_artifact.artifact_id,
+                        "final_artifact_id": final_artifact.artifact_id,
+                        "replay_artifact_id": replay_artifact.artifact_id,
+                    },
+                )
+                result = outcome.final_result
 
     if result is None:
         raise HTTPException(status_code=500, detail="Lifecycle executor did not produce a War Room result")

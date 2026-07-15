@@ -1,12 +1,56 @@
 from __future__ import annotations
 
 import json
+import hashlib
 
 from app.core.models import CausalGraphSnapshot, ResearchRun
+from app.services.project_store import connect, loads
 from app.services.war_room_engine import WAR_ROOM_DISCLAIMER
 
 
-def _replay_pack_manifest(project_id: str, project_title: str, target: ResearchRun, base: ResearchRun | None, diff: dict | None, generated_at: str) -> dict:
+HYBRID_REPLAY_ARTIFACTS = (
+    "agent_runtime_audit",
+    "agent_action_proposals",
+    "consistency_audit",
+    "deterministic_action_modifiers",
+    "hybrid_replay_record",
+)
+
+
+def _replay_pack_lifecycle_artifacts(target: ResearchRun) -> dict:
+    """Load a verified, replay-safe subset without invoking an Agent or LLM."""
+
+    lifecycle_job_id = (target.data_snapshot or {}).get("lifecycle_job_id")
+    if not lifecycle_job_id:
+        return {}
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT artifact_type, schema_version, content_json, sha256
+            FROM run_artifacts
+            WHERE run_id = ?
+            ORDER BY created_at ASC, rowid ASC
+            """,
+            (lifecycle_job_id,),
+        ).fetchall()
+    verified = {}
+    for row in rows:
+        if row["artifact_type"] not in HYBRID_REPLAY_ARTIFACTS:
+            continue
+        digest = hashlib.sha256(row["content_json"].encode("utf-8")).hexdigest()
+        if digest != row["sha256"]:
+            raise ValueError(f"Replay artifact hash mismatch: {row['artifact_type']}")
+        verified[row["artifact_type"]] = {
+            "schema_version": row["schema_version"],
+            "sha256": row["sha256"],
+            "content": loads(row["content_json"], {}),
+        }
+    if "hybrid_replay_record" not in verified:
+        return {}
+    return {"lifecycle_job_id": lifecycle_job_id, "artifacts": verified}
+
+
+def _replay_pack_manifest(project_id: str, project_title: str, target: ResearchRun, base: ResearchRun | None, diff: dict | None, generated_at: str, lifecycle_artifacts: dict | None = None) -> dict:
     return {
         "pack_version": "war-room-replay-pack.audit.v1",
         "project_id": project_id,
@@ -19,6 +63,8 @@ def _replay_pack_manifest(project_id: str, project_title: str, target: ResearchR
         "run_completed_at": target.completed_at,
         "is_counterfactual": bool(diff),
         "artifact_types": ["markdown", "json_manifest"],
+        "lifecycle_job_id": (lifecycle_artifacts or {}).get("lifecycle_job_id"),
+        "verified_lifecycle_artifacts": sorted((lifecycle_artifacts or {}).get("artifacts", {})),
         "disclaimer": WAR_ROOM_DISCLAIMER,
     }
 
@@ -42,8 +88,8 @@ def _replay_pack_model_inputs(sim: dict) -> dict:
     }
 
 
-def _replay_pack_model_outputs(sim: dict, graph: CausalGraphSnapshot | None, diff: dict | None) -> dict:
-    return {
+def _replay_pack_model_outputs(sim: dict, graph: CausalGraphSnapshot | None, diff: dict | None, lifecycle_artifacts: dict | None = None) -> dict:
+    outputs = {
         "risk_heatmap": sim.get("risk_heatmap", []),
         "supply_chains": sim.get("supply_chains", []),
         "agent_decisions": sim.get("agent_decisions", []),
@@ -52,10 +98,13 @@ def _replay_pack_model_outputs(sim: dict, graph: CausalGraphSnapshot | None, dif
         "ui_state": sim.get("ui_state", {}),
         "diff_metrics": diff or {},
     }
+    if lifecycle_artifacts:
+        outputs["hybrid"] = lifecycle_artifacts
+    return outputs
 
 
-def _replay_pack_audit_trail(base: ResearchRun | None, target: ResearchRun, diff: dict | None) -> list[dict]:
-    return [
+def _replay_pack_audit_trail(base: ResearchRun | None, target: ResearchRun, diff: dict | None, lifecycle_artifacts: dict | None = None) -> list[dict]:
+    trail = [
         {
             "step": "stored_run_snapshot",
             "source": "research_runs.simulation_snapshot",
@@ -87,9 +136,16 @@ def _replay_pack_audit_trail(base: ResearchRun | None, target: ResearchRun, diff
             "detail": WAR_ROOM_DISCLAIMER,
         },
     ]
+    if lifecycle_artifacts:
+        trail.insert(-2, {
+            "step": "hybrid_offline_evidence_chain",
+            "source": "verified run_artifacts",
+            "detail": "Agent proposals, consistency decisions, deterministic modifiers, and replay hashes were loaded from SQLite and SHA-256 verified; no Agent or LLM was called.",
+        })
+    return trail
 
 
-def _replay_pack_summary(target: ResearchRun, diff: dict | None) -> dict:
+def _replay_pack_summary(target: ResearchRun, diff: dict | None, lifecycle_artifacts: dict | None = None) -> dict:
     sim = target.simulation_snapshot or {}
     heatmap = sim.get("risk_heatmap", [])
     chains = sim.get("supply_chains", [])
@@ -97,6 +153,7 @@ def _replay_pack_summary(target: ResearchRun, diff: dict | None) -> dict:
     top_country = max(heatmap, key=lambda item: float(item.get("risk") or 0), default={})
     top_chain = max(chains, key=lambda item: float(item.get("pressure_score") or 0), default={})
     peak = max((float(item.get("global_risk") or 0) for item in timeline), default=None)
+    hybrid_record = ((lifecycle_artifacts or {}).get("artifacts", {}).get("hybrid_replay_record", {}).get("content", {}))
     return {
         "run_id": target.run_id,
         "policy_actions": sim.get("scenario", {}).get("policy_actions", []),
@@ -106,6 +163,7 @@ def _replay_pack_summary(target: ResearchRun, diff: dict | None) -> dict:
         "top_chain_delta": diff.get("top_chain_pressure_delta") if diff else None,
         "timeline_peak_delta": diff.get("timeline_delta", {}).get("peak_delta") if diff else None,
         "is_counterfactual": bool(diff),
+        "hybrid": hybrid_record or None,
     }
 
 

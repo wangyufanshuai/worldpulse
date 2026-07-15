@@ -1659,6 +1659,7 @@ body:has(.war-room-page) .studio-header {
   grid-template-areas:
     "control map stream"
     "audit audit audit"
+    "hybrid hybrid hybrid"
     "kpis kpis kpis";
   gap: 12px;
   padding: 14px;
@@ -1668,12 +1669,14 @@ body:has(.war-room-page) .studio-header {
 .war-room-lifecycle-map { grid-area: map; }
 .war-room-event-stream { grid-area: stream; }
 .war-room-consistency-audit { grid-area: audit; }
+.war-room-hybrid-summary { grid-area: hybrid; }
 .war-room-lifecycle-kpis { grid-area: kpis; }
 
 .lifecycle-card,
 .war-room-lifecycle-map,
 .war-room-event-stream,
 .war-room-consistency-audit,
+.war-room-hybrid-summary,
 .war-room-lifecycle-kpis article {
   border: 1px solid rgba(77, 163, 255, 0.18);
   border-radius: 12px;
@@ -2061,6 +2064,33 @@ body:has(.war-room-page) .studio-header {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.war-room-hybrid-summary {
+  padding: 16px;
+  border: 1px solid rgba(88, 226, 160, 0.26);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(7, 35, 43, 0.96), rgba(7, 19, 36, 0.96));
+}
+.war-room-hybrid-summary header,
+.war-room-hybrid-summary footer,
+.hybrid-change-grid article span { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.war-room-hybrid-summary h2 { margin: 4px 0 0; color: #f2f8ff; font-size: 18px; }
+.war-room-hybrid-summary header > b { color: #58e2a0; border-radius: 999px; padding: 5px 10px; background: rgba(66, 208, 130, 0.14); }
+.war-room-hybrid-summary > p { color: #9fb3c9; }
+.war-room-hybrid-summary dl,
+.hybrid-change-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.war-room-hybrid-summary dl div,
+.hybrid-change-grid article { border: 1px solid rgba(77, 163, 255, 0.14); border-radius: 8px; padding: 10px; background: rgba(8, 24, 42, 0.58); }
+.war-room-hybrid-summary dt { color: #8197b0; font-size: 12px; }
+.war-room-hybrid-summary dd { margin: 5px 0 0; color: #dceeff; font-size: 18px; font-weight: 900; }
+.hybrid-change-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.hybrid-change-grid article { display: grid; gap: 8px; }
+.hybrid-change-grid article > strong { color: #8bd5ff; }
+.hybrid-change-grid article span { color: #c6d5e6; }
+.war-room-hybrid-summary .positive { color: #58e2a0; }
+.war-room-hybrid-summary .negative { color: #ff7d88; }
+.war-room-hybrid-summary .neutral { color: #9fb3c9; }
+.war-room-hybrid-summary footer { margin-top: 12px; flex-wrap: wrap; color: #8197b0; font-size: 12px; }
+.war-room-hybrid-summary code { color: #58e2a0; }
 .consistency-readonly {
   margin: 12px 0 0;
   border-top: 1px solid rgba(77, 163, 255, 0.14);

@@ -39,6 +39,8 @@
 
     <WarRoomConsistencyAudit :report="consistencyAudit" />
 
+    <WarRoomHybridSummary :trace="hybridTrace" />
+
     <WarRoomLifecycleKpis :kpis="kpis" />
   </div>
 </template>
@@ -46,6 +48,7 @@
 <script setup>
 import WarRoomEventStream from './WarRoomEventStream.vue'
 import WarRoomConsistencyAudit from './WarRoomConsistencyAudit.vue'
+import WarRoomHybridSummary from './WarRoomHybridSummary.vue'
 import WarRoomLifecycleControl from './WarRoomLifecycleControl.vue'
 import WarRoomLifecycleKpis from './WarRoomLifecycleKpis.vue'
 import WarRoomLifecycleMap from './WarRoomLifecycleMap.vue'
@@ -66,6 +69,7 @@ defineProps({
   lifecycleEvents: { type: Array, default: () => [] },
   lifecycleEventMode: { type: String, default: 'projection' },
   consistencyAudit: { type: Object, default: null },
+  hybridTrace: { type: Object, default: null },
   kpis: { type: Array, default: () => [] }
 })
 

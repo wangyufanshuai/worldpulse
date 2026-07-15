@@ -65,6 +65,7 @@ def build_war_room_run_diff(base: ResearchRun, target: ResearchRun, base_graph: 
         "agent_decision_changes": agent_decision_changes,
         "timeline_delta": timeline_delta,
         "causal_edge_delta": causal_edge_delta,
+        "target_hybrid_trace": target_sim.get("hybrid_trace"),
         "counterfactual_observations": observations,
         "disclaimer": WAR_ROOM_DISCLAIMER,
     }

@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services import project_store
+from app.services.hybrid_simulation import replay_hybrid_from_artifacts
 from app.services.run_lifecycle import process_one_queued_job
 from app.services.run_lifecycle import repository as lifecycle_repository
 
@@ -180,6 +181,72 @@ def test_controlled_agent_runtime_defaults_to_audited_mock_provider(monkeypatch,
     assert all(item["prompt_hash"] and item["response_hash"] for item in runtime["invocations"])
     assert "system_prompt" not in str(runtime)
     assert audit["consistency_audit"]["summary"]["accepted_action_count"] == 4
+
+
+def test_hybrid_lifecycle_projects_authoritative_result_and_offline_replay(monkeypatch, tmp_path):
+    _setup_tmp_db(monkeypatch, tmp_path)
+    monkeypatch.setenv("AGENT_PROVIDER", "mock")
+    client = TestClient(app)
+    project_id = _create_war_room_project(client)
+    created = client.post(
+        f"/api/v2/projects/{project_id}/runs",
+        json={"engine_mode": "hybrid", "scenario": {"scenario_key": "strait_blockade_30d"}, "seed": 42},
+    ).json()
+
+    processed = process_one_queued_job()
+    assert processed is not None and processed.status == "completed"
+    assert processed.result_run_id
+
+    audit = client.get(f"/api/v2/runs/{created['run_id']}/audit").json()
+    artifact_types = {item["artifact_type"] for item in audit["artifacts"]}
+    assert {
+        "war_room_result",
+        "agent_runtime_audit",
+        "agent_action_proposals",
+        "consistency_audit",
+        "deterministic_action_modifiers",
+        "hybrid_war_room_result",
+        "hybrid_replay_record",
+        "projection",
+    }.issubset(artifact_types)
+    replay_record = audit["hybrid"]["replay_record"]
+    assert replay_record["accepted_proposal_ids"]
+    assert replay_record["baseline_result_hash"] != replay_record["final_result_hash"]
+
+    replayed = replay_hybrid_from_artifacts(
+        lifecycle_repository.get_latest_artifact_content(created["run_id"], "war_room_result"),
+        lifecycle_repository.get_latest_artifact_content(created["run_id"], "agent_action_proposals"),
+        lifecycle_repository.get_latest_artifact_content(created["run_id"], "consistency_audit"),
+        lifecycle_repository.get_latest_artifact_content(created["run_id"], "deterministic_action_modifiers"),
+        replay_record,
+    )
+    assert replayed.timeline[-1].global_risk == replay_record["baseline_diff"]["global_risk"]["hybrid"]
+
+    detail = client.get(f"/api/projects/{project_id}", params={"run_id": processed.result_run_id}).json()
+    trace = detail["latest_run"]["simulation_snapshot"]["ui_state"]["hybrid_trace"]
+    assert trace["final_result_hash"] == replay_record["final_result_hash"]
+
+    replay_pack = client.get(
+        f"/api/projects/{project_id}/war-room/replay-pack",
+        params={"run_id": processed.result_run_id},
+    ).json()
+    assert replay_pack["manifest"]["lifecycle_job_id"] == created["run_id"]
+    assert "hybrid_replay_record" in replay_pack["manifest"]["verified_lifecycle_artifacts"]
+    assert replay_pack["model_outputs"]["hybrid"]["artifacts"]["hybrid_replay_record"]["content"]["replay_hash"]
+    assert "no Agent or LLM was called" in str(replay_pack["audit_trail"])
+
+    deterministic_job = client.post(
+        f"/api/v2/projects/{project_id}/runs",
+        json={"engine_mode": "deterministic", "scenario": {"scenario_key": "strait_blockade_30d"}, "seed": 42},
+    ).json()
+    deterministic_run = process_one_queued_job()
+    assert deterministic_run is not None and deterministic_run.status == "completed"
+    comparison = client.get(
+        f"/api/projects/{project_id}/runs/compare",
+        params={"base_run_id": deterministic_run.result_run_id, "target_run_id": processed.result_run_id},
+    ).json()
+    assert comparison["changed_metrics"]["war_room"]["target_hybrid_trace"]["replay_hash"] == replay_record["replay_hash"]
+    assert lifecycle_repository.get_job(deterministic_job["run_id"]).status == "completed"
 
 
 def test_sse_stream_returns_existing_event(monkeypatch, tmp_path):

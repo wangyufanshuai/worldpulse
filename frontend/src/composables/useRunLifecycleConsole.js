@@ -13,6 +13,7 @@ const PHASE_META = {
 export function useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runVersions, running, showToast, onCompleted }) {
   const activeLifecycleRun = computed(() => runLifecycle.activeRun.value)
   const consistencyAudit = computed(() => runLifecycle.audit.value?.consistency_audit || null)
+  const hybridTrace = computed(() => runLifecycle.audit.value?.hybrid?.replay_record || null)
   const lifecycleStages = computed(() => {
     const job = activeLifecycleRun.value
     if (!job) return lifecycleProjection.value.stages
@@ -130,6 +131,7 @@ export function useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runV
     activeLifecycleRun,
     lifecycleControl,
     consistencyAudit,
+    hybridTrace,
     lifecycleEventMode,
     lifecycleEventsForDisplay,
     lifecycleAgentStatus,

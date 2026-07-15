@@ -168,7 +168,7 @@ def build_war_room_event_snapshot(result: WarRoomRun) -> dict:
 
 
 def build_war_room_simulation_snapshot(result: WarRoomRun) -> dict:
-    return {
+    snapshot = {
         "summary": result.summary, "scenario": result.scenario.model_dump(),
         "timeline": [item.model_dump() for item in result.timeline],
         "country_agents": [item.model_dump() for item in result.country_agents],
@@ -178,6 +178,10 @@ def build_war_room_simulation_snapshot(result: WarRoomRun) -> dict:
         "impact_graph": result.impact_graph.model_dump(), "disclaimer": result.disclaimer,
         "assumptions": result.assumptions, "ui_state": result.ui_state,
     }
+    hybrid_trace = result.ui_state.get("hybrid_trace") if isinstance(result.ui_state, dict) else None
+    if hybrid_trace:
+        snapshot["hybrid_trace"] = hybrid_trace
+    return snapshot
 
 
 def build_war_room_graph_snapshot(

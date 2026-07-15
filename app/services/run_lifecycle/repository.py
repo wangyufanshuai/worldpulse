@@ -296,11 +296,17 @@ def get_latest_artifact_content(run_id: str, artifact_type: str) -> dict | None:
 
 
 def get_audit(run_id: str) -> dict:
+    hybrid_record = get_latest_artifact_content(run_id, "hybrid_replay_record")
     return {
         "run": get_job(run_id).model_dump(),
         "events": [event.model_dump() for event in get_events(run_id)],
         "artifacts": [artifact.model_dump() for artifact in get_artifacts(run_id)],
         "consistency_audit": get_latest_artifact_content(run_id, "consistency_audit"),
+        "agent_runtime": get_latest_artifact_content(run_id, "agent_runtime_audit"),
+        "hybrid": {
+            "replay_record": hybrid_record,
+            "modifier_bundle": get_latest_artifact_content(run_id, "deterministic_action_modifiers"),
+        } if hybrid_record else None,
     }
 
 
@@ -316,7 +322,7 @@ def _scenario_payload(raw: WarRoomScenarioRequest | dict, seed: int | None) -> d
 
 def _engine_mode(value: str | None) -> str:
     normalized = str(value or "deterministic").lower()
-    return normalized if normalized in {"deterministic", "mock_agent", "controlled_agent", "hybrid_recorded"} else "deterministic"
+    return normalized if normalized in {"deterministic", "mock_agent", "controlled_agent", "hybrid", "hybrid_recorded"} else "deterministic"
 
 
 def _ensure_job_exists(run_id: str) -> None:

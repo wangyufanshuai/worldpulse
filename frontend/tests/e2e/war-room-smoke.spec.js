@@ -33,7 +33,7 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await expect(page.getByTestId('war-room-lifecycle-kpis')).toBeVisible()
 
   await page.getByLabel('设置').click()
-  await page.getByTestId('lifecycle-engine-mode').selectOption('controlled_agent')
+  await page.getByTestId('lifecycle-engine-mode').selectOption('hybrid')
   await page.getByRole('button', { name: '返回战情总览' }).click()
 
   await page.getByTestId('war-room-run-action').click()
@@ -56,6 +56,9 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await expect(page.getByTestId('agent-proposal-decisions')).toContainText('已接受')
   await expect(page.getByTestId('lifecycle-kpi-agent_proposals')).toContainText('4')
   await expect(page.getByTestId('lifecycle-kpi-consistency')).toContainText('部分评估')
+  await expect(page.getByTestId('hybrid-result-summary')).toBeVisible()
+  await expect(page.getByTestId('hybrid-accepted-count')).toHaveText('4')
+  await expect(page.getByTestId('hybrid-final-hash')).toHaveText(/^[a-f0-9]{64}$/)
 
   const modules = {
     sandbox: 'war-room-sandbox-module', analysis: 'war-room-analysis-module',
