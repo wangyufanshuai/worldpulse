@@ -72,6 +72,11 @@ export async function getLifecycleEvents(runId, afterSeq = 0) {
   return data
 }
 
+export async function getLifecycleAudit(runId) {
+  const { data } = await api.get(`/v2/runs/${runId}/audit`)
+  return data
+}
+
 export async function pauseLifecycleRun(runId) {
   const { data } = await api.post(`/v2/runs/${runId}/pause`)
   return data

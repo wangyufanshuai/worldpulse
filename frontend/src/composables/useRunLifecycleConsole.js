@@ -4,14 +4,15 @@ const PHASES = ['scenario_compile', 'environment_prepare', 'deterministic_run', 
 const PHASE_META = {
   scenario_compile: ['01', '场景编译', '解析剧本与约束'],
   environment_prepare: ['02', '环境准备', '加载数据与初始化'],
-  deterministic_run: ['03', '混合推演', '确定性规则推演中'],
-  consistency_audit: ['04', '一致性审计', '规则校验与修正'],
+  deterministic_run: ['03', '确定性推演', '规则引擎生成权威数值'],
+  consistency_audit: ['04', '一致性审计', '只读规则校验'],
   report_generate: ['05', '报告生成', '汇总洞察与图表'],
   replay_archive: ['06', '复盘归档', '固化结果与溯源'],
 }
 
 export function useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runVersions, running, showToast, onCompleted }) {
   const activeLifecycleRun = computed(() => runLifecycle.activeRun.value)
+  const consistencyAudit = computed(() => runLifecycle.audit.value?.consistency_audit || null)
   const lifecycleStages = computed(() => {
     const job = activeLifecycleRun.value
     if (!job) return lifecycleProjection.value.stages
@@ -81,6 +82,32 @@ export function useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runV
   })
   const lifecycleEventsForDisplay = computed(() => runLifecycle.events.value.length ? runLifecycle.events.value : lifecycleProjection.value.events)
   const lifecycleEventMode = computed(() => runLifecycle.events.value.length ? 'live' : 'projection')
+  const lifecycleKpis = computed(() => lifecycleProjection.value.kpis.map((item) => {
+    const report = consistencyAudit.value
+    if (item.key === 'agent_proposals') {
+      const count = Number(report?.summary?.agent_action_count || 0)
+      return { ...item, value: String(count), unit: '', detail: count ? '来自已保存的结构化提案' : '暂无真实 Agent 动作', delta: null }
+    }
+    if (item.key === 'rejected_actions') {
+      const count = Number(report?.summary?.rejected_action_count || 0)
+      return { ...item, value: String(count), unit: '', detail: report ? '来自一致性审计报告' : '尚未执行 Agent 动作审计', delta: null, tone: count ? 'danger' : 'neutral' }
+    }
+    if (item.key === 'consistency') {
+      if (!report) return { ...item, label: '一致性审计状态', value: '待评估', unit: '', detail: '等待 lifecycle consistency_audit artifact', delta: null, tone: 'neutral' }
+      const label = { passed: '通过', warning: '部分评估', failed: '失败', not_evaluated: '未评估' }[report.overall_status] || report.overall_status
+      const tone = { passed: 'positive', warning: 'warning', failed: 'danger', not_evaluated: 'neutral' }[report.overall_status] || 'neutral'
+      return {
+        ...item,
+        label: '一致性审计状态',
+        value: label,
+        unit: '',
+        detail: `${report.evaluated_rule_count || 0} 条已评估 · ${report.skipped_rule_count || 0} 条未评估`,
+        delta: null,
+        tone,
+      }
+    }
+    return item
+  }))
 
   async function control(action, message) {
     await runLifecycle[action]()
@@ -98,8 +125,10 @@ export function useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runV
   return {
     activeLifecycleRun,
     lifecycleControl,
+    consistencyAudit,
     lifecycleEventMode,
     lifecycleEventsForDisplay,
+    lifecycleKpis,
     lifecycleStages,
     pauseLifecycleRun: () => control('pause', '暂停请求已写入生命周期状态'),
     resumeLifecycleRun: () => control('resume', '生命周期任务已恢复排队'),

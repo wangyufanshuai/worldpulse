@@ -280,8 +280,28 @@ def get_artifacts(run_id: str) -> list[RunArtifactSummary]:
     return [_artifact_from_row(row) for row in rows]
 
 
+def get_latest_artifact_content(run_id: str, artifact_type: str) -> dict | None:
+    init_db()
+    _ensure_job_exists(run_id)
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT content_json FROM run_artifacts
+            WHERE run_id = ? AND artifact_type = ?
+            ORDER BY created_at DESC, rowid DESC LIMIT 1
+            """,
+            (run_id, artifact_type),
+        ).fetchone()
+    return loads(row["content_json"], {}) if row is not None else None
+
+
 def get_audit(run_id: str) -> dict:
-    return {"run": get_job(run_id).model_dump(), "events": [event.model_dump() for event in get_events(run_id)], "artifacts": [artifact.model_dump() for artifact in get_artifacts(run_id)]}
+    return {
+        "run": get_job(run_id).model_dump(),
+        "events": [event.model_dump() for event in get_events(run_id)],
+        "artifacts": [artifact.model_dump() for artifact in get_artifacts(run_id)],
+        "consistency_audit": get_latest_artifact_content(run_id, "consistency_audit"),
+    }
 
 
 def _scenario_payload(raw: WarRoomScenarioRequest | dict, seed: int | None) -> dict:

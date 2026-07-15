@@ -1,6 +1,17 @@
 import { expect, test } from '@playwright/test'
+import { execFile } from 'node:child_process'
+import path from 'node:path'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 test('War Room lifecycle shell and modules remain interactive', async ({ page, request }) => {
+  const browserErrors = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => browserErrors.push(error.message))
+
   const created = await request.post('http://127.0.0.1:8010/api/projects', {
     data: {
       title: 'Playwright V0.7 smoke',
@@ -17,6 +28,8 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await expect(page.getByTestId('war-room-lifecycle-rail')).toBeVisible()
   await expect(page.getByTestId('war-room-lifecycle-map')).toBeVisible()
   await expect(page.getByTestId('war-room-event-stream')).toBeVisible()
+  await expect(page.getByTestId('consistency-audit-panel')).toBeVisible()
+  await expect(page.getByTestId('consistency-status')).toHaveText('待评估')
   await expect(page.getByTestId('war-room-lifecycle-kpis')).toBeVisible()
 
   await page.getByTestId('war-room-run-action').click()
@@ -26,6 +39,17 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await page.getByTestId('war-room-resume-action').click()
   await page.getByTestId('war-room-cancel-action').click()
   await expect(page.getByTestId('war-room-retry-action')).toBeEnabled()
+  await page.getByTestId('war-room-retry-action').click()
+
+  await execFileAsync('python', ['-m', 'app.workers.run_worker', '--once'], {
+    cwd: path.resolve(process.cwd(), '..'),
+    env: { ...process.env, WORLDPULSE_DB_PATH: process.env.WORLDPULSE_E2E_DB },
+  })
+  await expect(page.getByTestId('consistency-status')).toHaveText('部分评估')
+  await expect(page.getByTestId('consistency-finding')).toHaveCount(3)
+  await expect(page.getByTestId('consistency-artifact-hash')).toHaveText(/^[a-f0-9]{64}$/)
+  await expect(page.getByTestId('lifecycle-kpi-agent_proposals')).toContainText('暂无真实 Agent 动作')
+  await expect(page.getByTestId('lifecycle-kpi-consistency')).toContainText('部分评估')
 
   const modules = {
     sandbox: 'war-room-sandbox-module', analysis: 'war-room-analysis-module',
@@ -36,4 +60,5 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
     await page.goto(`projects/${project.project_id}/war-room/${section}`)
     await expect(page.getByTestId(testId)).toBeVisible()
   }
+  expect(browserErrors).toEqual([])
 })

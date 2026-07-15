@@ -23,8 +23,8 @@ function buildStages(hasRun, replayReady) {
   return [
     { key: 'compile', index: '01', title: '场景编译', desc: '解析剧本与约束', status: 'done' },
     { key: 'prepare', index: '02', title: '环境准备', desc: '加载数据与初始化', status: hasRun ? 'done' : 'current' },
-    { key: 'hybrid', index: '03', title: '混合推演', desc: '多 Agent 协作推演中', status: hasRun ? 'current' : 'pending' },
-    { key: 'consistency', index: '04', title: '一致性审计', desc: '规则校验与修正', status: hasRun ? 'done' : 'pending' },
+    { key: 'deterministic', index: '03', title: '确定性推演', desc: '规则引擎生成权威数值', status: hasRun ? 'current' : 'pending' },
+    { key: 'consistency', index: '04', title: '一致性审计', desc: '只读规则校验', status: hasRun ? 'done' : 'pending' },
     { key: 'report', index: '05', title: '报告生成', desc: '汇总洞察与图表', status: hasRun ? 'done' : 'pending' },
     { key: 'archive', index: '06', title: '复盘归档', desc: '固化结果与溯源', status: replayReady ? 'done' : 'pending' },
   ]
@@ -33,10 +33,8 @@ function buildStages(hasRun, replayReady) {
 function buildEvents(detail, workspaceState, warRoom, runDiff, replayPack) {
   const runId = detail?.latest_run?.run_id || workspaceState?.run_id
   const scenario = warRoom?.scenario || detail?.project?.scenario_config || {}
-  const decisions = warRoom?.agent_decisions || []
   const chains = warRoom?.supply_chains || []
   const heatmap = warRoom?.risk_heatmap || []
-  const consistencyRejected = Math.max(0, Math.round(decisions.length * 0.08))
   return [
     {
       id: 'worker-claimed',
@@ -58,17 +56,17 @@ function buildEvents(detail, workspaceState, warRoom, runDiff, replayPack) {
       id: 'agent-proposals',
       time: '09:35:09',
       type: 'AGENT',
-      title: `收到 ${decisions.length || 0} 个 Agent 提案`,
-      detail: '当前为规则决策投影，后续接入受控多 Agent 提案流',
+      title: '暂无真实 Agent 提案',
+      detail: '历史结果中的 agent_decisions 是确定性规则投影，不计为多 Agent 动作',
       tone: 'cyan',
     },
     {
       id: 'consistency-check',
       time: '09:35:07',
       type: 'CONSISTENCY',
-      title: '一致性检查通过',
-      detail: `通过 ${Math.max(0, decisions.length - consistencyRejected)} · 修正 ${Math.min(2, consistencyRejected)} · 拒绝 ${consistencyRejected}`,
-      tone: consistencyRejected ? 'orange' : 'green',
+      title: '一致性审计状态不可用',
+      detail: '历史运行没有 consistency_audit artifact，不推测通过率或拒绝数量',
+      tone: 'orange',
     },
     {
       id: 'snapshot',
@@ -84,21 +82,17 @@ function buildEvents(detail, workspaceState, warRoom, runDiff, replayPack) {
 function buildKpis(detail, workspaceState, warRoom, runDiff, replayPack) {
   const risks = warRoom?.risk_heatmap || []
   const chains = warRoom?.supply_chains || []
-  const decisions = warRoom?.agent_decisions || []
   const globalRisk = maxValue(risks, item => item.risk) || average(risks, item => item.risk) || 0
   const chainPressure = maxValue(chains, item => item.pressure_score ?? item.pressure ?? item.disruption) || 0
-  const proposalTotal = Math.max(decisions.length * 18, decisions.length)
-  const rejected = Math.max(0, Math.round(proposalTotal * 0.06))
-  const passRate = proposalTotal ? Math.max(0, 100 - (rejected / proposalTotal) * 100) : 100
   const replayReady = workspaceState?.replay_ready || !!detail?.latest_run || !!replayPack
   const diff = runDiff?.changed_metrics?.war_room || {}
   return [
     { key: 'global_risk', label: '全球综合风险', value: globalRisk ? globalRisk.toFixed(1) : '--', unit: '/100', detail: '确定性因果引擎输出', delta: diff.global_risk_delta, tone: globalRisk >= 70 ? 'risk' : 'warning' },
     { key: 'chain_pressure', label: '供应链压力指数', value: chainPressure ? chainPressure.toFixed(1) : '--', unit: '/100', detail: '能源/粮食/芯片/航运/结算', delta: diff.top_chain_pressure_delta?.delta, tone: chainPressure >= 70 ? 'alert' : 'warning' },
-    { key: 'agent_proposals', label: 'Agent 提案总数', value: String(proposalTotal || decisions.length || 0), unit: '累计', detail: '本地投影，等待真实 Agent 引擎', delta: decisions.length, tone: 'neutral' },
-    { key: 'rejected_actions', label: '被拒绝动作数', value: String(rejected), unit: '累计', detail: '违反能力/资源/因果约束', delta: rejected, tone: rejected ? 'danger' : 'positive' },
-    { key: 'consistency', label: '一致性通过率', value: `${passRate.toFixed(1)}%`, unit: '', detail: '规则校验与约束修正', delta: passRate - 95, tone: 'positive' },
-    { key: 'replay', label: '复盘就绪度', value: replayReady ? '85%' : '40%', unit: '', detail: replayReady ? '快照完整性：良好' : '等待首次运行', delta: replayReady ? 12 : 0, tone: 'positive' },
+    { key: 'agent_proposals', label: 'Agent 提案总数', value: '0', unit: '', detail: '暂无真实 Agent 动作', delta: null, tone: 'neutral' },
+    { key: 'rejected_actions', label: '被拒绝动作数', value: '0', unit: '', detail: '尚未执行 Agent 动作审计', delta: null, tone: 'neutral' },
+    { key: 'consistency', label: '一致性审计状态', value: '待评估', unit: '', detail: '历史运行没有审计 artifact', delta: null, tone: 'neutral' },
+    { key: 'replay', label: '复盘就绪度', value: replayReady ? '已就绪' : '待运行', unit: '', detail: replayReady ? 'Replay Pack 可从已保存结果生成' : '等待首次运行', delta: null, tone: replayReady ? 'positive' : 'neutral' },
   ]
 }
 

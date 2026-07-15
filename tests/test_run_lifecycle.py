@@ -50,6 +50,7 @@ def test_v2_create_run_returns_queued_and_events_filter(monkeypatch, tmp_path):
     assert events[0]["seq"] == 1
     assert events[0]["event_type"] == "WORKER"
     assert client.get(f"/api/v2/runs/{run['run_id']}/events", params={"after_seq": events[0]["seq"]}).json() == []
+    assert client.get(f"/api/v2/runs/{run['run_id']}/audit").json()["consistency_audit"] is None
 
 
 def test_worker_once_completes_and_projects_to_v1_war_room(monkeypatch, tmp_path):
@@ -79,7 +80,17 @@ def test_worker_once_completes_and_projects_to_v1_war_room(monkeypatch, tmp_path
     assert replay.json()["manifest"]["run_id"] == processed.result_run_id
 
     artifacts = client.get(f"/api/v2/runs/{created['run_id']}/artifacts").json()
-    assert {item["artifact_type"] for item in artifacts} >= {"scenario", "war_room_result", "projection"}
+    assert {item["artifact_type"] for item in artifacts} >= {"scenario", "war_room_result", "consistency_audit", "projection"}
+
+    audit = client.get(f"/api/v2/runs/{created['run_id']}/audit")
+    assert audit.status_code == 200
+    report = audit.json()["consistency_audit"]
+    assert report["schema_version"] == "consistency-audit.v1"
+    assert report["overall_status"] == "warning"
+    assert report["summary"]["read_only"] is True
+    assert report["audit_hash"]
+    consistency_events = [event for event in audit.json()["events"] if event["event_type"] == "CONSISTENCY"]
+    assert consistency_events[-1]["payload"]["audit_hash"] == report["audit_hash"]
 
 
 def test_cancel_queued_and_retry_creates_child_job(monkeypatch, tmp_path):

@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import {
   cancelLifecycleRun,
   createLifecycleRun,
+  getLifecycleAudit,
   getLifecycleEvents,
   getLifecycleRun,
   lifecycleEventStreamUrl,
@@ -15,6 +16,7 @@ const TERMINAL = new Set(['completed', 'cancelled', 'failed'])
 export function useRunLifecycle(projectId) {
   const activeRun = ref(null)
   const events = ref([])
+  const audit = ref(null)
   const loading = ref(false)
   const error = ref('')
   let eventSource = null
@@ -34,12 +36,14 @@ export function useRunLifecycle(projectId) {
 
   async function refresh(runId = activeRun.value?.run_id) {
     if (!runId) return null
-    const [run, nextEvents] = await Promise.all([
+    const [run, nextEvents, nextAudit] = await Promise.all([
       getLifecycleRun(runId),
       getLifecycleEvents(runId, lastSeq()),
+      getLifecycleAudit(runId),
     ])
     activeRun.value = run
     mergeEvents(nextEvents)
+    audit.value = nextAudit
     return run
   }
 
@@ -104,7 +108,12 @@ export function useRunLifecycle(projectId) {
     try {
       const run = await createLifecycleRun(projectIdValue(), payload)
       activeRun.value = run
-      events.value = await getLifecycleEvents(run.run_id)
+      const [nextEvents, nextAudit] = await Promise.all([
+        getLifecycleEvents(run.run_id),
+        getLifecycleAudit(run.run_id),
+      ])
+      events.value = nextEvents
+      audit.value = nextAudit
       subscribe(run.run_id)
       return run
     } catch (err) {
@@ -125,15 +134,18 @@ export function useRunLifecycle(projectId) {
     mergeEvents(response.events || [])
     if (action === 'retry' && response.run?.run_id) {
       events.value = response.events || []
+      audit.value = await getLifecycleAudit(response.run.run_id)
       subscribe(response.run.run_id)
     } else if (!TERMINAL.has(response.run?.status)) {
       subscribe(response.run.run_id)
     }
+    if (action !== 'retry') audit.value = await getLifecycleAudit(response.run.run_id)
     return response.run
   }
 
   return {
     activeRun,
+    audit,
     cancel: () => control('cancel'),
     create,
     error,

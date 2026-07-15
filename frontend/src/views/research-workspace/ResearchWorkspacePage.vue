@@ -14,7 +14,7 @@
 
         <WarRoomOverviewConsole
           v-if="activeSection === 'overview'"
-          :active-agents="`${Math.min(20, Math.max(0, warRoom?.agent_decisions?.length || 0) + 8)}/20`"
+          active-agents="0/0"
           :active-replay-day="activeReplayDay"
           :causal-edges="mapCausalEdges"
           :control="lifecycleControl"
@@ -22,10 +22,11 @@
           :current-replay-time="currentReplayTime"
           :events="mapEvents"
           :image-src="worldMapCommand"
-          :kpis="lifecycleProjection.kpis"
+          :consistency-audit="consistencyAudit"
+          :kpis="lifecycleKpis"
           :lifecycle-event-mode="lifecycleEventMode"
           :lifecycle-events="lifecycleEventsForDisplay"
-          :processed-events="Math.max(0, timelineEvents.length * 208)"
+          :processed-events="lifecycleEventsForDisplay.length"
           :replay-speed="replaySpeed"
           :routes="supplyRoutes"
           :show-delta-overlay="showDeltaOverlay"
@@ -563,9 +564,11 @@ const runControl = computed(() => workspaceState.value?.run_control || warRoomUi
 const lifecycleProjection = computed(() => warRoomData.buildLifecycleProjection(detail.value, workspaceState.value, runDiff.value, replayPack.value))
 const {
   activeLifecycleRun,
+  consistencyAudit,
   lifecycleControl,
   lifecycleEventMode,
   lifecycleEventsForDisplay,
+  lifecycleKpis,
   lifecycleStages,
   pauseLifecycleRun,
   resumeLifecycleRun,

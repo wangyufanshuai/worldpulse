@@ -1658,6 +1658,7 @@ body:has(.war-room-page) .studio-header {
   grid-template-columns: minmax(260px, 300px) minmax(0, 1fr) minmax(300px, 340px);
   grid-template-areas:
     "control map stream"
+    "audit audit audit"
     "kpis kpis kpis";
   gap: 12px;
   padding: 14px;
@@ -1666,11 +1667,13 @@ body:has(.war-room-page) .studio-header {
 .war-room-lifecycle-control { grid-area: control; display: grid; gap: 10px; }
 .war-room-lifecycle-map { grid-area: map; }
 .war-room-event-stream { grid-area: stream; }
+.war-room-consistency-audit { grid-area: audit; }
 .war-room-lifecycle-kpis { grid-area: kpis; }
 
 .lifecycle-card,
 .war-room-lifecycle-map,
 .war-room-event-stream,
+.war-room-consistency-audit,
 .war-room-lifecycle-kpis article {
   border: 1px solid rgba(77, 163, 255, 0.18);
   border-radius: 12px;
@@ -1981,6 +1984,88 @@ body:has(.war-room-page) .studio-header {
   color: #8bd5ff;
   text-align: center;
   font-size: 13px;
+}
+
+.war-room-consistency-audit {
+  padding: 16px;
+}
+.war-room-consistency-audit header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.war-room-consistency-audit h2 {
+  margin: 4px 0 0;
+  color: #f2f8ff;
+  font-size: 18px;
+}
+.war-room-consistency-audit header b {
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #9fb3c9;
+  background: rgba(143, 166, 189, 0.14);
+}
+.war-room-consistency-audit header b.passed { color: #58e2a0; background: rgba(66, 208, 130, 0.14); }
+.war-room-consistency-audit header b.warning { color: #ffad45; background: rgba(255, 154, 69, 0.14); }
+.war-room-consistency-audit header b.failed { color: #ff6f7c; background: rgba(255, 111, 124, 0.14); }
+.consistency-summary,
+.consistency-readonly,
+.consistency-pending p {
+  color: #8fa6bd;
+  line-height: 1.55;
+}
+.war-room-consistency-audit dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.war-room-consistency-audit dl div {
+  border: 1px solid rgba(77, 163, 255, 0.14);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(8, 24, 42, 0.6);
+}
+.war-room-consistency-audit dt { color: #8197b0; font-size: 12px; }
+.war-room-consistency-audit dd { margin: 5px 0 0; color: #dceeff; font-size: 18px; font-weight: 900; }
+.consistency-finding-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+.consistency-finding-list article,
+.consistency-pending {
+  border: 1px solid rgba(77, 163, 255, 0.14);
+  border-radius: 8px;
+  padding: 11px;
+  background: rgba(8, 24, 42, 0.58);
+}
+.consistency-finding-list article.warning { border-color: rgba(255, 173, 69, 0.32); }
+.consistency-finding-list article.error { border-color: rgba(255, 111, 124, 0.34); }
+.consistency-finding-list article > div { display: flex; justify-content: space-between; gap: 8px; }
+.consistency-finding-list strong { color: #8bd5ff; font-size: 12px; }
+.consistency-finding-list span { color: #ffad45; font-size: 11px; }
+.consistency-finding-list p { margin: 7px 0; color: #c6d5e6; }
+.consistency-finding-list small { color: #758ba4; }
+.war-room-consistency-audit footer {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+  color: #8197b0;
+}
+.war-room-consistency-audit code {
+  overflow: hidden;
+  color: #58e2a0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.consistency-readonly {
+  margin: 12px 0 0;
+  border-top: 1px solid rgba(77, 163, 255, 0.14);
+  padding-top: 10px;
+  font-size: 12px;
 }
 
 .war-room-lifecycle-kpis {

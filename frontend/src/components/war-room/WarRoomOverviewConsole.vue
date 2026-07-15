@@ -37,12 +37,15 @@
 
     <WarRoomEventStream :events="lifecycleEvents" :mode="lifecycleEventMode" />
 
+    <WarRoomConsistencyAudit :report="consistencyAudit" />
+
     <WarRoomLifecycleKpis :kpis="kpis" />
   </div>
 </template>
 
 <script setup>
 import WarRoomEventStream from './WarRoomEventStream.vue'
+import WarRoomConsistencyAudit from './WarRoomConsistencyAudit.vue'
 import WarRoomLifecycleControl from './WarRoomLifecycleControl.vue'
 import WarRoomLifecycleKpis from './WarRoomLifecycleKpis.vue'
 import WarRoomLifecycleMap from './WarRoomLifecycleMap.vue'
@@ -62,6 +65,7 @@ defineProps({
   routes: { type: Array, default: () => [] },
   lifecycleEvents: { type: Array, default: () => [] },
   lifecycleEventMode: { type: String, default: 'projection' },
+  consistencyAudit: { type: Object, default: null },
   kpis: { type: Array, default: () => [] }
 })
 

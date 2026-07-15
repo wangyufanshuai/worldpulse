@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const e2eDb = process.env.WORLDPULSE_E2E_DB || `data/worldpulse-e2e-${process.pid}.db`
+process.env.WORLDPULSE_E2E_DB = e2eDb
+
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 30_000,
@@ -16,15 +19,15 @@ export default defineConfig({
     {
       command: 'python -m uvicorn app.main:app --host 127.0.0.1 --port 8010',
       cwd: '..',
-      env: { WORLDPULSE_DB_PATH: 'data/worldpulse-e2e.db' },
+      env: { WORLDPULSE_DB_PATH: e2eDb },
       url: 'http://127.0.0.1:8010/api/health',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 60_000,
     },
     {
       command: 'npm run dev',
       url: 'http://127.0.0.1:5173/studio/',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 60_000,
     },
   ],

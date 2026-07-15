@@ -1,6 +1,6 @@
 <template>
   <section class="war-room-lifecycle-kpis" data-testid="war-room-lifecycle-kpis">
-    <article v-for="kpi in kpis" :key="kpi.key" :class="kpi.tone">
+    <article v-for="kpi in kpis" :key="kpi.key" :class="kpi.tone" :data-testid="`lifecycle-kpi-${kpi.key}`">
       <span>{{ kpi.label }}</span>
       <strong>{{ kpi.value }}<small>{{ kpi.unit }}</small></strong>
       <p>{{ kpi.detail }}</p>
