@@ -176,6 +176,31 @@ def run_negotiation(
     }
     replay = NegotiationReplayManifest(**replay_core, replay_hash=stable_hash(replay_core))
     if len(rounds) == 6 and all(item.status == "completed" for item in rounds):
+        proposal_types = {
+            item.proposal_id: item.payload["proposal"]["action_type"]
+            for item in messages
+            if item.proposal_id and isinstance(item.payload.get("proposal"), dict) and item.payload["proposal"].get("action_type")
+        }
+        applied_types = sorted({proposal_types[item] for item in applied_ids if item in proposal_types})
+        decision_outcomes = {
+            decision["proposal_id"]: decision.get("outcome")
+            for round_item in rounds
+            for decision in round_item.output.get("proposal_decisions", [])
+            if decision.get("proposal_id")
+        }
+        active_commitment_types = sorted({item.action_type for item in commitments if item.status == "active"})
+        lifecycle_repository.add_artifact(
+            run_id,
+            "negotiation_action_observation",
+            "agent-outcome-observation-source.v1",
+            {
+                "proposal_types": proposal_types,
+                "decision_outcomes": decision_outcomes,
+                "applied_proposal_ids": sorted(applied_ids),
+                "applied_action_types": applied_types,
+                "active_commitment_types": active_commitment_types,
+            },
+        )
         lifecycle_repository.add_artifact(run_id, "negotiation_replay", replay.schema_version, replay.model_dump(mode="json"))
     summary = {
         "session": repo.get_session(run_id).model_dump(mode="json"),

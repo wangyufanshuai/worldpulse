@@ -717,6 +717,30 @@ def get_latest_artifact_content(run_id: str, artifact_type: str) -> dict | None:
     return loads(row["content_json"], {})
 
 
+def get_artifact_contents(run_id: str, artifact_type: str) -> list[dict]:
+    init_db()
+    _ensure_job_exists(run_id)
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT a.content_json, a.sha256
+            FROM run_artifacts AS a
+            LEFT JOIN run_attempts AS attempt ON attempt.attempt_id = a.attempt_id
+            LEFT JOIN run_steps AS step ON step.step_id = a.step_id
+            WHERE a.run_id = ? AND a.artifact_type = ?
+              AND (a.attempt_id IS NULL OR attempt.status IN ('running', 'completed'))
+            ORDER BY a.artifact_version, a.created_at, a.artifact_id
+            """,
+            (run_id, artifact_type),
+        ).fetchall()
+    result: list[dict] = []
+    for row in rows:
+        if _artifact_digest(row["content_json"]) != row["sha256"]:
+            raise HTTPException(status_code=409, detail=f"Artifact integrity verification failed: {artifact_type}")
+        result.append(loads(row["content_json"], {}))
+    return result
+
+
 def verify_artifacts(run_id: str) -> dict:
     artifacts = get_artifacts(run_id)
     invalid = [item.artifact_type for item in artifacts if item.integrity_status != "verified"]

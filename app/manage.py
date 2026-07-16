@@ -68,10 +68,11 @@ def main() -> int:
     notifications = sub.add_parser("notifications", help="Manage notification deliveries")
     notifications.add_argument("action", choices=("retry-failed",))
     benchmark_parser = sub.add_parser("benchmark", help="Manage historical benchmark manifests and sealed labels")
-    benchmark_parser.add_argument("action", choices=("ingest-manifest", "import-label-pack", "verify", "status", "validate-source-plan", "fetch-sources", "build-manifest", "pack-labels"))
+    benchmark_parser.add_argument("action", choices=("ingest-manifest", "import-label-pack", "verify", "status", "validate-source-plan", "fetch-sources", "build-manifest", "pack-labels", "preflight", "source-status"))
     benchmark_parser.add_argument("--file", help="Manifest or sealed label pack JSON file")
     benchmark_parser.add_argument("--source-plan", help="Source plan JSON used to build a manifest or select blind cases")
     benchmark_parser.add_argument("--output", help="Write a generated lock, manifest or label pack JSON file")
+    benchmark_parser.add_argument("--profile", choices=("pilot", "wave", "release"), default="release")
     benchmark_parser.add_argument("--signer-key-id", default="offline-release")
     benchmark_parser.add_argument("--encryption-key-id", default="offline-labels")
     benchmark_parser.add_argument("--evidence-hash", default="")
@@ -139,23 +140,38 @@ def main() -> int:
         elif args.action == "validate-source-plan":
             if not args.file:
                 parser.error("--file is required")
-            result = benchmark_tools.validate_source_plan(json.loads(Path(args.file).read_text(encoding="utf-8")))
+            result = benchmark_tools.validate_source_plan(json.loads(Path(args.file).read_text(encoding="utf-8")), args.profile)
         elif args.action == "fetch-sources":
             if not args.file:
                 parser.error("--file is required")
-            result = benchmark_tools.fetch_sources(json.loads(Path(args.file).read_text(encoding="utf-8")))
+            result = benchmark_tools.fetch_sources(json.loads(Path(args.file).read_text(encoding="utf-8")), args.profile)
         elif args.action == "build-manifest":
             if not args.file or not args.source_plan:
                 parser.error("build-manifest requires --file <acquisition-lock> and --source-plan <source-plan>")
             lock = json.loads(Path(args.file).read_text(encoding="utf-8"))
             source_plan = json.loads(Path(args.source_plan).read_text(encoding="utf-8"))
-            result = benchmark_tools.build_manifest_from_lock(lock, source_plan)
+            result = benchmark_tools.build_manifest_from_lock(lock, source_plan, args.profile)
+        elif args.action == "preflight":
+            if not args.file:
+                parser.error("--file is required")
+            result = benchmark_tools.preflight_manifest(json.loads(Path(args.file).read_text(encoding="utf-8")), args.profile)
+        elif args.action == "source-status":
+            if not args.file:
+                parser.error("--file is required")
+            result = benchmark_tools.source_status(json.loads(Path(args.file).read_text(encoding="utf-8")))
         elif args.action == "pack-labels":
             if not args.file or not args.source_plan:
                 parser.error("pack-labels requires --file <blind-labels> and --source-plan <source-plan>")
             labels = json.loads(Path(args.file).read_text(encoding="utf-8"))
-            source_plan = benchmark_tools.validate_source_plan(json.loads(Path(args.source_plan).read_text(encoding="utf-8")))
+            if args.profile != "release":
+                parser.error("pack-labels only supports --profile release")
+            source_plan = benchmark_tools.validate_source_plan(json.loads(Path(args.source_plan).read_text(encoding="utf-8")), "release")
             blind_ids = {item["case_id"] for item in source_plan["cases"] if item["split"] == "blind"}
+            evidence_coverage_by_case = {
+                item["case_id"]: benchmark_tools._evidence_coverage(item["evidence"])
+                for item in source_plan["cases"]
+                if item["split"] == "blind"
+            }
             aes_key = os.getenv("WORLDPULSE_OFFLINE_AES_KEY", "")
             signer_key = os.getenv("WORLDPULSE_OFFLINE_SIGNER_PRIVATE_KEY", "")
             if not aes_key or not signer_key:
@@ -163,6 +179,7 @@ def main() -> int:
             result = benchmark_tools.pack_labels(
                 labels,
                 blind_ids,
+                evidence_coverage_by_case=evidence_coverage_by_case,
                 aes_key_b64=aes_key,
                 signer_private_key_b64=signer_key,
                 signer_key_id=args.signer_key_id,
@@ -174,12 +191,21 @@ def main() -> int:
                 parser.error("--file is required")
             payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
             if args.action == "ingest-manifest":
+                if payload.get("curation_profile", "release") != "release":
+                    parser.error("Only a release-profile manifest can be ingested")
                 result = benchmark.ingest_manifest(payload, ensure_system_user()).model_dump(mode="json")
             else:
                 from app.core.evaluation_models import LabelPackImportRequest
                 result = benchmark.import_label_pack(args.organization, LabelPackImportRequest.model_validate(payload), ensure_system_user()).model_dump(mode="json")
-        if args.output and args.action in {"fetch-sources", "build-manifest", "pack-labels"}:
+        if args.output and args.action in {"validate-source-plan", "fetch-sources", "build-manifest", "pack-labels", "preflight", "source-status"}:
             output_path = Path(args.output)
+            if args.action in {"validate-source-plan", "fetch-sources", "build-manifest", "preflight"} and args.profile != "release":
+                work_root = Path("benchmarks/historical-benchmark.v1/work").resolve()
+                resolved_output = output_path.resolve()
+                try:
+                    resolved_output.relative_to(work_root)
+                except ValueError:
+                    parser.error(f"Partial benchmark manifests must be written under {work_root}")
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -197,12 +223,26 @@ def main() -> int:
             batches = service.list_batches("org_default")
             completed = [item for item in batches if item.status == "completed"]
             failed = [item for item in batches if item.status == "failed"]
+            historical = __import__("app.services.evaluation.benchmark", fromlist=["verify_benchmarks"]).verify_benchmarks()
+            engineering_batches = [item for item in completed if item.evaluation_track == "engineering_standard" and item.total_members == 84]
+            historical_batches = [item for item in completed if item.evaluation_track in {"historical_development", "historical_blind"} and item.total_members == 330]
             result = {
-                "status": "ok" if len(cases) == 12 and gate.manifest_hash and not failed and all(item.safety_status == "passed" for item in completed) else "failed",
+                "status": "ok" if (
+                    len(cases) == 12
+                    and gate.manifest_hash
+                    and historical["status"] == "ok"
+                    and engineering_batches
+                    and historical_batches
+                    and not failed
+                    and all(item.safety_status == "passed" for item in completed)
+                ) else "failed",
                 "suite_hash": suite.manifest_hash,
                 "case_count": len(cases),
+                "historical_benchmark": historical,
                 "gate_manifest_hash": gate.manifest_hash,
                 "completed_batches": len(completed),
+                "engineering_release_batches": len(engineering_batches),
+                "historical_release_batches": len(historical_batches),
                 "failed_batches": len(failed),
                 "pending_batches": sum(item.status not in {"completed", "failed", "cancelled"} for item in batches),
             }

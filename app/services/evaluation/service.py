@@ -489,16 +489,28 @@ class EvaluationService:
             raise ValueError("Blind label payload is invalid")
         cases = {item.case_id: item for item in benchmark.list_cases(batch.benchmark_suite_id)}
         rows: list[dict] = []
+        agent_rows: list[dict] = []
         for member in members:
-            if member.engine_mode != "deterministic" or not member.case_id.startswith("hist_") or member.case_id.startswith("hist_blind_"):
+            if not member.case_id.startswith("hist_"):
                 continue
-            historical_id = member.case_id.removeprefix("hist_")
+            historical_id = member.case_id.removeprefix("hist_blind_") if member.case_id.startswith("hist_blind_") else member.case_id.removeprefix("hist_")
             case = cases.get(historical_id)
             if case is None or not member.run_id:
                 raise ValueError("Historical case lineage is invalid")
             labels = case.labels if case.split == "development" else blind_labels.get(historical_id)
             if not isinstance(labels, dict):
                 raise ValueError("Historical labels are incomplete")
+            if member.case_id.startswith("hist_blind_") and member.engine_mode in {"hybrid", "negotiation"}:
+                observation = _agent_outcome_observation(member.run_id, member.engine_mode, labels)
+                agent_rows.append({
+                    "case_id": historical_id,
+                    "mode": member.engine_mode,
+                    "seed": member.seed,
+                    **observation,
+                })
+                continue
+            if member.engine_mode != "deterministic" or member.case_id.startswith("hist_blind_"):
+                continue
             result = lifecycle_repository.get_latest_artifact_content(member.run_id, "war_room_result") or {}
             rows.append(_historical_case_metrics(result, labels, case.label_confidence, len(case.evidence)))
         if len(rows) != 120:
@@ -513,6 +525,7 @@ class EvaluationService:
             "agent_outcome_agreement": _average_optional(rows, "agent_outcome_agreement"),
             "agent_outcome_denominator": sum(item.get("agent_outcome_agreement") is not None for item in rows),
             "agent_outcome_not_applicable": sum(item.get("agent_outcome_agreement") is None for item in rows),
+            "agent_outcome_observation": _aggregate_agent_observations(agent_rows),
             "data_coverage": _average(rows, "data_coverage"),
             "label_confidence": _average(rows, "label_confidence"),
             "metric_verifier_version": "historical-observation.v2",
@@ -582,6 +595,106 @@ def _average_optional(rows: list[dict], key: str) -> float | None:
 def _mapping_accuracy(actual: dict, expected: dict) -> float:
     keys = set(expected)
     return sum(actual.get(key) == expected.get(key) for key in keys) / len(keys) if keys else 0.0
+
+
+def _agent_outcome_observation(run_id: str, engine_mode: str, labels: dict) -> dict:
+    expectations = labels.get("agent_outcome_expectations", {})
+    allowed = set(expectations.get("allowed_action_types", []))
+    forbidden = set(expectations.get("forbidden_action_types", []))
+    expected_commitments = set(expectations.get("expected_commitment_patterns", []))
+    actual: set[str] = set()
+    active_commitments: set[str] = set()
+    if engine_mode == "hybrid":
+        proposals = lifecycle_repository.get_latest_artifact_content(run_id, "agent_action_proposals") or {}
+        proposal_types = {
+            item.get("proposal_id"): item.get("action_type")
+            for item in proposals.get("proposals", [])
+            if item.get("proposal_id") and item.get("action_type")
+        }
+        projection = lifecycle_repository.get_latest_artifact_content(run_id, "agent_action_projection_audit") or {}
+        actual = {
+            proposal_types.get(item.get("proposal_id"))
+            for item in projection.get("records", [])
+            if item.get("outcome") == "accepted" and item.get("projection_status") == "projected"
+        }
+        actual.discard(None)
+    elif engine_mode == "negotiation":
+        source = lifecycle_repository.get_latest_artifact_content(run_id, "negotiation_action_observation")
+        if not source:
+            raise ValueError("Negotiation action observation Artifact is missing")
+        actual = set(source.get("applied_action_types", []))
+        active_commitments = set(source.get("active_commitment_types", []))
+    else:
+        return {
+            "engine_mode": engine_mode,
+            "score": None,
+            "allowed_action_recall": None,
+            "forbidden_action_pass": None,
+            "commitment_pattern_match": None,
+            "actual_action_types": [],
+            "active_commitment_types": [],
+            "verifier_version": "agent-outcome-observation.v1",
+        }
+    allowed_recall = len(actual & allowed) / len(allowed) if allowed else None
+    forbidden_pass = (1.0 if not (actual & forbidden) else 0.0) if forbidden else None
+    commitment_match = len(active_commitments & expected_commitments) / len(expected_commitments) if expected_commitments else None
+    if engine_mode == "hybrid":
+        components = [(allowed_recall, 50), (forbidden_pass, 30)]
+    else:
+        components = [(allowed_recall, 50), (forbidden_pass, 30), (commitment_match, 20)]
+    weighted = [(value, weight) for value, weight in components if value is not None]
+    score = sum(value * weight for value, weight in weighted) / sum(weight for _, weight in weighted) if weighted else None
+    return {
+        "engine_mode": engine_mode,
+        "score": round(score, 6) if score is not None else None,
+        "allowed_action_recall": round(allowed_recall, 6) if allowed_recall is not None else None,
+        "forbidden_action_pass": forbidden_pass,
+        "commitment_pattern_match": round(commitment_match, 6) if commitment_match is not None else None,
+        "actual_action_types": sorted(actual),
+        "active_commitment_types": sorted(active_commitments),
+        "verifier_version": "agent-outcome-observation.v1",
+    }
+
+
+def _aggregate_agent_observations(rows: list[dict]) -> dict:
+    case_mode_rows: list[dict] = []
+    for (case_id, mode) in sorted({(item["case_id"], item["mode"]) for item in rows}):
+        selected = [item for item in rows if item["case_id"] == case_id and item["mode"] == mode]
+        case_mode_rows.append({
+            "case_id": case_id,
+            "mode": mode,
+            "seed_count": len(selected),
+            "score": _average_optional(selected, "score"),
+            "allowed_action_recall": _average_optional(selected, "allowed_action_recall"),
+            "forbidden_action_pass": _average_optional(selected, "forbidden_action_pass"),
+            "commitment_pattern_match": _average_optional(selected, "commitment_pattern_match"),
+            "not_applicable": {
+                key: sum(item.get(key) is None for item in selected)
+                for key in ("score", "allowed_action_recall", "forbidden_action_pass", "commitment_pattern_match")
+            },
+        })
+    result = {
+        "verifier_version": "agent-outcome-observation.v1",
+        "member_count": len(rows),
+        "case_count": len({item["case_id"] for item in rows}),
+        "case_mode_observations": case_mode_rows,
+        "modes": {},
+    }
+    for mode in ("hybrid", "negotiation"):
+        selected = [item for item in case_mode_rows if item["mode"] == mode]
+        result["modes"][mode] = {
+            "case_count": len(selected),
+            "member_count": sum(item["seed_count"] for item in selected),
+            "score": _average_optional(selected, "score"),
+            "allowed_action_recall": _average_optional(selected, "allowed_action_recall"),
+            "forbidden_action_pass": _average_optional(selected, "forbidden_action_pass"),
+            "commitment_pattern_match": _average_optional(selected, "commitment_pattern_match"),
+            "not_applicable": {
+                key: sum(item["not_applicable"][key] for item in selected)
+                for key in ("score", "allowed_action_recall", "forbidden_action_pass", "commitment_pattern_match")
+            },
+        }
+    return result
 
 
 def _spearman(actual: list[str], expected: list[str]) -> float:

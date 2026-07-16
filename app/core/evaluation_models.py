@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 EvaluationMode = Literal["deterministic", "hybrid", "negotiation"]
 BatchStatus = Literal["queued", "running", "pausing", "paused", "cancelling", "cancelled", "failed", "completed"]
+BenchmarkCurationProfile = Literal["pilot", "wave", "release"]
 
 class EvaluationRuntimeProfile(BaseModel):
     provider: Literal["mock", "deepseek", "siliconflow"] = "mock"
@@ -249,3 +250,56 @@ class HistoricalBenchmarkReport(BaseModel):
     aggregate_metrics: dict = Field(default_factory=dict)
     blind_labels_redacted: bool = True
     report_hash: str
+
+class BenchmarkPreflightReport(BaseModel):
+    status: Literal["passed", "failed"]
+    profile: BenchmarkCurationProfile
+    case_count: int
+    domain_counts: dict[str, int] = Field(default_factory=dict)
+    blind_count: int = 0
+    publisher_counts: dict[str, int] = Field(default_factory=dict)
+    checks: dict = Field(default_factory=dict)
+    errors: list[str] = Field(default_factory=list)
+    report_hash: str
+
+class BenchmarkSourceStatus(BaseModel):
+    status: Literal["complete", "incomplete", "failed"]
+    acquisition_lock_hash_valid: bool
+    entry_count: int
+    verified_count: int
+    missing_count: int
+    invalid_count: int
+    publisher_counts: dict[str, int] = Field(default_factory=dict)
+    domain_publisher_counts: dict[str, dict[str, int]] = Field(default_factory=dict)
+    missing_evidence_ids: list[str] = Field(default_factory=list)
+    invalid_evidence_ids: list[str] = Field(default_factory=list)
+    license_error_evidence_ids: list[str] = Field(default_factory=list)
+    hash_error_evidence_ids: list[str] = Field(default_factory=list)
+    concentration_warnings: list[str] = Field(default_factory=list)
+    status_hash: str
+
+class AgentOutcomeObservation(BaseModel):
+    engine_mode: EvaluationMode
+    score: float | None = None
+    allowed_action_recall: float | None = None
+    forbidden_action_pass: float | None = None
+    commitment_pattern_match: float | None = None
+    actual_action_types: list[str] = Field(default_factory=list)
+    active_commitment_types: list[str] = Field(default_factory=list)
+    verifier_version: str = "agent-outcome-observation.v1"
+
+class ReleaseEvidenceManifest(BaseModel):
+    version: str = "release-evidence-manifest.v1"
+    suite_hash: str
+    source_plan_hash: str
+    acquisition_lock_hash: str
+    label_pack_hash: str
+    gate_manifest_hash: str
+    rule_pack_hash: str
+    runtime_profile_hashes: list[str] = Field(default_factory=list)
+    batch_hashes: list[str] = Field(default_factory=list)
+    member_hashes: list[str] = Field(default_factory=list)
+    artifact_hashes: list[str] = Field(default_factory=list)
+    verification_hashes: list[str] = Field(default_factory=list)
+    report_hashes: list[str] = Field(default_factory=list)
+    manifest_hash: str

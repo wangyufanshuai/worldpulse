@@ -78,7 +78,15 @@ def test_negotiation_lifecycle_completes_and_exposes_read_only_v7(monkeypatch, t
     audit = client.get(f"/api/v2/runs/{run_id}/audit").json()
     assert audit["negotiation"]["message_count"] == 36
     artifact_types = {item["artifact_type"] for item in audit["artifacts"]}
-    assert {"negotiation_round", "negotiation_checkpoint", "commitment_ledger", "narrative_diffusion", "negotiation_replay", "negotiation_final_result"} <= artifact_types
+    assert {
+        "negotiation_round",
+        "negotiation_checkpoint",
+        "commitment_ledger",
+        "narrative_diffusion",
+        "negotiation_action_observation",
+        "negotiation_replay",
+        "negotiation_final_result",
+    } <= artifact_types
     replay = next(item for item in audit["artifacts"] if item["artifact_type"] == "negotiation_replay")
     assert replay["sha256"]
     replayed = replay_negotiation_from_storage(run_id)

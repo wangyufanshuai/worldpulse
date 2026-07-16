@@ -41,17 +41,28 @@ def ingest_manifest(payload: dict[str, Any], actor: Any) -> HistoricalBenchmarkS
     licensed outside the API, then placed in the content-addressed benchmark store.
     """
 
+    if payload.get("curation_profile", "release") != "release":
+        raise HTTPException(status_code=409, detail="Only a release-profile benchmark manifest can be activated")
     suite_id = str(payload.get("suite_id") or "")
     version = str(payload.get("version") or "")
     cases = payload.get("cases")
     if suite_id != "historical-benchmark.v1" or version != "1" or not isinstance(cases, list):
         raise HTTPException(status_code=422, detail="Historical benchmark manifest identity is invalid")
+    from .benchmark_tools import preflight_manifest
+
+    preflight = preflight_manifest(payload, "release")
+    if preflight["status"] != "passed":
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Historical benchmark release preflight failed", "errors": preflight["errors"]},
+        )
     _validate_case_matrix(cases)
     normalized_cases = [_validate_case(item, suite_id) for item in cases]
     manifest_body = {
         "suite_id": suite_id,
         "version": version,
         "purpose": payload.get("purpose", "official-source historical observation benchmark"),
+        "curation_profile": "release",
         "source_plan_hash": payload.get("source_plan_hash"),
         "acquisition_lock_hash": payload.get("acquisition_lock_hash"),
         "case_hashes": [item["case_hash"] for item in normalized_cases],
@@ -276,7 +287,21 @@ def _validate_case_matrix(cases: list[dict[str, Any]]) -> None:
 
 
 def _validate_case(item: dict[str, Any], suite_id: str) -> dict[str, Any]:
-    required = {"case_id", "version", "domain", "split", "title", "cutoff_at", "observation_window_days", "scenario", "label_confidence", "evidence"}
+    required = {
+        "case_id",
+        "version",
+        "domain",
+        "split",
+        "title",
+        "cutoff_at",
+        "observation_window_days",
+        "scenario",
+        "label_confidence",
+        "evidence",
+        "assumptions",
+        "target_country_evidence",
+        "policy_action_evidence_ids",
+    }
     if not required.issubset(item) or item["domain"] not in DOMAINS or item["split"] not in {"development", "blind"}:
         raise HTTPException(status_code=422, detail="Historical benchmark case contract is invalid")
     if item["split"] == "blind" and item.get("development_labels") is not None:
@@ -289,7 +314,12 @@ def _validate_case(item: dict[str, Any], suite_id: str) -> dict[str, Any]:
     normalized.update({
         "suite_id": suite_id,
         "evidence": evidence,
-        "evidence_manifest": {"evidence_hashes": [raw["evidence_hash"] for raw in evidence]},
+        "evidence_manifest": {
+            "evidence_hashes": [raw["evidence_hash"] for raw in evidence],
+            "assumptions": item["assumptions"],
+            "target_country_evidence": item["target_country_evidence"],
+            "policy_action_evidence_ids": item["policy_action_evidence_ids"],
+        },
         "development_labels": item.get("development_labels"),
     })
     case_body = {key: value for key, value in normalized.items() if key != "case_hash"}
