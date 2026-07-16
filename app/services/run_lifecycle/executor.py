@@ -40,6 +40,10 @@ def process_one_queued_job(worker_id: str | None = None) -> RunJobStatus | None:
     job = repository.claim_next_job(worker_id=worker_id)
     if job is None:
         return None
+    if worker_id:
+        from app.services.operations import heartbeat_registered_worker
+
+        heartbeat_registered_worker(worker_id, status="busy", current_job_id=job.run_id)
     try:
         return process_job(job.run_id)
     except Exception as exc:  # pragma: no cover - defensive audit path
@@ -122,6 +126,10 @@ def process_job(run_id: str) -> RunJobStatus:
     for index, (phase, progress, event_type, title, detail) in enumerate(PHASES[start_index:], start=start_index):
         phase_started = perf_counter()
         repository.heartbeat_job(run_id, worker_id)
+        if worker_id:
+            from app.services.operations import heartbeat_registered_worker
+
+            heartbeat_registered_worker(worker_id, status="busy", current_job_id=run_id)
         interrupted = _apply_boundary_control(run_id)
         if interrupted:
             return interrupted

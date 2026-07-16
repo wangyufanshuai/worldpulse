@@ -13,8 +13,8 @@ def test_version_endpoint_and_openapi_release_are_aligned():
     assert response.status_code == 200
     assert response.json() == {
         "service": "worldpulse",
-        "version": "1.6.0-rc1",
-        "api_contract_version": "v5",
+        "version": "1.7.0-rc1",
+        "api_contract_version": "v6",
         "release_channel": "release-candidate",
     }
     assert app.version == WORLDPULSE_VERSION

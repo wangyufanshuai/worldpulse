@@ -3335,6 +3335,254 @@
         "title": "OrganizationMemberAddRequest",
         "type": "object"
       },
+      "OrganizationOperationsSummary": {
+        "properties": {
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "quota": {
+            "$ref": "#/components/schemas/OrganizationQuota"
+          },
+          "readiness": {
+            "$ref": "#/components/schemas/PlatformReadiness"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/OrganizationUsage"
+          },
+          "workers": {
+            "items": {
+              "$ref": "#/components/schemas/WorkerNode"
+            },
+            "title": "Workers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "organization_id",
+          "quota",
+          "usage",
+          "workers",
+          "readiness",
+          "generated_at"
+        ],
+        "title": "OrganizationOperationsSummary",
+        "type": "object"
+      },
+      "OrganizationQuota": {
+        "properties": {
+          "max_active_runs": {
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Max Active Runs",
+            "type": "integer"
+          },
+          "max_evidence_snapshots": {
+            "maximum": 10000000.0,
+            "minimum": 1.0,
+            "title": "Max Evidence Snapshots",
+            "type": "integer"
+          },
+          "max_ingestion_jobs_per_day": {
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Max Ingestion Jobs Per Day",
+            "type": "integer"
+          },
+          "max_projects": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Max Projects",
+            "type": "integer"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By User Id"
+          }
+        },
+        "required": [
+          "max_projects",
+          "max_active_runs",
+          "max_ingestion_jobs_per_day",
+          "max_evidence_snapshots",
+          "organization_id",
+          "updated_at"
+        ],
+        "title": "OrganizationQuota",
+        "type": "object"
+      },
+      "OrganizationQuotaUpdate": {
+        "properties": {
+          "max_active_runs": {
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Max Active Runs",
+            "type": "integer"
+          },
+          "max_evidence_snapshots": {
+            "maximum": 10000000.0,
+            "minimum": 1.0,
+            "title": "Max Evidence Snapshots",
+            "type": "integer"
+          },
+          "max_ingestion_jobs_per_day": {
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Max Ingestion Jobs Per Day",
+            "type": "integer"
+          },
+          "max_projects": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Max Projects",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_projects",
+          "max_active_runs",
+          "max_ingestion_jobs_per_day",
+          "max_evidence_snapshots"
+        ],
+        "title": "OrganizationQuotaUpdate",
+        "type": "object"
+      },
+      "OrganizationUsage": {
+        "properties": {
+          "active_runs": {
+            "title": "Active Runs",
+            "type": "integer"
+          },
+          "evidence_snapshots": {
+            "title": "Evidence Snapshots",
+            "type": "integer"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "ingestion_jobs_today": {
+            "title": "Ingestion Jobs Today",
+            "type": "integer"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "projects": {
+            "title": "Projects",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "organization_id",
+          "projects",
+          "active_runs",
+          "ingestion_jobs_today",
+          "evidence_snapshots",
+          "generated_at"
+        ],
+        "title": "OrganizationUsage",
+        "type": "object"
+      },
+      "PlatformReadiness": {
+        "properties": {
+          "checked_at": {
+            "title": "Checked At",
+            "type": "string"
+          },
+          "database_backend": {
+            "enum": [
+              "sqlite",
+              "postgresql"
+            ],
+            "title": "Database Backend",
+            "type": "string"
+          },
+          "ingestion_workers_fresh": {
+            "title": "Ingestion Workers Fresh",
+            "type": "integer"
+          },
+          "lifecycle_workers_fresh": {
+            "title": "Lifecycle Workers Fresh",
+            "type": "integer"
+          },
+          "queued_ingestion_jobs": {
+            "title": "Queued Ingestion Jobs",
+            "type": "integer"
+          },
+          "queued_runs": {
+            "title": "Queued Runs",
+            "type": "integer"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "rule_pack_ok": {
+            "title": "Rule Pack Ok",
+            "type": "boolean"
+          },
+          "schema_ok": {
+            "title": "Schema Ok",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "degraded",
+              "not_ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "worker_requirement_enabled": {
+            "title": "Worker Requirement Enabled",
+            "type": "boolean"
+          },
+          "worker_requirement_met": {
+            "title": "Worker Requirement Met",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "database_backend",
+          "schema_ok",
+          "rule_pack_ok",
+          "worker_requirement_enabled",
+          "worker_requirement_met",
+          "lifecycle_workers_fresh",
+          "ingestion_workers_fresh",
+          "queued_runs",
+          "queued_ingestion_jobs",
+          "checked_at"
+        ],
+        "title": "PlatformReadiness",
+        "type": "object"
+      },
       "PolicyShock": {
         "properties": {
           "duration_months": {
@@ -7140,13 +7388,116 @@
         ],
         "title": "WorkbenchStatus",
         "type": "object"
+      },
+      "WorkerNode": {
+        "properties": {
+          "current_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Job Id"
+          },
+          "fresh": {
+            "default": true,
+            "title": "Fresh",
+            "type": "boolean"
+          },
+          "heartbeat_at": {
+            "title": "Heartbeat At",
+            "type": "string"
+          },
+          "hostname": {
+            "title": "Hostname",
+            "type": "string"
+          },
+          "jobs_completed": {
+            "default": 0,
+            "title": "Jobs Completed",
+            "type": "integer"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          },
+          "lease_expires_at": {
+            "title": "Lease Expires At",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "process_id": {
+            "title": "Process Id",
+            "type": "integer"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "starting",
+              "ready",
+              "busy",
+              "draining",
+              "stopped",
+              "failed",
+              "stale"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "worker_id": {
+            "title": "Worker Id",
+            "type": "string"
+          },
+          "worker_kind": {
+            "enum": [
+              "lifecycle",
+              "ingestion"
+            ],
+            "title": "Worker Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "worker_kind",
+          "status",
+          "hostname",
+          "process_id",
+          "version",
+          "started_at",
+          "heartbeat_at",
+          "lease_expires_at"
+        ],
+        "title": "WorkerNode",
+        "type": "object"
       }
     }
   },
   "info": {
     "description": "全球多源综合风险指数与世界局势情景模拟器",
     "title": "WorldPulse",
-    "version": "1.6.0-rc1"
+    "version": "1.7.0-rc1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8601,6 +8952,22 @@
           }
         },
         "summary": "Research Project War Room Workspace"
+      }
+    },
+    "/api/ready": {
+      "get": {
+        "operationId": "readiness_api_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness"
       }
     },
     "/api/report.md": {
@@ -11561,6 +11928,173 @@
           }
         },
         "summary": "Organization Project Create"
+      }
+    },
+    "/api/v6/organizations/{organization_id}/operations": {
+      "get": {
+        "operationId": "organization_operations_api_v6_organizations__organization_id__operations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationOperationsSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Organization Operations"
+      }
+    },
+    "/api/v6/organizations/{organization_id}/quota": {
+      "put": {
+        "operationId": "organization_quota_update_api_v6_organizations__organization_id__quota_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationQuotaUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationQuota"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Organization Quota Update"
+      }
+    },
+    "/api/v6/platform/readiness": {
+      "get": {
+        "operationId": "platform_readiness_api_v6_platform_readiness_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformReadiness"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Platform Readiness"
+      }
+    },
+    "/api/v6/workers": {
+      "get": {
+        "operationId": "worker_list_api_v6_workers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkerNode"
+                  },
+                  "title": "Response Worker List Api V6 Workers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Worker List"
+      }
+    },
+    "/api/v6/workers/{worker_id}/drain": {
+      "post": {
+        "operationId": "worker_drain_api_v6_workers__worker_id__drain_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "title": "Worker Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerNode"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Worker Drain"
       }
     },
     "/api/version": {

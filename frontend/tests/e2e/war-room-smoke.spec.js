@@ -48,6 +48,8 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await page.getByTestId('war-room-pause-action').click()
   await expect(page.getByTestId('war-room-resume-action')).toBeEnabled()
   await page.getByTestId('war-room-resume-action').click()
+  await expect(page.getByTestId('war-room-lifecycle-control')).toContainText('queued', { timeout: 15_000 })
+  await expect(page.getByTestId('war-room-cancel-action')).toBeEnabled()
   await page.getByTestId('war-room-cancel-action').click()
   await expect(page.getByTestId('war-room-lifecycle-control')).toContainText('cancelled', { timeout: 15_000 })
   await expect(page.getByTestId('war-room-retry-action')).toBeEnabled({ timeout: 15_000 })
@@ -99,6 +101,7 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
     sandbox: 'war-room-sandbox-module', analysis: 'war-room-analysis-module',
     graph: 'war-room-graph-module', data: 'war-room-data-module',
     settings: 'war-room-settings-module', replay: 'war-room-replay-module', trust: 'war-room-trust-center',
+    evidence: 'war-room-evidence-center', ingestion: 'war-room-ingestion-center', operations: 'war-room-operations-center',
   }
   for (const [section, testId] of Object.entries(modules)) {
     await page.goto(`projects/${project.project_id}/war-room/${section}`)

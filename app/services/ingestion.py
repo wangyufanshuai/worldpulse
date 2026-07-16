@@ -148,20 +148,48 @@ def create_job(organization_id: str, payload: IngestionJobCreateRequest, actor: 
     request_payload = payload.model_dump(mode="json")
     _validate_request(request_payload["records"], connector, policy)
     request_hash = stable_hash({"organization_id": organization_id, "connector_hash": connector.config_hash, "policy_hash": policy.manifest_hash, "request": request_payload})
+    if payload.idempotency_key:
+        with connect() as conn:
+            existing = conn.execute(
+                "SELECT job_id, request_hash FROM ingestion_jobs WHERE organization_id = ? AND idempotency_key = ?",
+                (organization_id, payload.idempotency_key),
+            ).fetchone()
+        if existing:
+            if existing["request_hash"] == request_hash:
+                return get_job(organization_id, existing["job_id"], actor)
+            raise HTTPException(status_code=409, detail="Idempotency key was already used with different ingestion content")
     job_id = f"ing_{uuid4().hex[:20]}"
     now = _now()
+    existing_job_id = None
     try:
         with connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO ingestion_jobs
-                (job_id, organization_id, connector_id, policy_id, project_id, status, request_json,
-                 request_hash, idempotency_key, record_count, created_by_user_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (job_id, organization_id, connector.connector_id, policy.policy_id, payload.project_id,
-                 dumps(request_payload), request_hash, payload.idempotency_key, len(payload.records), actor.user_id, now, now),
-            )
+            from app.services.operations import enforce_quota, lock_organization_quota
+
+            if not is_postgres_url():
+                conn.execute("BEGIN IMMEDIATE")
+            lock_organization_quota(organization_id, conn)
+            if payload.idempotency_key:
+                existing = conn.execute(
+                    "SELECT job_id, request_hash FROM ingestion_jobs WHERE organization_id = ? AND idempotency_key = ?",
+                    (organization_id, payload.idempotency_key),
+                ).fetchone()
+                if existing:
+                    if existing["request_hash"] != request_hash:
+                        raise HTTPException(status_code=409, detail="Idempotency key was already used with different ingestion content")
+                    existing_job_id = existing["job_id"]
+            if existing_job_id is None:
+                enforce_quota(organization_id, "ingestion_job", connection=conn)
+                enforce_quota(organization_id, "evidence_snapshot", requested=len(payload.records), connection=conn)
+                conn.execute(
+                    """
+                    INSERT INTO ingestion_jobs
+                    (job_id, organization_id, connector_id, policy_id, project_id, status, request_json,
+                     request_hash, idempotency_key, record_count, created_by_user_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (job_id, organization_id, connector.connector_id, policy.policy_id, payload.project_id,
+                     dumps(request_payload), request_hash, payload.idempotency_key, len(payload.records), actor.user_id, now, now),
+                )
     except Exception as exc:
         if "UNIQUE" in str(exc).upper() and payload.idempotency_key:
             with connect() as conn:
@@ -170,6 +198,8 @@ def create_job(organization_id: str, payload: IngestionJobCreateRequest, actor: 
                 return get_job(organization_id, row["job_id"], actor)
             raise HTTPException(status_code=409, detail="Idempotency key was already used with different ingestion content") from exc
         raise
+    if existing_job_id is not None:
+        return get_job(organization_id, existing_job_id, actor)
     append_event(job_id, "INGESTION", "Ingestion job queued", "受控采集任务已创建，等待独立 worker 或显式执行。", {"record_count": len(payload.records)})
     return get_job(organization_id, job_id, actor)
 
@@ -208,7 +238,7 @@ def execute_job(organization_id: str, job_id: str, actor: UserIdentity, *, worke
                 "connector_hash": connector.config_hash, "policy_id": policy.policy_id,
                 "policy_hash": policy.manifest_hash, "license": connector.config.get("license"),
             },
-        ), actor)
+        ), actor, organization_id=organization_id)
         scope_resource(organization_id, "evidence_source", source.source_id)
         accepted = []
         for raw in records:
@@ -217,7 +247,7 @@ def execute_job(organization_id: str, job_id: str, actor: UserIdentity, *, worke
                 source_id=source.source_id, project_id=request.get("project_id"), external_ref=record.external_ref,
                 title=record.title, category=record.category, content=record.content, content_text=record.content_text,
                 observed_at=record.observed_at, cutoff_at=record.cutoff_at,
-            ), actor)
+            ), actor, organization_id=organization_id, quota_reserved=True)
             payload_hash = stable_hash(record.model_dump(mode="json"))
             with connect() as conn:
                 conn.execute(

@@ -72,6 +72,9 @@ def create_job(
                     raise HTTPException(status_code=409, detail="Idempotency-Key was already used with a different request")
                 existing_run_id = existing["run_id"]
         if existing_run_id is None:
+            from app.services.operations import enforce_project_run_quota
+
+            enforce_project_run_quota(project_id, connection=conn)
             conn.execute(
             """
             INSERT INTO run_jobs

@@ -11,6 +11,7 @@ from app.api.routes import router
 from app.api.v3 import router as v3_router
 from app.api.v4 import router as v4_router
 from app.api.v5 import router as v5_router
+from app.api.v6 import router as v6_router
 from app.services.auth import (
     auth_mode,
     authenticate_request,
@@ -59,7 +60,7 @@ async def local_session_guard(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
     path = request.url.path
-    public = {"/api/health", "/api/version", "/api/v3/auth/login"}
+    public = {"/api/health", "/api/ready", "/api/version", "/api/v3/auth/login"}
     if path in public or not path.startswith("/api"):
         return await call_next(request)
     try:
@@ -111,6 +112,7 @@ app.include_router(router, prefix="/api")
 app.include_router(v3_router, prefix="/api/v3")
 app.include_router(v4_router, prefix="/api/v4")
 app.include_router(v5_router, prefix="/api/v5")
+app.include_router(v6_router, prefix="/api/v6")
 
 
 @app.get("/favicon.ico")

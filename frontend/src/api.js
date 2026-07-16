@@ -131,6 +131,31 @@ export async function getIngestionEvents(organizationId, jobId, afterSeq = 0) {
   return data
 }
 
+export async function getPlatformReadiness() {
+  const { data } = await api.get('/v6/platform/readiness')
+  return data
+}
+
+export async function listWorkerNodes() {
+  const { data } = await api.get('/v6/workers')
+  return data
+}
+
+export async function drainWorkerNode(workerId) {
+  const { data } = await api.post(`/v6/workers/${workerId}/drain`)
+  return data
+}
+
+export async function getOrganizationOperations(organizationId) {
+  const { data } = await api.get(`/v6/organizations/${organizationId}/operations`)
+  return data
+}
+
+export async function updateOrganizationQuota(organizationId, payload) {
+  const { data } = await api.put(`/v6/organizations/${organizationId}/quota`, payload)
+  return data
+}
+
 export async function listReviews(status = null) {
   const { data } = await api.get('/v3/reviews', { params: status ? { status } : {} })
   return data

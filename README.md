@@ -1,5 +1,7 @@
 # WorldPulse 全球综合风险指数
 
+V1.7.0-rc1 在 V1.6 PostgreSQL 生产基线上增加运维控制平面：生命周期与采集 worker 具备持久化注册、心跳、状态和安全排空；`/api/ready` 区分进程存活与平台就绪；组织项目、活跃运行、24 小时采集任务和证据快照受后端配额约束。War Room 新增中文“运维中心”。这些能力只治理执行容量，不改变确定性风险、供应链压力、Run Diff 或 Replay Pack。详见 [`V1.7 架构`](docs/architecture/v1.7-operations-control-plane.md)、[`V6 API`](docs/api/v6-operations.md) 与 [`V1.7 运维手册`](docs/runbooks/v1.7-operations.md)。
+
 V1.6.0-rc1 完成 PostgreSQL 生产化收口：真实 PostgreSQL 迁移、并发 worker、确定性结果投影和 SQLite 全量转移均进入自动门禁；新增组织切换、SSE 组织上下文与 V4 证据资源隔离。SQLite 仍是零配置开发默认，团队部署推荐使用 PostgreSQL Compose overlay。详见 [`V1.6 PostgreSQL 生产手册`](docs/runbooks/v1.6-postgresql-production.md)。
 
 V1.5.0-rc1 将 WorldPulse 推进到组织级运行与受控数据接入：组织成员和项目作用域由后端强制校验，版本化连接器与采集策略在写入 Evidence Registry 前执行许可、大小、类别和时间截点门禁；SQLite 继续可用，同时新增 PostgreSQL 运行时与编号迁移适配。确定性风险、供应链数值、Run Diff、Replay Pack 以及 V1–V4 合同保持不变。详见 [`V1.5 架构`](docs/architecture/v1.5-organization-ingestion.md)、[`V5 API`](docs/api/v5-organization-ingestion.md) 和 [`PostgreSQL 迁移手册`](docs/runbooks/v1.5-postgresql-migration.md)。
@@ -113,7 +115,10 @@ V3 可信治理接口包含 `/api/v3/auth`、`/api/v3/rule-packs`、`/api/v3/cal
 
 V4 Evidence Registry 见 [`v4-evidence-registry.md`](docs/api/v4-evidence-registry.md)。V5 在 `/api/v5/organizations` 下提供组织成员、组织项目、采集策略、连接器、采集任务和审计事件。选择非默认组织时使用 `X-WorldPulse-Org`；服务端仍是权限与资源作用域的唯一权威。
 
+V6 提供平台 readiness、worker 注册视图/安全排空和组织配额/用量摘要。`GET /api/health` 只证明 HTTP 进程存活；部署健康门禁应使用 `GET /api/ready`。
+
 - `GET /api/health`：健康检查
+- `GET /api/ready`：数据库、Schema、Rule Pack 与可选 worker 容量就绪检查
 - `GET /api/version`：应用与 API 合同版本
 - `GET /api/v2/lifecycle/health`：生命周期队列、阶段耗时、恢复和制品完整性摘要
 - `GET /api/risk/latest`：最新综合风险

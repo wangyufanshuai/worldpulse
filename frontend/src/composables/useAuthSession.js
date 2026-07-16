@@ -10,6 +10,7 @@ export function permissionsForRole(role) {
     canCalibrate: ['admin', 'analyst'].includes(role),
     canReview: ['admin', 'reviewer'].includes(role),
     canActivateRules: role === 'admin',
+    canOperate: role === 'admin',
   }
 }
 

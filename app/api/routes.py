@@ -4,7 +4,7 @@ import json
 import time
 
 from fastapi import APIRouter, Header, Query, Request
-from fastapi.responses import PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 from app.core.models import (
     AIAnalysisRequest,
@@ -80,6 +80,7 @@ from app.services.projects import (
     war_room_workspace,
     run_project,
 )
+from app.services.operations import platform_readiness
 from app.services.report import export_report, render_report
 from app.services.run_lifecycle import repository as run_lifecycle
 from app.services.risk_engine import build_latest_risk, build_replay, build_risk_analysis, build_risk_history, build_risk_overview
@@ -98,6 +99,15 @@ router = APIRouter()
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "worldpulse"}
+
+
+@router.get("/ready")
+def readiness() -> JSONResponse:
+    result = platform_readiness()
+    return JSONResponse(
+        status_code=503 if result.status == "not_ready" else 200,
+        content=result.model_dump(mode="json"),
+    )
 
 
 @router.get("/version")

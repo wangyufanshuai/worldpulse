@@ -146,3 +146,15 @@ test('Ingestion Center closes connector, cutoff gate, snapshot and event audit',
   await expect(page.getByTestId('ingestion-events')).toContainText('#1')
   await expect(page.getByTestId('ingestion-events')).toContainText(/快照|snapshot|完成/)
 })
+
+test('Operations Center exposes readiness and audited quota control', async ({ page }) => {
+  const csrf = await login(page.request)
+  const project = await createWarRoom(page.request, csrf, `operations-${Date.now()}`)
+  await page.goto(`projects/${project.project_id}/war-room/operations`)
+  await expect(page.getByTestId('war-room-operations-center')).toBeVisible()
+  await expect(page.getByTestId('operations-readiness-status')).toContainText(/平台就绪|容量降级/)
+  await expect(page.getByTestId('operations-worker-list')).toBeVisible()
+  await page.getByTestId('quota-max_projects').fill('200')
+  await page.getByTestId('operations-save-quota').click()
+  await expect(page.getByTestId('quota-max_projects')).toHaveValue('200')
+})

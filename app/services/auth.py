@@ -21,7 +21,7 @@ IDLE_MINUTES = 30
 ABSOLUTE_HOURS = 8
 PASSWORD_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4, hash_len=32, salt_len=16)
 ROLE_PERMISSIONS = {
-    "admin": {"read", "project_write", "run", "calibration", "review", "rule_submit", "rule_approve", "rule_activate", "users", "organization_admin", "ingestion_write"},
+    "admin": {"read", "project_write", "run", "calibration", "review", "rule_submit", "rule_approve", "rule_activate", "users", "organization_admin", "ingestion_write", "operations"},
     "analyst": {"read", "project_write", "run", "calibration", "rule_submit", "ingestion_write"},
     "reviewer": {"read", "review", "rule_approve"},
     "viewer": {"read"},
@@ -177,6 +177,10 @@ def logout(request: Request) -> None:
 def permission_for_request(method: str, path: str) -> str:
     if method.upper() in {"GET", "HEAD", "OPTIONS"}:
         return "read"
+    if path.startswith("/api/v6/workers"):
+        return "operations"
+    if path.startswith("/api/v6/organizations") and path.endswith("/quota"):
+        return "organization_admin"
     if path.endswith("/activate"):
         return "rule_activate"
     if path.endswith("/approve"):

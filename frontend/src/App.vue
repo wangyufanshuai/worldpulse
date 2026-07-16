@@ -27,7 +27,7 @@
   <main v-else-if="auth.state.ready" class="login-shell" data-testid="login-screen">
     <form class="login-card" @submit.prevent="submitLogin">
       <span class="brand-mark"><Globe2 :size="24" /></span>
-      <div class="section-kicker">WorldPulse V1.6 · 生产化决策平台</div>
+      <div class="section-kicker">WorldPulse V1.7 · 生产运维控制平面</div>
       <h1>登录可信决策指挥台</h1>
       <p>本地账户、服务端 Session、CSRF 与角色权限均由后端强制执行。</p>
       <label>用户名<input v-model="credentials.username" autocomplete="username" data-testid="login-username" /></label>

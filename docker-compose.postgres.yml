@@ -25,6 +25,11 @@ services:
   worker:
     environment:
       WORLDPULSE_DATABASE_URL: postgresql://worldpulse:${WORLDPULSE_POSTGRES_PASSWORD:-worldpulse-dev}@postgres:5432/worldpulse
+    depends_on:
+      api:
+        condition: service_started
+      postgres:
+        condition: service_healthy
 
   ingestion-worker:
     build: .
@@ -36,6 +41,8 @@ services:
       WORLDPULSE_AUTH_MODE: ${WORLDPULSE_AUTH_MODE:-disabled}
     depends_on:
       api:
+        condition: service_started
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 

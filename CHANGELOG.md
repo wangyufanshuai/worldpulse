@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0-rc1 - 2026-07-16
+
+- Added a persisted worker registry for lifecycle and ingestion processes with leases, heartbeat freshness, current-job visibility, completion counters, graceful signal handling, and administrator-triggered draining.
+- Added `/api/ready` and v6 platform readiness contracts that distinguish process liveness from database/schema, active Rule Pack, queue, and optional worker-capacity readiness.
+- Added organization quotas for projects, active lifecycle runs, rolling 24-hour ingestion jobs, and evidence snapshots; enforcement lives in service creation paths and preserves idempotent retries.
+- Added append-only organization quota change events and v6 organization operations APIs without changing v1-v5 contracts or deterministic result semantics.
+- Added the Chinese War Room Operations Center for readiness, worker state, safe drain controls, organization usage, and administrator-only quota editing.
+- Expanded gates to 174 backend tests plus 3 standard PostgreSQL skips, 50 Vitest tests, and 10 Playwright flows, with 3 additional live PostgreSQL gates.
+
 ## 1.6.0-rc1 - 2026-07-16
 
 - Promoted PostgreSQL from a translation-only readiness target to a live-tested runtime with canonical migrations, deterministic worker completion, legacy workspace/Replay Pack projection, and row-lock concurrency gates.

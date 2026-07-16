@@ -111,6 +111,12 @@ def create_project(payload: ResearchProjectCreate, organization_id: str = "org_d
         updated_at=now,
     )
     with connect() as conn:
+        from app.db.postgres import is_postgres_url
+        from app.services.operations import enforce_quota
+
+        if not is_postgres_url():
+            conn.execute("BEGIN IMMEDIATE")
+        enforce_quota(organization_id, "project", connection=conn)
         conn.execute(
             """
             INSERT INTO research_projects

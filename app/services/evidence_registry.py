@@ -93,7 +93,13 @@ def get_source(source_id: str, *, organization_id: str | None = None) -> Evidenc
     return _source(row)
 
 
-def create_snapshot(payload: EvidenceSnapshotCreate, actor: UserIdentity, *, organization_id: str | None = None) -> EvidenceSnapshot:
+def create_snapshot(
+    payload: EvidenceSnapshotCreate,
+    actor: UserIdentity,
+    *,
+    organization_id: str | None = None,
+    quota_reserved: bool = False,
+) -> EvidenceSnapshot:
     init_db()
     get_source(payload.source_id, organization_id=organization_id)
     observed_at = _normalize_time(payload.observed_at)
@@ -111,19 +117,36 @@ def create_snapshot(payload: EvidenceSnapshotCreate, actor: UserIdentity, *, org
     )
     snapshot_id = f"evs_{uuid4().hex[:20]}"
     captured_at = _now()
+    existing_snapshot = None
     try:
         with connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO evidence_snapshots
-                (snapshot_id, source_id, project_id, external_ref, title, category, content_json,
-                 content_text, observed_at, cutoff_at, captured_at, content_hash, created_by_user_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (snapshot_id, payload.source_id, payload.project_id, payload.external_ref, payload.title,
-                 payload.category, canonical, payload.content_text, observed_at, cutoff_at, captured_at,
-                 content_hash, actor.user_id),
-            )
+            if organization_id:
+                from app.db.postgres import is_postgres_url
+                from app.services.operations import enforce_quota, lock_organization_quota
+
+                if not is_postgres_url():
+                    conn.execute("BEGIN IMMEDIATE")
+                lock_organization_quota(organization_id, conn)
+            existing = conn.execute(
+                "SELECT * FROM evidence_snapshots WHERE source_id = ? AND external_ref = ? AND content_hash = ?",
+                (payload.source_id, payload.external_ref, content_hash),
+            ).fetchone()
+            if existing:
+                existing_snapshot = _snapshot(existing)
+            else:
+                if organization_id and not quota_reserved:
+                    enforce_quota(organization_id, "evidence_snapshot", connection=conn)
+                conn.execute(
+                    """
+                    INSERT INTO evidence_snapshots
+                    (snapshot_id, source_id, project_id, external_ref, title, category, content_json,
+                     content_text, observed_at, cutoff_at, captured_at, content_hash, created_by_user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (snapshot_id, payload.source_id, payload.project_id, payload.external_ref, payload.title,
+                     payload.category, canonical, payload.content_text, observed_at, cutoff_at, captured_at,
+                     content_hash, actor.user_id),
+                )
     except Exception as exc:
         if "UNIQUE" in str(exc).upper():
             with connect() as conn:
@@ -137,6 +160,10 @@ def create_snapshot(payload: EvidenceSnapshotCreate, actor: UserIdentity, *, org
                     scope_resource(organization_id, "evidence_snapshot", snapshot.snapshot_id)
                 return snapshot
         raise
+    if existing_snapshot is not None:
+        if organization_id:
+            scope_resource(organization_id, "evidence_snapshot", existing_snapshot.snapshot_id)
+        return existing_snapshot
     if organization_id:
         scope_resource(organization_id, "evidence_snapshot", snapshot_id)
     return get_snapshot(snapshot_id, organization_id=organization_id)
