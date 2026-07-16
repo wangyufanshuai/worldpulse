@@ -185,6 +185,10 @@ def permission_for_request(method: str, path: str) -> str:
         if "/notifications" in path or "/notification-subscriptions" in path:
             return "notification_write"
         return "monitoring_write"
+    if path.startswith("/api/v10/"):
+        if method.upper() in {"GET", "HEAD", "OPTIONS"}:
+            return "read"
+        return "run"
     if path.startswith("/api/v8/") and path.endswith("/review"):
         return "review"
     if path.endswith("/activate"):

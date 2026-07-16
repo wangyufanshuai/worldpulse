@@ -173,4 +173,5 @@ class TrustSummary(BaseModel):
     rule_pack_history: list[RulePackManifest] = []
     report_allowed: bool
     evidence_registry: dict = {}
+    mode_eligibility: dict = {}
     generated_at: str

@@ -66,6 +66,8 @@ class PlatformReadiness(BaseModel):
     queued_document_jobs: int = 0
     queued_monitoring_polls: int = 0
     queued_webhook_deliveries: int = 0
+    queued_evaluations: int = 0
+    running_evaluations: int = 0
     continuous_intelligence_enabled: bool = False
     blob_storage_ok: bool = True
     checked_at: str

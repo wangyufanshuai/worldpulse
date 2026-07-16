@@ -367,6 +367,8 @@ def platform_readiness() -> PlatformReadiness:
                   (SELECT COUNT(*) FROM document_extraction_jobs WHERE status = 'queued') AS queued_documents,
                   (SELECT COUNT(*) FROM monitoring_poll_jobs WHERE status = 'queued') AS queued_monitoring,
                   (SELECT COUNT(*) FROM webhook_deliveries WHERE status IN ('queued','retrying')) AS queued_webhooks
+                  ,(SELECT COUNT(*) FROM evaluation_batches WHERE status = 'queued') AS queued_evaluations
+                  ,(SELECT COUNT(*) FROM evaluation_batches WHERE status IN ('running','pausing','cancelling')) AS running_evaluations
                 """
             ).fetchone()
         schema_ok = True
@@ -375,7 +377,7 @@ def platform_readiness() -> PlatformReadiness:
             reasons.append("no_active_rule_pack")
     except Exception as exc:
         reasons.append(f"database:{type(exc).__name__}")
-        counts = {"queued_runs": 0, "queued_ingestion": 0, "queued_documents": 0, "queued_monitoring": 0, "queued_webhooks": 0}
+        counts = {"queued_runs": 0, "queued_ingestion": 0, "queued_documents": 0, "queued_monitoring": 0, "queued_webhooks": 0, "queued_evaluations": 0, "running_evaluations": 0}
     blob_ok = True
     if os.getenv("WORLDPULSE_DOCUMENTS_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}:
         try:
@@ -410,6 +412,8 @@ def platform_readiness() -> PlatformReadiness:
         queued_document_jobs=int(counts["queued_documents"] or 0),
         queued_monitoring_polls=int(counts["queued_monitoring"] or 0),
         queued_webhook_deliveries=int(counts["queued_webhooks"] or 0),
+        queued_evaluations=int(counts["queued_evaluations"] or 0),
+        running_evaluations=int(counts["running_evaluations"] or 0),
         continuous_intelligence_enabled=os.getenv("WORLDPULSE_CONTINUOUS_INTELLIGENCE", "0").strip().lower() in {"1", "true", "yes", "on"},
         blob_storage_ok=blob_ok,
         checked_at=_now(),

@@ -781,6 +781,10 @@ class RunJobStatus(BaseModel):
     scenario_evidence_pack_hash: str | None = None
     rule_pack_id: str | None = None
     rule_pack_hash: str | None = None
+    evaluation_batch_id: str | None = None
+    evaluation_member_id: str | None = None
+    runtime_profile: dict = Field(default_factory=dict)
+    runtime_profile_hash: str | None = None
 
 
 class RunControlResponse(BaseModel):

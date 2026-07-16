@@ -37,9 +37,10 @@ def run_negotiation(
     seed: int = 42,
     should_stop=None,
     repository: NegotiationRepository | None = None,
+    runtime_profile: dict | None = None,
 ) -> tuple[WarRoomRun, dict]:
     repo = repository or NegotiationRepository()
-    runtime = _runtime_config()
+    runtime = _runtime_config(runtime_profile)
     live_provider = _configured_provider(runtime)
     pack = repo.save_agent_pack(build_agent_pack(baseline, seed))
     session = repo.create_session(run_id, pack, stable_hash(baseline.model_dump(mode="json")))
@@ -326,12 +327,12 @@ def _estimate_tokens(envelope: NegotiationEnvelope) -> int:
     return max(32, len(str(envelope.model_dump(mode="json"))) // 4)
 
 
-def _runtime_config() -> dict:
+def _runtime_config(overrides: dict | None = None) -> dict:
     provider = str(os.getenv("AGENT_PROVIDER", "mock")).strip().lower()
     if provider not in {"mock", "deepseek", "siliconflow"}:
         provider = "mock"
     fallback = str(os.getenv("AGENT_FALLBACK_MODE", "mock")).strip().lower()
-    return {
+    values = {
         "provider": provider,
         "model": str(os.getenv("AGENT_MODEL", "mock-negotiation-v1" if provider == "mock" else "configured-provider-default"))[:120],
         "fallback_mode": fallback if fallback in {"mock", "skip"} else "mock",
@@ -344,6 +345,9 @@ def _runtime_config() -> dict:
         "max_input_chars": 16000,
         "concurrency": 2,
     }
+    if overrides:
+        values.update({key: value for key, value in overrides.items() if value is not None})
+    return values
 
 
 def _configured_provider(runtime: dict):

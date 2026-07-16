@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.0-rc1 - 2026-07-16
+
+- Added the cross-mode engineering evaluation center comparing deterministic, hybrid and negotiation through the real v2 lifecycle.
+- Added immutable 12-case suite manifests, runtime profiles, 84-member Mock standard batches, append-only evaluation events and fail-closed safety metrics.
+- Added v10 evaluation APIs and the Chinese evaluation console; Live providers remain observation-only and cannot satisfy release gates.
+
 ## 1.10.0-rc1 - 2026-07-16
 
 - Added opt-in RSS, Atom and JSON Feed monitoring with SSRF protection, checked redirects, response limits, ETag/Last-Modified handling and deterministic entry revisions.

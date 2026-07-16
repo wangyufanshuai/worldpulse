@@ -27,6 +27,7 @@ def project_trust_summary(project_id: str) -> TrustSummary:
     metrics = calibration.metrics if calibration else {}
     report_allowed = bool(calibration and calibration.gate_status == "passed" and all(metrics.get("gates", {}).values()))
     evidence_summary = project_evidence_summary(project_id)
+    mode_eligibility = _mode_eligibility()
     return TrustSummary(
         project_id=project_id,
         rule_pack=pack,
@@ -54,8 +55,21 @@ def project_trust_summary(project_id: str) -> TrustSummary:
             "cutoff_safe": evidence_summary.cutoff_safe,
             "latest_pack_hash": evidence_summary.latest_pack.manifest_hash if evidence_summary.latest_pack else None,
         },
+        mode_eligibility=mode_eligibility,
         generated_at=datetime.now().isoformat(timespec="milliseconds"),
     )
+
+
+def _mode_eligibility() -> dict:
+    """Expose evaluation-backed eligibility without changing deterministic report semantics."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT status, safety_status, rule_pack_hash, suite_hash, runtime_profile_hash FROM evaluation_batches WHERE source_type = 'standard' AND provider_mode = 'mock' ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+    if row is None:
+        return {"deterministic": True, "hybrid": False, "negotiation": False, "reason": "no_passing_mock_evaluation"}
+    passed = row["status"] == "completed" and row["safety_status"] == "passed"
+    return {"deterministic": True, "hybrid": passed, "negotiation": passed, "evaluation_status": row["status"], "safety_status": row["safety_status"], "rule_pack_hash": row["rule_pack_hash"], "suite_hash": row["suite_hash"], "runtime_profile_hash": row["runtime_profile_hash"]}
 
 
 def _ensure_report_coverage_review(project_id: str) -> None:

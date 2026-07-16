@@ -20,24 +20,30 @@ from .provider import AgentProvider, ConfiguredLLMAgentProvider
 from .registry import role_for_actor_type
 
 
-def runtime_config_from_env(seed: int | None = None) -> AgentRuntimeConfig:
+def runtime_config_from_env(seed: int | None = None, overrides: dict | None = None) -> AgentRuntimeConfig:
     provider = str(os.getenv("AGENT_PROVIDER", "mock")).lower()
     if provider not in {"mock", "siliconflow", "deepseek"}:
         provider = "mock"
     default_model = "mock-deterministic-v1" if provider == "mock" else "configured-provider-default"
     model = str(os.getenv("AGENT_MODEL", default_model)).strip()[:120] or default_model
+    values = {
+        "provider": provider,
+        "model": model,
+        "max_turns": _env_int("AGENT_MAX_TURNS", 1, 1, 5),
+        "max_agents": _env_int("AGENT_MAX_AGENTS", 4, 1, 8),
+        "timeout_seconds": _env_float("AGENT_TIMEOUT_SECONDS", 30, 0.05, 120),
+        "max_calls": _env_int("AGENT_MAX_CALLS", 8, 1, 40),
+        "token_budget": _env_int("AGENT_TOKEN_BUDGET", 12000, 100, 200000),
+        "max_input_chars": _env_int("AGENT_MAX_INPUT_CHARS", 16000, 1000, 50000),
+        "max_output_chars": _env_int("AGENT_MAX_OUTPUT_CHARS", 6000, 500, 20000),
+        "fallback_mode": _fallback_mode(),
+        "seed": int(seed) if seed is not None else _env_int("AGENT_SEED", 42, -2147483648, 2147483647),
+    }
+    if overrides:
+        allowed = set(values)
+        values.update({key: value for key, value in overrides.items() if key in allowed and value is not None})
     return AgentRuntimeConfig(
-        provider=provider,
-        model=model,
-        max_turns=_env_int("AGENT_MAX_TURNS", 1, 1, 5),
-        max_agents=_env_int("AGENT_MAX_AGENTS", 4, 1, 8),
-        timeout_seconds=_env_float("AGENT_TIMEOUT_SECONDS", 30, 0.05, 120),
-        max_calls=_env_int("AGENT_MAX_CALLS", 8, 1, 40),
-        token_budget=_env_int("AGENT_TOKEN_BUDGET", 12000, 100, 200000),
-        max_input_chars=_env_int("AGENT_MAX_INPUT_CHARS", 16000, 1000, 50000),
-        max_output_chars=_env_int("AGENT_MAX_OUTPUT_CHARS", 6000, 500, 20000),
-        fallback_mode=_fallback_mode(),
-        seed=int(seed) if seed is not None else _env_int("AGENT_SEED", 42, -2147483648, 2147483647),
+        **values,
     )
 
 

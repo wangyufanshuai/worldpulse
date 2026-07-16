@@ -191,7 +191,7 @@ def process_job(run_id: str) -> RunJobStatus:
                 runtime = run_agent_runtime(
                     result,
                     run_id=run_id,
-                    config=runtime_config_from_env(job.seed),
+                    config=runtime_config_from_env(job.seed, job.runtime_profile),
                     should_stop=lambda: repository.get_job(run_id).status in {"pausing", "paused", "cancelling", "cancelled"},
                 )
                 proposals = runtime.proposals
@@ -239,6 +239,7 @@ def process_job(run_id: str) -> RunJobStatus:
                     result,
                     run_id=run_id,
                     seed=job.seed or 42,
+                    runtime_profile=job.runtime_profile,
                     should_stop=lambda: repository.get_job(run_id).status in {"pausing", "paused", "cancelling", "cancelled"},
                 )
                 interrupted = _apply_boundary_control(run_id)

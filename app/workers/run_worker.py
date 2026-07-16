@@ -8,6 +8,7 @@ from uuid import uuid4
 from app.services.run_lifecycle import process_one_queued_job
 from app.services.run_lifecycle import repository
 from app.services import operations
+from app.services.evaluation import EvaluationService
 
 
 def main() -> int:
@@ -16,6 +17,7 @@ def main() -> int:
     parser.add_argument("--idle-sleep", type=float, default=1.0, help="Seconds to sleep when no queued job is available.")
     args = parser.parse_args()
     worker_id = f"worker_{uuid4().hex[:12]}"
+    evaluation_service = EvaluationService()
     stop_requested = False
 
     def request_stop(_signum=None, _frame=None):
@@ -35,7 +37,9 @@ def main() -> int:
                 return 0
             operations.heartbeat_worker(worker_id, status="ready")
             repository.recover_stale_jobs(recovered_by=worker_id)
+            evaluation_service.reconcile(worker_id=worker_id)
             job = process_one_queued_job(worker_id=worker_id)
+            evaluation_service.reconcile(worker_id=worker_id)
             if stop_requested and not operations.worker_should_drain(worker_id):
                 operations.request_worker_drain(worker_id)
             if operations.worker_should_drain(worker_id):

@@ -1847,6 +1847,593 @@
         "title": "DocumentUploadResult",
         "type": "object"
       },
+      "EvaluationBatch": {
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "completed_members": {
+            "default": 0,
+            "title": "Completed Members",
+            "type": "integer"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "evidence_pack_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Pack Hash"
+          },
+          "failed_members": {
+            "default": 0,
+            "title": "Failed Members",
+            "type": "integer"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "title": "Metrics",
+            "type": "object"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "parent_batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Batch Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "provider_mode": {
+            "title": "Provider Mode",
+            "type": "string"
+          },
+          "quality_status": {
+            "default": "pending",
+            "title": "Quality Status",
+            "type": "string"
+          },
+          "report_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Hash"
+          },
+          "rule_pack_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Pack Hash"
+          },
+          "rule_pack_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Pack Id"
+          },
+          "runtime_profile": {
+            "additionalProperties": true,
+            "title": "Runtime Profile",
+            "type": "object"
+          },
+          "runtime_profile_hash": {
+            "title": "Runtime Profile Hash",
+            "type": "string"
+          },
+          "safety_status": {
+            "default": "pending",
+            "title": "Safety Status",
+            "type": "string"
+          },
+          "scenario_draft_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Draft Hash"
+          },
+          "scenario_draft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Draft Id"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "pausing",
+              "paused",
+              "cancelling",
+              "cancelled",
+              "failed",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "suite_hash": {
+            "title": "Suite Hash",
+            "type": "string"
+          },
+          "suite_id": {
+            "title": "Suite Id",
+            "type": "string"
+          },
+          "total_members": {
+            "default": 0,
+            "title": "Total Members",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "organization_id",
+          "suite_id",
+          "suite_hash",
+          "runtime_profile_hash",
+          "provider_mode",
+          "source_type",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EvaluationBatch",
+        "type": "object"
+      },
+      "EvaluationBatchCreateRequest": {
+        "properties": {
+          "case_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 12,
+            "title": "Case Ids",
+            "type": "array"
+          },
+          "provider": {
+            "default": "mock",
+            "enum": [
+              "mock",
+              "deepseek",
+              "siliconflow"
+            ],
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "title": "EvaluationBatchCreateRequest",
+        "type": "object"
+      },
+      "EvaluationMember": {
+        "properties": {
+          "artifact_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Artifact Refs",
+            "type": "array"
+          },
+          "baseline_result_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Result Hash"
+          },
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "engine_mode": {
+            "enum": [
+              "deterministic",
+              "hybrid",
+              "negotiation"
+            ],
+            "title": "Engine Mode",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "member_id": {
+            "title": "Member Id",
+            "type": "string"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "title": "Metrics",
+            "type": "object"
+          },
+          "result_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Hash"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "member_id",
+          "batch_id",
+          "case_id",
+          "engine_mode",
+          "seed",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EvaluationMember",
+        "type": "object"
+      },
+      "EvaluationMetric": {
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "metric_hash": {
+            "title": "Metric Hash",
+            "type": "string"
+          },
+          "metric_id": {
+            "title": "Metric Id",
+            "type": "string"
+          },
+          "metric_key": {
+            "title": "Metric Key",
+            "type": "string"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "metric_id",
+          "batch_id",
+          "scope",
+          "metric_key",
+          "value",
+          "metric_hash",
+          "created_at"
+        ],
+        "title": "EvaluationMetric",
+        "type": "object"
+      },
+      "EvaluationModeScorecard": {
+        "properties": {
+          "completed_count": {
+            "default": 0,
+            "title": "Completed Count",
+            "type": "integer"
+          },
+          "member_count": {
+            "default": 0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "title": "Metrics",
+            "type": "object"
+          },
+          "mode": {
+            "enum": [
+              "deterministic",
+              "hybrid",
+              "negotiation"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "EvaluationModeScorecard",
+        "type": "object"
+      },
+      "EvaluationReport": {
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/EvaluationBatch"
+          },
+          "mode_eligibility": {
+            "$ref": "#/components/schemas/ModeEligibility"
+          },
+          "report_hash": {
+            "title": "Report Hash",
+            "type": "string"
+          },
+          "safety_gate": {
+            "$ref": "#/components/schemas/EvaluationSafetyGate"
+          },
+          "scorecards": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationModeScorecard"
+            },
+            "title": "Scorecards",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch",
+          "safety_gate",
+          "report_hash"
+        ],
+        "title": "EvaluationReport",
+        "type": "object"
+      },
+      "EvaluationSafetyGate": {
+        "properties": {
+          "checks": {
+            "additionalProperties": true,
+            "title": "Checks",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "passed",
+              "failed",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "EvaluationSafetyGate",
+        "type": "object"
+      },
+      "EvaluationSuiteManifest": {
+        "properties": {
+          "case_count": {
+            "default": 0,
+            "title": "Case Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "suite_id": {
+            "title": "Suite Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suite_id",
+          "schema_version",
+          "version",
+          "status",
+          "manifest_hash",
+          "created_at"
+        ],
+        "title": "EvaluationSuiteManifest",
+        "type": "object"
+      },
       "EventDigest": {
         "properties": {
           "generated_at": {
@@ -4003,6 +4590,32 @@
         "title": "MarketImpact",
         "type": "object"
       },
+      "ModeEligibility": {
+        "properties": {
+          "deterministic": {
+            "default": true,
+            "title": "Deterministic",
+            "type": "boolean"
+          },
+          "hybrid": {
+            "default": false,
+            "title": "Hybrid",
+            "type": "boolean"
+          },
+          "negotiation": {
+            "default": false,
+            "title": "Negotiation",
+            "type": "boolean"
+          },
+          "reasons": {
+            "additionalProperties": true,
+            "title": "Reasons",
+            "type": "object"
+          }
+        },
+        "title": "ModeEligibility",
+        "type": "object"
+      },
       "MonitoringPollEvent": {
         "properties": {
           "created_at": {
@@ -5583,6 +6196,11 @@
             "title": "Queued Document Jobs",
             "type": "integer"
           },
+          "queued_evaluations": {
+            "default": 0,
+            "title": "Queued Evaluations",
+            "type": "integer"
+          },
           "queued_ingestion_jobs": {
             "title": "Queued Ingestion Jobs",
             "type": "integer"
@@ -5611,6 +6229,11 @@
           "rule_pack_ok": {
             "title": "Rule Pack Ok",
             "type": "boolean"
+          },
+          "running_evaluations": {
+            "default": 0,
+            "title": "Running Evaluations",
+            "type": "integer"
           },
           "schema_ok": {
             "title": "Schema Ok",
@@ -7300,6 +7923,28 @@
             ],
             "title": "Error Message"
           },
+          "evaluation_batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Batch Id"
+          },
+          "evaluation_member_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Member Id"
+          },
           "job_kind": {
             "default": "war_room",
             "title": "Job Kind",
@@ -7399,6 +8044,22 @@
           "run_id": {
             "title": "Run Id",
             "type": "string"
+          },
+          "runtime_profile": {
+            "additionalProperties": true,
+            "title": "Runtime Profile",
+            "type": "object"
+          },
+          "runtime_profile_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Profile Hash"
           },
           "scenario": {
             "additionalProperties": true,
@@ -9244,6 +9905,12 @@
             "title": "Golden Gate",
             "type": "object"
           },
+          "mode_eligibility": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Mode Eligibility",
+            "type": "object"
+          },
           "pending_review_count": {
             "title": "Pending Review Count",
             "type": "integer"
@@ -10548,7 +11215,7 @@
   "info": {
     "description": "全球多源综合风险指数与世界局势情景模拟器",
     "title": "WorldPulse",
-    "version": "1.10.0-rc1"
+    "version": "1.11.0-rc1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -12463,6 +13130,659 @@
           }
         },
         "summary": "Species Profile"
+      }
+    },
+    "/api/v10/evaluation/suites": {
+      "get": {
+        "operationId": "suites_api_v10_evaluation_suites_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationSuiteManifest"
+                  },
+                  "title": "Response Suites Api V10 Evaluation Suites Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Suites"
+      }
+    },
+    "/api/v10/evaluations/{batch_id}": {
+      "get": {
+        "operationId": "detail_api_v10_evaluations__batch_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Detail"
+      }
+    },
+    "/api/v10/evaluations/{batch_id}/cancel": {
+      "post": {
+        "operationId": "cancel_api_v10_evaluations__batch_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel"
+      }
+    },
+    "/api/v10/evaluations/{batch_id}/events": {
+      "get": {
+        "operationId": "events_api_v10_evaluations__batch_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After Seq",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Events Api V10 Evaluations  Batch Id  Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Events"
+      }
+    },
+    "/api/v10/evaluations/{batch_id}/events/stream": {
+      "get": {
+        "operationId": "event_stream_api_v10_evaluations__batch_id__events_stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After Seq",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Event Stream"
+      }
+    },
+    "/api/v10/evaluations/{batch_id}/members": {
+      "get": {
+        "operationId": "members_api_v10_evaluations__batch_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationMember"
+                  },
+                  "title": "Response Members Api V10 Evaluations  Batch Id  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Members"
+      }
+    },
+    "/api/v10/evaluations/{batch_id}/metrics": {
+      "get": {
+        "operationId": "metrics_api_v10_evaluations__batch_id__metrics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationMetric"
+                  },
+                  "title": "Response Metrics Api V10 Evaluations  Batch Id  Metrics Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Metrics"
+      }
+    },
+    "/api/v10/evaluations/{batch_id}/pause": {
+      "post": {
+        "operationId": "pause_api_v10_evaluations__batch_id__pause_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause"
+      }
+    },
+    "/api/v10/evaluations/{batch_id}/report": {
+      "get": {
+        "operationId": "report_api_v10_evaluations__batch_id__report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Report"
+      }
+    },
+    "/api/v10/evaluations/{batch_id}/resume": {
+      "post": {
+        "operationId": "resume_api_v10_evaluations__batch_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resume"
+      }
+    },
+    "/api/v10/evaluations/{batch_id}/retry": {
+      "post": {
+        "operationId": "retry_api_v10_evaluations__batch_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry"
+      }
+    },
+    "/api/v10/organizations/{organization_id}/evaluations": {
+      "get": {
+        "operationId": "batches_api_v10_organizations__organization_id__evaluations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationBatch"
+                  },
+                  "title": "Response Batches Api V10 Organizations  Organization Id  Evaluations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Batches"
+      }
+    },
+    "/api/v10/organizations/{organization_id}/evaluations/observation": {
+      "post": {
+        "operationId": "observation_api_v10_organizations__organization_id__evaluations_observation_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationBatchCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Observation"
+      }
+    },
+    "/api/v10/organizations/{organization_id}/evaluations/standard": {
+      "post": {
+        "operationId": "standard_api_v10_organizations__organization_id__evaluations_standard_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationBatchCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Standard"
+      }
+    },
+    "/api/v10/organizations/{organization_id}/projects/{project_id}/scenario-drafts/{draft_id}/evaluations": {
+      "post": {
+        "operationId": "project_experiment_api_v10_organizations__organization_id__projects__project_id__scenario_drafts__draft_id__evaluations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationBatchCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Project Experiment"
       }
     },
     "/api/v2/lifecycle/health": {

@@ -36,6 +36,9 @@ def create_job(
     *,
     idempotency_key: str | None = None,
     pinned_rule_pack_id: str | None = None,
+    evaluation_batch_id: str | None = None,
+    evaluation_member_id: str | None = None,
+    runtime_profile: dict | None = None,
 ) -> RunJobStatus:
     init_db()
     scenario = _scenario_payload(request.scenario, request.seed)
@@ -51,6 +54,9 @@ def create_job(
             "parent_run_id": request.parent_run_id,
             "max_attempts": request.max_attempts,
             "rule_pack_hash": rule_pack.manifest_hash,
+            "evaluation_batch_id": evaluation_batch_id,
+            "evaluation_member_id": evaluation_member_id,
+            "runtime_profile": runtime_profile or {},
         }
     )
     run_id = f"job_{uuid4().hex[:12]}"
@@ -80,8 +86,9 @@ def create_job(
             INSERT INTO run_jobs
             (run_id, project_id, engine_mode, status, current_phase, progress, seed, parent_run_id,
              scenario_json, created_at, updated_at, max_attempts, request_hash, idempotency_key,
-             job_kind, rule_pack_id, rule_pack_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'war_room', ?, ?)
+             job_kind, rule_pack_id, rule_pack_hash, evaluation_batch_id, evaluation_member_id,
+             runtime_profile_json, runtime_profile_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'war_room', ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -100,6 +107,10 @@ def create_job(
                 normalized_key,
                 rule_pack.rule_pack_id,
                 rule_pack.manifest_hash,
+                evaluation_batch_id,
+                evaluation_member_id,
+                dumps(runtime_profile or {}),
+                stable_hash(runtime_profile or {}) if runtime_profile else None,
                 ),
             )
     if existing_run_id is not None:
@@ -889,6 +900,10 @@ def _job_from_row(row) -> RunJobStatus:
         scenario_evidence_pack_hash=row["scenario_evidence_pack_hash"] if "scenario_evidence_pack_hash" in row.keys() else None,
         rule_pack_id=row["rule_pack_id"] if "rule_pack_id" in row.keys() else None,
         rule_pack_hash=row["rule_pack_hash"] if "rule_pack_hash" in row.keys() else None,
+        evaluation_batch_id=row["evaluation_batch_id"] if "evaluation_batch_id" in row.keys() else None,
+        evaluation_member_id=row["evaluation_member_id"] if "evaluation_member_id" in row.keys() else None,
+        runtime_profile=loads(row["runtime_profile_json"], {}) if "runtime_profile_json" in row.keys() else {},
+        runtime_profile_hash=row["runtime_profile_hash"] if "runtime_profile_hash" in row.keys() else None,
     )
 
 

@@ -66,6 +66,10 @@ def main() -> int:
     monitoring.add_argument("action", choices=("verify", "poll-due"))
     notifications = sub.add_parser("notifications", help="Manage notification deliveries")
     notifications.add_argument("action", choices=("retry-failed",))
+    evaluation = sub.add_parser("evaluation", help="Manage cross-mode evaluation suites and batches")
+    evaluation.add_argument("action", choices=("seed", "verify", "run-standard", "status"))
+    evaluation.add_argument("--provider", choices=("mock", "deepseek", "siliconflow"), default="mock")
+    evaluation.add_argument("--wait", action="store_true")
     args = parser.parse_args()
     if args.command in {"migrate", "status", "verify"}:
         action = args.action if args.command == "migrate" else args.command
@@ -108,6 +112,33 @@ def main() -> int:
         changed = ContinuousIntelligenceService().retry_failed_deliveries()
         print(json.dumps({"status": "ok", "retried": changed}, ensure_ascii=False, indent=2))
         return 0
+    if args.command == "evaluation":
+        from app.services.evaluation import EvaluationService
+        from app.core.evaluation_models import EvaluationBatchCreateRequest
+        from app.services.auth import ensure_system_user
+        service = EvaluationService()
+        if args.action == "seed":
+            result = service.ensure_suite().model_dump(mode="json")
+        elif args.action == "verify":
+            suite = service.ensure_suite(); cases = service.list_cases(suite.suite_id)
+            result = {"status": "ok" if len(cases) == 12 else "failed", "suite_hash": suite.manifest_hash, "case_count": len(cases)}
+        elif args.action == "status":
+            result = {"status": "ok", "batches": [item.model_dump(mode="json") for item in service.list_batches("org_default")]}
+        else:
+            batch = service.create_standard_batch("org_default", ensure_system_user(), EvaluationBatchCreateRequest(provider=args.provider))
+            if args.wait:
+                from app.services.run_lifecycle import process_one_queued_job
+                for _ in range(batch.total_members * 10):
+                    service.reconcile(worker_id="evaluation-cli")
+                    job = process_one_queued_job(worker_id="evaluation-cli")
+                    service.reconcile(worker_id="evaluation-cli")
+                    current = service.get_batch(batch.batch_id)
+                    if current.status in {"completed", "failed", "cancelled"}: break
+                    if job is None and not service.list_members(batch.batch_id): break
+                batch = service.get_batch(batch.batch_id)
+            result = batch.model_dump(mode="json")
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result.get("status") not in {"failed"} else 1
     return 2
 
 

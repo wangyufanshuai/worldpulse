@@ -143,6 +143,18 @@
             :error="negotiation.error.value"
           />
 
+          <WarRoomEvaluationModule
+            v-else-if="activeSection === 'evaluation'"
+            :suite="evaluation.suites.value[0]"
+            :latest="evaluation.latest.value"
+            :report="evaluation.report.value"
+            :members="evaluation.members.value"
+            :loading="evaluation.loading.value"
+            :error="evaluation.error.value"
+            @create-standard="createEvaluationStandard"
+            @inspect="inspectEvaluation"
+          />
+
           <WarRoomGraphModule
             v-else-if="activeSection === 'graph'"
             :active-graph-edge="activeGraphEdge"
@@ -612,6 +624,7 @@ import WarRoomIngestionCenter from '../../components/war-room/WarRoomIngestionCe
 import WarRoomIntelligenceModule from '../../components/war-room/WarRoomIntelligenceModule.vue'
 import WarRoomOperationsCenter from '../../components/war-room/WarRoomOperationsCenter.vue'
 import WarRoomNegotiationModule from '../../components/war-room/WarRoomNegotiationModule.vue'
+import WarRoomEvaluationModule from '../../components/war-room/WarRoomEvaluationModule.vue'
 import WarRoomScenarioCompiler from '../../components/war-room/WarRoomScenarioCompiler.vue'
 import WarRoomTopNav from '../../components/war-room/WarRoomTopNav.vue'
 import { useRunLifecycle } from '../../composables/useRunLifecycle'
@@ -628,6 +641,7 @@ import { useContinuousIntelligence } from '../../composables/useContinuousIntell
 import { useOperationsCenter } from '../../composables/useOperationsCenter'
 import { useNegotiation } from '../../composables/useNegotiation'
 import { useScenarioCompiler } from '../../composables/useScenarioCompiler'
+import { useEvaluationCenter } from '../../composables/useEvaluationCenter'
 import { decisionLabels, eventFilterOptions, graphTypeOptions, localizedText, prompts } from './warRoomWorkspaceConfig'
 
 const props = defineProps({ projectId: String, section: String })
@@ -641,6 +655,7 @@ const ingestionGovernance = useIngestionGovernance(() => props.projectId)
 const continuousIntelligence = useContinuousIntelligence(() => props.projectId)
 const operationsCenter = useOperationsCenter()
 const scenarioCompiler = useScenarioCompiler(() => props.projectId)
+const evaluation = useEvaluationCenter()
 const detail = ref(null)
 const workspaceState = ref(null)
 const graphEl = ref(null)
@@ -681,7 +696,7 @@ const shortRunId = (runId) => {
   return text ? text.replace(/^run_/, '#').slice(0, 13) : ''
 }
 
-const sectionKeys = ['overview', 'compiler', 'sandbox', 'analysis', 'negotiation', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence', 'ingestion', 'intelligence', 'operations']
+const sectionKeys = ['overview', 'compiler', 'sandbox', 'analysis', 'negotiation', 'evaluation', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence', 'ingestion', 'intelligence', 'operations']
 const sectionMeta = {
   compiler: { key: 'compiler', label: '场景编译', title: '证据驱动场景编译与材料导入', desc: '安全导入材料、核验带原文定位的候选、冻结 Evidence Pack 并经异人审批创建运行。', icon: ScanText },
   negotiation: { key: 'negotiation', label: '外交博弈', title: '受控多轮外交博弈与舆论扩散', desc: '观察 12 Agent、6 Tick 的结构化提案、反提案、承诺账本与确定性数值投影。', icon: UsersRound },
@@ -698,8 +713,9 @@ const sectionMeta = {
   intelligence: { key: 'intelligence', label: '持续情报', title: '持续情报监测与告警闭环', desc: '从公开 RSS、Atom 和 JSON Feed 生成受治理材料与待核验场景候选。', icon: Cable },
   operations: { key: 'operations', label: '运维中心', title: '平台就绪度、Worker 与组织配额', desc: '监控执行节点心跳、安全排空、任务积压和组织资源容量。', icon: ServerCog }
 }
-const topSections = [sectionMeta.overview, sectionMeta.compiler, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.negotiation, sectionMeta.graph, sectionMeta.data]
-const railSections = [sectionMeta.overview, sectionMeta.compiler, sectionMeta.sandbox, sectionMeta.negotiation, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.ingestion, sectionMeta.intelligence, sectionMeta.evidence, sectionMeta.trust, sectionMeta.operations, sectionMeta.replay, sectionMeta.settings]
+sectionMeta.evaluation = { key: 'evaluation', label: '跨模式评估', title: '跨模式基准评估与决策质量', desc: '比较 deterministic、hybrid 与 negotiation 的安全门禁、稳定性和执行成本。', icon: ShieldCheck }
+const topSections = [sectionMeta.overview, sectionMeta.compiler, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.negotiation, sectionMeta.evaluation, sectionMeta.graph, sectionMeta.data]
+const railSections = [sectionMeta.overview, sectionMeta.compiler, sectionMeta.sandbox, sectionMeta.negotiation, sectionMeta.evaluation, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.ingestion, sectionMeta.intelligence, sectionMeta.evidence, sectionMeta.trust, sectionMeta.operations, sectionMeta.replay, sectionMeta.settings]
 const isWarRoom = computed(() => detail.value?.project?.mode === 'war_room')
 const activeSection = computed(() => {
   const raw = String(route.params.section || props.section || 'overview')
@@ -1355,6 +1371,7 @@ async function load(runId = selectedRunId.value) {
   await loadScenarioCompiler()
   await loadOperationsCenter()
   if (activeSection.value === 'negotiation') await negotiation.load()
+  await loadEvaluationCenter()
   await nextTick()
   renderGraph()
 }
@@ -1367,6 +1384,18 @@ async function loadTrustSummary() {
   catch (error) { trustError.value = error?.response?.data?.detail || error.message }
   finally { trustLoading.value = false }
 }
+
+async function loadEvaluationCenter() {
+  if (!isWarRoom.value) return
+  await evaluation.load(ingestionGovernance.organization.value?.organization_id || 'org_default')
+  if (evaluation.latest.value) await evaluation.inspect(evaluation.latest.value.batch_id)
+}
+async function createEvaluationStandard() {
+  const batch = await evaluation.createStandard(ingestionGovernance.organization.value?.organization_id || 'org_default')
+  showToast(`已创建评估批次 ${batch.batch_id}`)
+  await evaluation.inspect(batch.batch_id)
+}
+async function inspectEvaluation(batchId) { await evaluation.inspect(batchId) }
 
 async function loadEvidenceSummary() {
   if (!isWarRoom.value) return
@@ -1860,6 +1889,7 @@ watch(activeSection, section => {
   if (!sectionKeys.includes(section)) router.replace(sectionPath('overview'))
   if (section === 'graph') nextTick(renderSectionGraph)
   if (section === 'negotiation') negotiation.load()
+  if (section === 'evaluation') loadEvaluationCenter()
   if (section === 'compiler') scenarioCompiler.load({ quiet: true })
 })
 watch(() => activeLifecycleRun.value?.updated_at, () => {

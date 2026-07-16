@@ -410,6 +410,16 @@ export async function listNotifications(params = {}) {
   const { data } = await api.get('/v9/notifications', { params })
   return data
 }
+
+export async function listEvaluationSuites() { const { data } = await api.get('/v10/evaluation/suites'); return data }
+export async function listEvaluationBatches(organizationId) { const { data } = await api.get(`/v10/organizations/${organizationId}/evaluations`); return data }
+export async function createStandardEvaluation(organizationId, payload = {}) { const { data } = await api.post(`/v10/organizations/${organizationId}/evaluations/standard`, payload); return data }
+export async function createObservationEvaluation(organizationId, payload = {}) { const { data } = await api.post(`/v10/organizations/${organizationId}/evaluations/observation`, payload); return data }
+export async function getEvaluation(batchId) { const { data } = await api.get(`/v10/evaluations/${batchId}`); return data }
+export async function getEvaluationMembers(batchId) { const { data } = await api.get(`/v10/evaluations/${batchId}/members`); return data }
+export async function getEvaluationMetrics(batchId) { const { data } = await api.get(`/v10/evaluations/${batchId}/metrics`); return data }
+export async function getEvaluationReport(batchId) { const { data } = await api.get(`/v10/evaluations/${batchId}/report`); return data }
+export async function controlEvaluation(batchId, action) { const { data } = await api.post(`/v10/evaluations/${batchId}/${action}`); return data }
 export async function markNotificationRead(notificationId) {
   const { data } = await api.post(`/v9/notifications/${notificationId}/read`)
   return data

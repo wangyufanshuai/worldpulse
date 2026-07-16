@@ -28,6 +28,9 @@ TABLE_ORDER = (
     "chat_messages",
     "rule_packs",
     "rule_pack_reviews",
+    "evaluation_suites",
+    "evaluation_cases",
+    "evaluation_batches",
     "run_jobs",
     "source_documents",
     "document_extraction_jobs",
@@ -82,6 +85,10 @@ TABLE_ORDER = (
     "organization_notification_counters",
     "in_app_notifications",
     "webhook_deliveries",
+    "evaluation_members",
+    "evaluation_metrics",
+    "evaluation_event_counters",
+    "evaluation_events",
 )
 
 

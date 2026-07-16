@@ -3627,6 +3627,19 @@ body:has(.war-room-page) .studio-header {
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
 }
 
+.evaluation-center { display: grid; gap: 18px; }
+.evaluation-toolbar { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; padding:22px; border:1px solid rgba(92,225,230,.18); background:rgba(8,18,28,.72); border-radius:16px; }
+.evaluation-toolbar h3 { margin:6px 0; font-size:24px; }
+.evaluation-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.evaluation-grid article { padding:16px; border:1px solid rgba(255,255,255,.08); border-radius:12px; background:rgba(12,23,35,.8); display:grid; gap:8px; }
+.evaluation-grid span,.evaluation-grid small { color:var(--muted); font-size:12px; }
+.evaluation-grid strong { font-size:22px; color:#e7fbff; }
+.evaluation-grid strong.passed { color:#6ee7b7; }.evaluation-grid strong.blocked { color:#fca5a5; }
+.evaluation-members { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.evaluation-member { text-align:left; border:1px solid rgba(255,255,255,.08); background:#0a1622; color:#d8eef2; border-radius:10px; padding:11px; display:grid; gap:5px; cursor:pointer; }
+.evaluation-member.running { border-color:#5ce1e6; }.evaluation-member.completed { border-color:#55c59a; }.evaluation-member.failed { border-color:#e87979; }
+.evaluation-member span,.evaluation-member small { color:var(--muted); font-size:11px; }.evaluation-member b { font-size:13px; }
+
 .war-room-section-board .section-title {
   align-items: flex-start;
 }
