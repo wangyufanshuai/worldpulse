@@ -80,7 +80,7 @@ def decide_review(review_id: str, decision: ReviewDecisionType, comment: str, ac
 def review_decisions(review_id: str) -> list[ReviewDecision]:
     get_review(review_id)
     with connect() as conn:
-        rows = conn.execute("SELECT * FROM review_decisions WHERE review_id = ? ORDER BY created_at, rowid", (review_id,)).fetchall()
+        rows = conn.execute("SELECT * FROM review_decisions WHERE review_id = ? ORDER BY created_at, decision_id", (review_id,)).fetchall()
     return [ReviewDecision(**dict(row)) for row in rows]
 
 

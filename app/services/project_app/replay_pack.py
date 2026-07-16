@@ -32,7 +32,7 @@ def _replay_pack_lifecycle_artifacts(target: ResearchRun) -> dict:
             SELECT artifact_type, schema_version, content_json, sha256
             FROM run_artifacts
             WHERE run_id = ?
-            ORDER BY created_at ASC, rowid ASC
+            ORDER BY created_at ASC, artifact_id ASC
             """,
             (lifecycle_job_id,),
         ).fetchall()

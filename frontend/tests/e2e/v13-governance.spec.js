@@ -113,3 +113,36 @@ test('Evidence Center syncs a run and exposes immutable provenance', async ({ pa
   await page.getByTestId('evidence-search-input').press('Enter')
   await expect(page.getByTestId('evidence-search-results')).toBeVisible()
 })
+
+test('Ingestion Center closes connector, cutoff gate, snapshot and event audit', async ({ page }) => {
+  const csrf = await login(page.request)
+  const suffix = Date.now()
+  const project = await createWarRoom(page.request, csrf, `ingestion-${suffix}`)
+
+  await page.goto(`projects/${project.project_id}/war-room/ingestion`)
+  await expect(page.getByTestId('war-room-ingestion-center')).toBeVisible()
+  await expect(page.getByText('ORGANIZATION DATA PLANE')).toBeVisible()
+
+  const connectorForm = page.getByTestId('connector-form')
+  await connectorForm.getByLabel('连接器名称').fill(`E2E 能源数据 ${suffix}`)
+  await connectorForm.getByLabel('来源定位符').fill(`manual://e2e-energy-${suffix}`)
+  await connectorForm.getByLabel('发布方').fill('WorldPulse E2E Fixture')
+  await connectorForm.getByLabel('许可/授权').fill('internal-test-license')
+  await page.getByTestId('connector-create').click()
+  await expect(page.locator('.connector-list strong').filter({ hasText: `E2E 能源数据 ${suffix}` })).toBeVisible()
+
+  const recordForm = page.getByTestId('ingestion-record-form')
+  await recordForm.getByLabel('连接器').selectOption({ label: `E2E 能源数据 ${suffix}` })
+  await recordForm.getByLabel('外部引用').fill(`ENERGY-E2E-${suffix}`)
+  await recordForm.getByLabel('标题').fill('能源供应压力冻结快照')
+  await recordForm.getByLabel('JSON 内容').fill('{"pressure":0.72,"direction":"up"}')
+  await recordForm.getByLabel('检索文本').fill('能源供应压力上行，测试冻结快照。')
+  await page.getByTestId('ingestion-submit').click()
+
+  const completedJob = page.locator('[data-testid^="ingestion-job-"]').filter({ hasText: 'completed' }).first()
+  await expect(completedJob).toBeVisible()
+  await completedJob.getByRole('button', { name: '事件' }).click()
+  await expect(page.getByTestId('ingestion-events')).toBeVisible()
+  await expect(page.getByTestId('ingestion-events')).toContainText('#1')
+  await expect(page.getByTestId('ingestion-events')).toContainText(/快照|snapshot|完成/)
+})

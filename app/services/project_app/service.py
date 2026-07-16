@@ -92,7 +92,7 @@ from app.services.project_app.repository import (
 )
 
 
-def create_project(payload: ResearchProjectCreate) -> ResearchProject:
+def create_project(payload: ResearchProjectCreate, organization_id: str = "org_default") -> ResearchProject:
     init_db()
     now = _now()
     project_mode = "war_room" if str(payload.mode).lower() == "war_room" else "research"
@@ -132,11 +132,19 @@ def create_project(payload: ResearchProjectCreate) -> ResearchProject:
                 project.updated_at,
             ),
         )
+        conn.execute(
+            """
+            INSERT INTO organization_resources(organization_id, resource_type, resource_id, created_at)
+            VALUES (?, 'project', ?, ?)
+            ON CONFLICT(organization_id, resource_type, resource_id) DO NOTHING
+            """,
+            (organization_id, project.project_id, now),
+        )
     return project
 
 
-def list_projects(limit: int = 50) -> list[ResearchProject]:
-    return query_projects(limit)
+def list_projects(limit: int = 50, organization_id: str | None = None) -> list[ResearchProject]:
+    return query_projects(limit, organization_id=organization_id)
 
 
 def get_project_detail(project_id: str, run_id: str | None = None) -> ProjectDetail:

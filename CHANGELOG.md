@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0-rc1 - 2026-07-16
+
+- Added organization membership and backend-enforced project/lifecycle resource scopes while preserving existing v1-v4 response contracts.
+- Added v5 organization project, membership, immutable ingestion policy, versioned manual connector, ingestion job, event, retry, and summary APIs.
+- Added fail-closed ingestion validation for license metadata, secret-like connector configuration, payload size, category allowlists, duplicate references, and future-data leakage.
+- Connected accepted ingestion records to immutable V1.4 evidence sources/snapshots with connector, policy, record, manifest, and parent-retry hashes.
+- Added an independent ingestion worker plus bounded API execution, idempotency, cancellation-before-write, retry lineage, and monotonic audit events.
+- Added PostgreSQL connection/query adapters, canonical migration translation, schema verification/export, and a zero-blocker portability gate; SQLite remains the default backend.
+- Added the Chinese War Room Ingestion Center and expanded release gates to 166 backend tests, 44 Vitest tests, and 9 Playwright flows.
+- V1.5 supports `manual_json` only; scheduled network connectors, distributed workers, OIDC, and hard multi-tenant deployment are intentionally deferred.
+
 ## 1.4.0-rc1 - 2026-07-16
 
 - Added an immutable Evidence Registry for sources, frozen snapshots, provenance claims, citation links, and hash-addressed evidence packs.

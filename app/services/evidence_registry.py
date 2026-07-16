@@ -313,7 +313,7 @@ def sync_project_evidence(project_id: str, actor: UserIdentity, *, run_id: str |
     _require_project(project_id)
     with connect() as conn:
         run = conn.execute(
-            "SELECT * FROM research_runs WHERE project_id = ? " + ("AND run_id = ? " if run_id else "") + "ORDER BY completed_at DESC, rowid DESC LIMIT 1",
+            "SELECT * FROM research_runs WHERE project_id = ? " + ("AND run_id = ? " if run_id else "") + "ORDER BY completed_at DESC, run_id DESC LIMIT 1",
             (project_id, run_id) if run_id else (project_id,),
         ).fetchone()
     if run is None:

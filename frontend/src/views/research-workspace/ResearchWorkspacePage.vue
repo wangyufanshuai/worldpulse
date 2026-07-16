@@ -193,6 +193,23 @@
             @search="searchProjectEvidence"
           />
 
+          <WarRoomIngestionCenter
+            v-else-if="activeSection === 'ingestion'"
+            :organization="ingestionGovernance.organization.value"
+            :members="ingestionGovernance.members.value"
+            :summary="ingestionGovernance.summary.value"
+            :events="ingestionGovernance.selectedEvents.value"
+            :loading="ingestionGovernance.loading.value"
+            :error="ingestionGovernance.error.value"
+            :can-write="auth.permissions.value.canWrite"
+            @refresh="loadIngestionGovernance"
+            @create-connector="createGovernedConnector"
+            @ingest="submitGovernedIngestion"
+            @events="inspectIngestionEvents"
+            @cancel="cancelIngestion"
+            @retry="retryIngestion"
+          />
+
         </section>
       </section>
 
@@ -445,6 +462,7 @@ import {
   Activity,
   BarChart3,
   BookOpen,
+  Cable,
   ChevronDown,
   ChevronsLeft,
   Copy,
@@ -485,6 +503,7 @@ import WarRoomSandboxModule from '../../components/war-room/WarRoomSandboxModule
 import WarRoomSettingsModule from '../../components/war-room/WarRoomSettingsModule.vue'
 import WarRoomTrustCenter from '../../components/war-room/WarRoomTrustCenter.vue'
 import WarRoomEvidenceCenter from '../../components/war-room/WarRoomEvidenceCenter.vue'
+import WarRoomIngestionCenter from '../../components/war-room/WarRoomIngestionCenter.vue'
 import WarRoomTopNav from '../../components/war-room/WarRoomTopNav.vue'
 import { useRunLifecycle } from '../../composables/useRunLifecycle'
 import { useRunLifecycleConsole } from '../../composables/useRunLifecycleConsole'
@@ -495,6 +514,7 @@ import { useWarRoomReplayControls } from '../../composables/useWarRoomReplayCont
 import { useWarRoomScenarioDraft } from '../../composables/useWarRoomScenarioDraft'
 import { useAuthSession } from '../../composables/useAuthSession'
 import { useEvidenceRegistry } from '../../composables/useEvidenceRegistry'
+import { useIngestionGovernance } from '../../composables/useIngestionGovernance'
 import { decisionLabels, eventFilterOptions, graphTypeOptions, localizedText, prompts } from './warRoomWorkspaceConfig'
 
 const props = defineProps({ projectId: String, section: String })
@@ -504,6 +524,7 @@ const warRoomData = useWarRoomData(() => props.projectId)
 const runLifecycle = useRunLifecycle(() => props.projectId)
 const auth = useAuthSession()
 const evidenceRegistry = useEvidenceRegistry(() => props.projectId)
+const ingestionGovernance = useIngestionGovernance(() => props.projectId)
 const detail = ref(null)
 const workspaceState = ref(null)
 const graphEl = ref(null)
@@ -543,7 +564,7 @@ const shortRunId = (runId) => {
   return text ? text.replace(/^run_/, '#').slice(0, 13) : ''
 }
 
-const sectionKeys = ['overview', 'sandbox', 'analysis', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence']
+const sectionKeys = ['overview', 'sandbox', 'analysis', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence', 'ingestion']
 const sectionMeta = {
   overview: { key: 'overview', label: '战情总览', title: '全球态势总览', desc: '地图、KPI、Agent 和时间线的指挥台总览。', icon: ShieldAlert },
   sandbox: { key: 'sandbox', label: '推演沙盘', title: '场景构建与推演参数', desc: '集中管理目标国家、供应链、政策动作和高级假设。', icon: MapPinned },
@@ -553,10 +574,11 @@ const sectionMeta = {
   settings: { key: 'settings', label: '系统设置', title: '显示设置与待上线能力', desc: '管理显示层、策略边界和未上线控件说明。', icon: Settings },
   replay: { key: 'replay', label: '复盘包', title: 'Replay Pack 导出', desc: '生成 Markdown 与 JSON 审计清单。', icon: PackageCheck },
   trust: { key: 'trust', label: '可信度中心', title: '规则、校准与人工复核', desc: '检查 Rule Pack、晋升门槛、证据覆盖与不可绕过的一致性准入。', icon: ShieldCheck },
-  evidence: { key: 'evidence', label: '证据中心', title: '证据注册表与时间截点治理', desc: '统一检索冻结快照、报告声明、引用链和证据包完整性。', icon: FileSearch }
+  evidence: { key: 'evidence', label: '证据中心', title: '证据注册表与时间截点治理', desc: '统一检索冻结快照、报告声明、引用链和证据包完整性。', icon: FileSearch },
+  ingestion: { key: 'ingestion', label: '接入治理', title: '组织、连接器与受控采集', desc: '管理许可元数据、不可变策略、截点校验和采集任务审计。', icon: Cable }
 }
 const topSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.graph, sectionMeta.data]
-const railSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.evidence, sectionMeta.trust, sectionMeta.replay, sectionMeta.settings]
+const railSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.ingestion, sectionMeta.evidence, sectionMeta.trust, sectionMeta.replay, sectionMeta.settings]
 const isWarRoom = computed(() => detail.value?.project?.mode === 'war_room')
 const activeSection = computed(() => {
   const raw = String(route.params.section || props.section || 'overview')
@@ -1201,6 +1223,7 @@ async function load(runId = selectedRunId.value) {
   await loadRunDiff()
   await loadTrustSummary()
   await loadEvidenceSummary()
+  await loadIngestionGovernance()
   await nextTick()
   renderGraph()
 }
@@ -1237,6 +1260,43 @@ async function freezeEvidencePack() {
 
 async function searchProjectEvidence(query, cutoffAt) {
   try { await evidenceRegistry.search(query, cutoffAt || null) }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function loadIngestionGovernance() {
+  if (!isWarRoom.value) return
+  try { await ingestionGovernance.load() }
+  catch { /* section renders the organization-scoped error */ }
+}
+
+async function createGovernedConnector(payload) {
+  try {
+    const connector = await ingestionGovernance.createConnector(payload)
+    showToast(`受控连接器已创建：${connector.name}`)
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function submitGovernedIngestion({ record, connectorId }) {
+  try {
+    const job = await ingestionGovernance.ingest(record, connectorId)
+    showToast(`采集完成：${job.accepted_count} 条记录，Manifest ${job.manifest_hash.slice(0, 12)}`)
+    await loadEvidenceSummary()
+    await loadTrustSummary()
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function inspectIngestionEvents(jobId) {
+  try { await ingestionGovernance.inspectEvents(jobId) }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function cancelIngestion(jobId) {
+  try { await ingestionGovernance.cancel(jobId); showToast('采集任务已在写入快照前取消') }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function retryIngestion(jobId) {
+  try { const job = await ingestionGovernance.retry(jobId); showToast(`重试完成：${job.job_id}`); await loadEvidenceSummary() }
   catch (error) { showToast(error?.response?.data?.detail || error.message) }
 }
 

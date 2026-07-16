@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from app.api.routes import router
 from app.api.v3 import router as v3_router
 from app.api.v4 import router as v4_router
+from app.api.v5 import router as v5_router
 from app.services.auth import (
     auth_mode,
     authenticate_request,
@@ -22,6 +23,7 @@ from app.services.auth import (
     validate_security_config,
 )
 from app.version import WORLDPULSE_VERSION
+from app.services import organizations
 
 
 class UTF8JSONResponse(JSONResponse):
@@ -62,6 +64,9 @@ async def local_session_guard(request: Request, call_next):
     try:
         identity = authenticate_request(request)
         request.state.user = identity
+        organization = organizations.current_organization(identity, request.headers.get("x-worldpulse-org"))
+        request.state.organization_id = organization.organization_id
+        organizations.enforce_api_resource_scope(organization.organization_id, identity, request.method, path)
         permission = permission_for_request(request.method, path)
         require_permission(identity, permission)
         if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
@@ -70,6 +75,8 @@ async def local_session_guard(request: Request, call_next):
                 enforce_actor_rate_limit("rate.run", identity.user_id, limit=30, window_seconds=60)
             elif permission == "rule_submit":
                 enforce_actor_rate_limit("rate.rule_submit", identity.user_id, limit=10, window_seconds=60)
+            elif permission == "ingestion_write":
+                enforce_actor_rate_limit("rate.ingestion_write", identity.user_id, limit=20, window_seconds=60)
         response = await call_next(request)
         if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
             record_security_event(
@@ -98,6 +105,7 @@ templates = Jinja2Templates(directory="app/templates")
 app.include_router(router, prefix="/api")
 app.include_router(v3_router, prefix="/api/v3")
 app.include_router(v4_router, prefix="/api/v4")
+app.include_router(v5_router, prefix="/api/v5")
 
 
 @app.get("/favicon.ico")

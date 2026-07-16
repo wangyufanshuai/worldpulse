@@ -14,13 +14,24 @@ from app.services.project_app.workspace import build_war_room_workspace_state, i
 from app.services.project_store import connect, init_db
 
 
-def list_projects(limit: int = 50) -> list[ResearchProject]:
+def list_projects(limit: int = 50, organization_id: str | None = None) -> list[ResearchProject]:
     init_db()
     with connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM research_projects ORDER BY updated_at DESC LIMIT ?",
-            (max(1, min(limit, 100)),),
-        ).fetchall()
+        if organization_id:
+            rows = conn.execute(
+                """
+                SELECT p.* FROM research_projects p
+                JOIN organization_resources r ON r.resource_id = p.project_id
+                WHERE r.organization_id = ? AND r.resource_type = 'project'
+                ORDER BY p.updated_at DESC, p.project_id DESC LIMIT ?
+                """,
+                (organization_id, max(1, min(limit, 100))),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM research_projects ORDER BY updated_at DESC, project_id DESC LIMIT ?",
+                (max(1, min(limit, 100)),),
+            ).fetchall()
     return [project_from_row(row) for row in rows]
 
 

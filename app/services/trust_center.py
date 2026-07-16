@@ -61,7 +61,7 @@ def project_trust_summary(project_id: str) -> TrustSummary:
 def _ensure_report_coverage_review(project_id: str) -> None:
     with connect() as conn:
         row = conn.execute(
-            "SELECT report_id, key_findings, citations FROM ai_reports WHERE project_id = ? ORDER BY generated_at DESC, rowid DESC LIMIT 1",
+            "SELECT report_id, key_findings, citations FROM ai_reports WHERE project_id = ? ORDER BY generated_at DESC, report_id DESC LIMIT 1",
             (project_id,),
         ).fetchone()
     if not row:

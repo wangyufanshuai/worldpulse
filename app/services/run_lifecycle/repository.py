@@ -154,7 +154,7 @@ def append_event(
         job = conn.execute("SELECT run_id FROM run_jobs WHERE run_id = ?", (run_id,)).fetchone()
         if job is None:
             raise HTTPException(status_code=404, detail=f"Unknown lifecycle run: {run_id}")
-        conn.execute("INSERT OR IGNORE INTO run_event_counters(run_id, next_seq) VALUES (?, 1)", (run_id,))
+        conn.execute("INSERT INTO run_event_counters(run_id, next_seq) VALUES (?, 1) ON CONFLICT(run_id) DO NOTHING", (run_id,))
         counter = conn.execute(
             "SELECT next_seq FROM run_event_counters WHERE run_id = ?",
             (run_id,),
@@ -527,7 +527,7 @@ def add_artifact(
                 """
                 SELECT step_id FROM run_steps
                 WHERE run_id = ? AND attempt_id = ? AND status = 'running'
-                ORDER BY started_at DESC, rowid DESC LIMIT 1
+                ORDER BY started_at DESC, step_id DESC LIMIT 1
                 """,
                 (run_id, attempt_id),
             ).fetchone()
@@ -537,7 +537,7 @@ def add_artifact(
                 """
                 SELECT artifact_id FROM run_artifacts
                 WHERE run_id = ? AND artifact_type = ?
-                ORDER BY created_at DESC, rowid DESC LIMIT 1
+                ORDER BY created_at DESC, artifact_id DESC LIMIT 1
                 """,
                 (run_id, artifact_type),
             ).fetchone()
@@ -587,7 +587,7 @@ def get_artifacts(run_id: str) -> list[RunArtifactSummary]:
             """
             SELECT artifact_id, run_id, artifact_type, schema_version, content_json, sha256, created_at,
                    attempt_id, step_id, artifact_version, supersedes_artifact_id
-            FROM run_artifacts WHERE run_id = ? ORDER BY created_at ASC, rowid ASC
+            FROM run_artifacts WHERE run_id = ? ORDER BY created_at ASC, artifact_id ASC
             """,
             (run_id,),
         ).fetchall()
@@ -666,7 +666,7 @@ def get_latest_artifact_content(run_id: str, artifact_type: str) -> dict | None:
               AND (a.attempt_id IS NULL OR attempt.status IN ('running', 'completed'))
             ORDER BY COALESCE(attempt.attempt_number, 0) DESC,
                      COALESCE(step.completed_at, step.started_at, a.created_at) DESC,
-                     a.artifact_version DESC, a.created_at DESC, a.rowid DESC
+                     a.artifact_version DESC, a.created_at DESC, a.artifact_id DESC
             LIMIT 1
             """,
             (run_id, artifact_type),

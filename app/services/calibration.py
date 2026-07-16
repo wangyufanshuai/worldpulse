@@ -55,10 +55,11 @@ def ensure_calibration_cases() -> None:
         with connect() as conn:
             conn.execute(
                 """
-                INSERT OR IGNORE INTO calibration_cases
+                INSERT INTO calibration_cases
                 (case_id, version, category, title, cutoff_date, observation_window_days, input_snapshot,
                  labels_json, evidence_json, label_confidence, case_hash, is_active, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(case_id) DO NOTHING
                 """,
                 (
                     record["case_id"], record["version"], record["category"], record["title"],
@@ -263,7 +264,11 @@ def _persist_case_results(run_id: str, outputs: dict[str, dict]) -> None:
     with connect() as conn:
         for case_id, output in outputs.items():
             conn.execute(
-                "INSERT OR REPLACE INTO calibration_results(result_id, calibration_run_id, case_id, metrics_json, passed, result_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                """INSERT INTO calibration_results(result_id, calibration_run_id, case_id, metrics_json, passed, result_hash, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(calibration_run_id, case_id) DO UPDATE SET
+                    metrics_json = excluded.metrics_json, passed = excluded.passed,
+                    result_hash = excluded.result_hash, created_at = excluded.created_at""",
                 (f"cr_{stable_hash({'run': calibration_run_id, 'case': case_id})[:16]}", calibration_run_id, case_id, dumps(output), int(bool(output["result_hash_match"])), stable_hash(output), _now()),
             )
 
@@ -291,9 +296,10 @@ def _ensure_calibration_project() -> str:
     with connect() as conn:
         conn.execute(
             """
-            INSERT OR IGNORE INTO research_projects
+            INSERT INTO research_projects
             (project_id, title, question, region, asset_scope, event_window_days, event_types, mode, scenario_config, status, created_at, updated_at)
             VALUES (?, 'System calibration', 'Rule Pack historical calibration', 'global', 'internal', 30, '[]', 'calibration', '{}', 'ready', ?, ?)
+            ON CONFLICT(project_id) DO NOTHING
             """,
             (project_id, now, now),
         )

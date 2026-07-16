@@ -1,6 +1,6 @@
 # WorldPulse 全球综合风险指数
 
-V1.4.0-rc1 新增不可变、时间截点安全的 Evidence Registry 与 War Room 证据中心。已保存的确定性运行、因果图、报告引用和冻结校准案例可同步为带哈希的快照、声明和 Evidence Pack；该过程不会静默联网、重新调用 LLM，也不会改写风险或供应链数值。详见 [`V1.4 架构`](docs/architecture/v1.4-evidence-registry.md) 与 [`V4 API`](docs/api/v4-evidence-registry.md)。V1/V2/V3 接口保持兼容，新能力位于 `/api/v4`。
+V1.5.0-rc1 将 WorldPulse 推进到组织级运行与受控数据接入：组织成员和项目作用域由后端强制校验，版本化连接器与采集策略在写入 Evidence Registry 前执行许可、大小、类别和时间截点门禁；SQLite 继续可用，同时新增 PostgreSQL 运行时与编号迁移适配。确定性风险、供应链数值、Run Diff、Replay Pack 以及 V1–V4 合同保持不变。详见 [`V1.5 架构`](docs/architecture/v1.5-organization-ingestion.md)、[`V5 API`](docs/api/v5-organization-ingestion.md) 和 [`PostgreSQL 迁移手册`](docs/runbooks/v1.5-postgresql-migration.md)。
 
 WorldPulse 是一个基于 FastAPI 的全球多源风险监测与预测看板。它不是“预测未来一切”的神秘模型，而是一个可扩展的数据工程项目：
 
@@ -58,6 +58,12 @@ uvicorn app.main:app --reload --port 8010
 python -m app.workers.run_worker
 ```
 
+受控数据接入也支持独立 worker：
+
+```powershell
+python -m app.workers.ingestion_worker
+```
+
 前端开发模式：
 
 ```powershell
@@ -83,6 +89,7 @@ python scripts/verify_database.py --database data/worldpulse.db
 python scripts/backup_database.py --source data/worldpulse.db --output data/backups/worldpulse.backup.db
 python scripts/export_openapi.py
 python -m app.manage migrate verify
+python -m app.manage db-readiness --output docs/db/postgresql-v15-schema.sql
 python scripts/verify_release_artifacts.py
 ```
 
@@ -101,6 +108,8 @@ V1.1 可信运行文档：[`lifecycle-step-contract.md`](docs/architecture/lifec
 V2 生命周期 API 参见 [`docs/api/v2-run-lifecycle.md`](docs/api/v2-run-lifecycle.md)，混合引擎边界参见 [`docs/architecture/v1-hybrid-engine.md`](docs/architecture/v1-hybrid-engine.md)。
 
 V3 可信治理接口包含 `/api/v3/auth`、`/api/v3/rule-packs`、`/api/v3/calibration`、`/api/v3/reviews` 与项目 `trust-summary`。架构与运维说明见 [`v1.3-trust-governance.md`](docs/architecture/v1.3-trust-governance.md) 和 [`v1.3-operations.md`](docs/runbooks/v1.3-operations.md)。
+
+V4 Evidence Registry 见 [`v4-evidence-registry.md`](docs/api/v4-evidence-registry.md)。V5 在 `/api/v5/organizations` 下提供组织成员、组织项目、采集策略、连接器、采集任务和审计事件。选择非默认组织时使用 `X-WorldPulse-Org`；服务端仍是权限与资源作用域的唯一权威。
 
 - `GET /api/health`：健康检查
 - `GET /api/version`：应用与 API 合同版本

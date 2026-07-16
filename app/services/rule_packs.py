@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 import hashlib
-import sqlite3
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -32,11 +31,12 @@ def ensure_v12_active_rule_pack() -> RulePackManifest:
             manifest_hash = stable_hash(V12_MANIFEST)
             conn.execute(
                 """
-                INSERT OR IGNORE INTO rule_packs
+                INSERT INTO rule_packs
                 (rule_pack_id, name, version, war_room_rule_version, consistency_rule_version,
                  action_adapter_version, scoring_weights_version, evidence_policy_version,
                  manifest_json, manifest_hash, status, created_at, submitted_at, activated_at)
                 VALUES ('rp_v12_active', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+                ON CONFLICT(rule_pack_id) DO NOTHING
                 """,
                 (
                     V12_MANIFEST["name"], V12_MANIFEST["version"], V12_MANIFEST["war_room_rule_version"],
@@ -58,7 +58,7 @@ def active_rule_pack() -> RulePackManifest:
 def list_rule_packs() -> list[RulePackManifest]:
     ensure_v12_active_rule_pack()
     with connect() as conn:
-        rows = conn.execute("SELECT * FROM rule_packs ORDER BY created_at DESC, rowid DESC").fetchall()
+        rows = conn.execute("SELECT * FROM rule_packs ORDER BY created_at DESC, rule_pack_id DESC").fetchall()
     return [_from_row(row) for row in rows]
 
 
@@ -92,7 +92,7 @@ def create_rule_pack(payload: RulePackCreateRequest, actor: UserIdentity) -> Rul
                     dumps(manifest), stable_hash(manifest), actor.user_id, _now(), payload.supersedes_rule_pack_id,
                 ),
             )
-    except sqlite3.IntegrityError as exc:
+    except Exception as exc:
         raise HTTPException(status_code=409, detail="Rule Pack version or manifest already exists") from exc
     return get_rule_pack(rule_pack_id)
 
@@ -178,7 +178,7 @@ def _calibration_passed(rule_pack_id: str) -> bool:
             (rule_pack_id,),
         ).fetchone()
         artifact = conn.execute(
-            "SELECT content_json, sha256 FROM run_artifacts WHERE run_id = ? AND artifact_type = 'calibration_metrics' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            "SELECT content_json, sha256 FROM run_artifacts WHERE run_id = ? AND artifact_type = 'calibration_metrics' ORDER BY created_at DESC, artifact_id DESC LIMIT 1",
             (row["lifecycle_run_id"],),
         ).fetchone() if row else None
     if not row or row["gate_status"] != "passed" or not artifact:

@@ -106,13 +106,13 @@ def version() -> dict[str, str]:
 
 
 @router.post("/projects", response_model=ResearchProject)
-def research_project_create(request: ResearchProjectCreate) -> ResearchProject:
-    return create_project(request)
+def research_project_create(payload: ResearchProjectCreate, request: Request) -> ResearchProject:
+    return create_project(payload, organization_id=getattr(request.state, "organization_id", "org_default"))
 
 
 @router.get("/projects", response_model=list[ResearchProject])
-def research_project_list(limit: int = 50) -> list[ResearchProject]:
-    return list_projects(limit=limit)
+def research_project_list(request: Request, limit: int = 50) -> list[ResearchProject]:
+    return list_projects(limit=limit, organization_id=getattr(request.state, "organization_id", None))
 
 
 @router.get("/projects/{project_id}", response_model=ProjectDetail)

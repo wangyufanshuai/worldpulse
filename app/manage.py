@@ -6,9 +6,27 @@ from getpass import getpass
 
 from app.db import apply_migrations, migration_status, verify_schema
 from app.services.project_store import DB_PATH
+from app.db.postgres import (
+    apply_postgres_migrations,
+    database_url,
+    export_postgres_schema,
+    is_postgres_url,
+    portability_report,
+    postgres_migration_status,
+    verify_postgres_schema,
+)
 
 
 def _migration_command(action: str) -> int:
+    if is_postgres_url():
+        if action == "apply":
+            applied = apply_postgres_migrations(database_url())
+            print(json.dumps({"status": "ok", "backend": "postgresql", "applied": applied}, ensure_ascii=False))
+        elif action == "status":
+            print(json.dumps(postgres_migration_status(database_url()), ensure_ascii=False, indent=2))
+        elif action == "verify":
+            print(json.dumps(verify_postgres_schema(database_url()), ensure_ascii=False))
+        return 0
     if action == "apply":
         applied = apply_migrations(DB_PATH)
         print(json.dumps({"status": "ok", "applied": [item.version for item in applied]}, ensure_ascii=False))
@@ -35,6 +53,8 @@ def main() -> int:
     create_user_parser.add_argument("--display-name", default="WorldPulse User")
     create_user_parser.add_argument("--role", required=True, choices=("admin", "analyst", "reviewer", "viewer"))
     create_user_parser.add_argument("--password")
+    readiness = sub.add_parser("db-readiness", help="Report PostgreSQL runtime portability blockers")
+    readiness.add_argument("--output", help="Optionally export the translated PostgreSQL schema")
     args = parser.parse_args()
     if args.command in {"migrate", "status", "verify"}:
         action = args.action if args.command == "migrate" else args.command
@@ -49,6 +69,12 @@ def main() -> int:
         user = create_user(args.username, password, args.display_name, role)
         print(json.dumps(user.model_dump(mode="json"), ensure_ascii=False))
         return 0
+    if args.command == "db-readiness":
+        result = portability_report()
+        if args.output:
+            result["schema_output"] = str(export_postgres_schema(args.output))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["status"] == "ready" else 1
     return 2
 
 

@@ -99,7 +99,7 @@ def fail_step(step_id: str, error: Exception | str) -> RunStepRecord:
 def fail_active_step(run_id: str, error: Exception | str) -> RunStepRecord | None:
     with connect() as conn:
         row = conn.execute(
-            "SELECT step_id FROM run_steps WHERE run_id = ? AND status = 'running' ORDER BY started_at DESC, rowid DESC LIMIT 1",
+            "SELECT step_id FROM run_steps WHERE run_id = ? AND status = 'running' ORDER BY started_at DESC, step_id DESC LIMIT 1",
             (run_id,),
         ).fetchone()
     return fail_step(row["step_id"], error) if row else None
@@ -109,7 +109,7 @@ def get_steps(run_id: str) -> list[RunStepRecord]:
     init_db()
     with connect() as conn:
         rows = conn.execute(
-            "SELECT * FROM run_steps WHERE run_id = ? ORDER BY started_at ASC, rowid ASC",
+            "SELECT * FROM run_steps WHERE run_id = ? ORDER BY started_at ASC, step_id ASC",
             (run_id,),
         ).fetchall()
     return [_from_row(row) for row in rows]

@@ -19,6 +19,7 @@
       <RouterLink class="top-icon-action" :to="sectionPath('graph')" aria-label="知识图谱"><BookOpen :size="17" /></RouterLink>
       <RouterLink class="top-icon-action" :to="sectionPath('trust')" aria-label="可信度中心" data-testid="war-room-trust-link"><ShieldCheck :size="17" /></RouterLink>
       <RouterLink class="top-icon-action" :to="sectionPath('evidence')" aria-label="证据中心" data-testid="war-room-evidence-link"><LibraryBig :size="17" /></RouterLink>
+      <RouterLink class="top-icon-action" :to="sectionPath('ingestion')" aria-label="接入治理" data-testid="war-room-ingestion-link"><Cable :size="17" /></RouterLink>
       <RouterLink class="top-icon-action" :to="sectionPath('settings')" aria-label="设置"><Settings :size="17" /></RouterLink>
       <button type="button" class="top-icon-action" @click="$emit('show-upcoming', '通知中心', '告警订阅和运行完成提醒将在后续版本接入。')"><Bell :size="17" /></button>
       <span class="commander-avatar">指挥官</span>
@@ -28,7 +29,7 @@
 </template>
 
 <script setup>
-import { AlertTriangle, Bell, BookOpen, ChevronDown, Globe2, Info, LibraryBig, Search, Settings, ShieldCheck } from 'lucide-vue-next'
+import { AlertTriangle, Bell, BookOpen, Cable, ChevronDown, Globe2, Info, LibraryBig, Search, Settings, ShieldCheck } from 'lucide-vue-next'
 import { WORLDPULSE_VERSION } from '../../version'
 
 defineProps({

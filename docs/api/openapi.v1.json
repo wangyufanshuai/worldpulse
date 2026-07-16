@@ -1142,6 +1142,132 @@
         "title": "CountrySimulationResult",
         "type": "object"
       },
+      "DataConnector": {
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "config_hash": {
+            "title": "Config Hash",
+            "type": "string"
+          },
+          "connector_id": {
+            "title": "Connector Id",
+            "type": "string"
+          },
+          "connector_type": {
+            "title": "Connector Type",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "policy_id": {
+            "title": "Policy Id",
+            "type": "string"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          },
+          "source_locator": {
+            "title": "Source Locator",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connector_id",
+          "organization_id",
+          "policy_id",
+          "name",
+          "connector_type",
+          "source_locator",
+          "config",
+          "config_hash",
+          "status",
+          "created_at"
+        ],
+        "title": "DataConnector",
+        "type": "object"
+      },
+      "DataConnectorCreateRequest": {
+        "properties": {
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "connector_type": {
+            "const": "manual_json",
+            "default": "manual_json",
+            "title": "Connector Type",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "policy_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Id"
+          },
+          "source_locator": {
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Source Locator",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "source_locator"
+        ],
+        "title": "DataConnectorCreateRequest",
+        "type": "object"
+      },
       "DataSourceHealth": {
         "properties": {
           "cache_age_hours": {
@@ -2300,6 +2426,597 @@
         "title": "IndicatorLibraryItem",
         "type": "object"
       },
+      "IngestionEvent": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "seq",
+          "event_type",
+          "title",
+          "detail",
+          "created_at"
+        ],
+        "title": "IngestionEvent",
+        "type": "object"
+      },
+      "IngestionJob": {
+        "properties": {
+          "accepted_count": {
+            "title": "Accepted Count",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "connector_id": {
+            "title": "Connector Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Hash"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "parent_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Job Id"
+          },
+          "policy_id": {
+            "title": "Policy Id",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "record_count": {
+            "title": "Record Count",
+            "type": "integer"
+          },
+          "rejected_count": {
+            "title": "Rejected Count",
+            "type": "integer"
+          },
+          "request_hash": {
+            "title": "Request Hash",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "cancelling",
+              "cancelled",
+              "failed",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "worker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Id"
+          }
+        },
+        "required": [
+          "job_id",
+          "organization_id",
+          "connector_id",
+          "policy_id",
+          "status",
+          "request_hash",
+          "record_count",
+          "accepted_count",
+          "rejected_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "IngestionJob",
+        "type": "object"
+      },
+      "IngestionJobCreateRequest": {
+        "properties": {
+          "connector_id": {
+            "maxLength": 80,
+            "minLength": 3,
+            "title": "Connector Id",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionRecordInput"
+            },
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "connector_id",
+          "records"
+        ],
+        "title": "IngestionJobCreateRequest",
+        "type": "object"
+      },
+      "IngestionPolicy": {
+        "properties": {
+          "allowed_categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Categories",
+            "type": "array"
+          },
+          "allowed_connector_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Connector Types",
+            "type": "array"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "max_bytes": {
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "max_records": {
+            "title": "Max Records",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "policy_id": {
+            "title": "Policy Id",
+            "type": "string"
+          },
+          "require_cutoff": {
+            "title": "Require Cutoff",
+            "type": "boolean"
+          },
+          "require_license_metadata": {
+            "title": "Require License Metadata",
+            "type": "boolean"
+          },
+          "retention_days": {
+            "title": "Retention Days",
+            "type": "integer"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "policy_id",
+          "organization_id",
+          "name",
+          "version",
+          "status",
+          "allowed_connector_types",
+          "allowed_categories",
+          "max_records",
+          "max_bytes",
+          "require_license_metadata",
+          "require_cutoff",
+          "retention_days",
+          "manifest",
+          "manifest_hash",
+          "created_at"
+        ],
+        "title": "IngestionPolicy",
+        "type": "object"
+      },
+      "IngestionPolicyCreateRequest": {
+        "properties": {
+          "allowed_categories": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Allowed Categories",
+            "type": "array"
+          },
+          "allowed_connector_types": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Allowed Connector Types",
+            "type": "array"
+          },
+          "max_bytes": {
+            "default": 1000000,
+            "maximum": 50000000.0,
+            "minimum": 1024.0,
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "max_records": {
+            "default": 100,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Max Records",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "require_cutoff": {
+            "default": true,
+            "title": "Require Cutoff",
+            "type": "boolean"
+          },
+          "require_license_metadata": {
+            "default": true,
+            "title": "Require License Metadata",
+            "type": "boolean"
+          },
+          "retention_days": {
+            "default": 3650,
+            "maximum": 36500.0,
+            "minimum": 1.0,
+            "title": "Retention Days",
+            "type": "integer"
+          },
+          "version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version"
+        ],
+        "title": "IngestionPolicyCreateRequest",
+        "type": "object"
+      },
+      "IngestionRecordInput": {
+        "properties": {
+          "category": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Category",
+            "type": "string"
+          },
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "content_text": {
+            "default": "",
+            "maxLength": 200000,
+            "title": "Content Text",
+            "type": "string"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "external_ref": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "External Ref",
+            "type": "string"
+          },
+          "observed_at": {
+            "title": "Observed At",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "external_ref",
+          "title",
+          "category",
+          "content",
+          "observed_at",
+          "cutoff_at"
+        ],
+        "title": "IngestionRecordInput",
+        "type": "object"
+      },
+      "IngestionSummary": {
+        "properties": {
+          "accepted_records": {
+            "title": "Accepted Records",
+            "type": "integer"
+          },
+          "active_policy_count": {
+            "title": "Active Policy Count",
+            "type": "integer"
+          },
+          "completed_jobs": {
+            "title": "Completed Jobs",
+            "type": "integer"
+          },
+          "connector_count": {
+            "title": "Connector Count",
+            "type": "integer"
+          },
+          "connectors": {
+            "items": {
+              "$ref": "#/components/schemas/DataConnector"
+            },
+            "title": "Connectors",
+            "type": "array"
+          },
+          "failed_jobs": {
+            "title": "Failed Jobs",
+            "type": "integer"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "latest_jobs": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionJob"
+            },
+            "title": "Latest Jobs",
+            "type": "array"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "policies": {
+            "items": {
+              "$ref": "#/components/schemas/IngestionPolicy"
+            },
+            "title": "Policies",
+            "type": "array"
+          },
+          "queued_jobs": {
+            "title": "Queued Jobs",
+            "type": "integer"
+          },
+          "rejected_records": {
+            "title": "Rejected Records",
+            "type": "integer"
+          },
+          "running_jobs": {
+            "title": "Running Jobs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "organization_id",
+          "connector_count",
+          "active_policy_count",
+          "queued_jobs",
+          "running_jobs",
+          "failed_jobs",
+          "completed_jobs",
+          "accepted_records",
+          "rejected_records",
+          "generated_at"
+        ],
+        "title": "IngestionSummary",
+        "type": "object"
+      },
       "LifecycleHealthSummary": {
         "properties": {
           "artifact_integrity_failures": {
@@ -2440,6 +3157,182 @@
           "rationale"
         ],
         "title": "MarketImpact",
+        "type": "object"
+      },
+      "Organization": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "member_role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "owner",
+                  "admin",
+                  "analyst",
+                  "reviewer",
+                  "viewer"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Role"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organization_id",
+          "slug",
+          "name",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Organization",
+        "type": "object"
+      },
+      "OrganizationCreateRequest": {
+        "properties": {
+          "name": {
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ],
+        "title": "OrganizationCreateRequest",
+        "type": "object"
+      },
+      "OrganizationMember": {
+        "properties": {
+          "added_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added By User Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "owner",
+              "admin",
+              "analyst",
+              "reviewer",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organization_id",
+          "user_id",
+          "username",
+          "display_name",
+          "role",
+          "status",
+          "created_at"
+        ],
+        "title": "OrganizationMember",
+        "type": "object"
+      },
+      "OrganizationMemberAddRequest": {
+        "properties": {
+          "role": {
+            "enum": [
+              "owner",
+              "admin",
+              "analyst",
+              "reviewer",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "maxLength": 80,
+            "minLength": 3,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "role"
+        ],
+        "title": "OrganizationMemberAddRequest",
         "type": "object"
       },
       "PolicyShock": {
@@ -6253,7 +7146,7 @@
   "info": {
     "description": "全球多源综合风险指数与世界局势情景模拟器",
     "title": "WorldPulse",
-    "version": "1.4.0-rc1"
+    "version": "1.5.0-rc1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -9825,6 +10718,849 @@
           }
         },
         "summary": "Project Evidence Sync"
+      }
+    },
+    "/api/v5/organizations": {
+      "get": {
+        "operationId": "organization_list_api_v5_organizations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Organization"
+                  },
+                  "title": "Response Organization List Api V5 Organizations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Organization List"
+      },
+      "post": {
+        "operationId": "organization_create_api_v5_organizations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Organization Create"
+      }
+    },
+    "/api/v5/organizations/current": {
+      "get": {
+        "operationId": "organization_current_api_v5_organizations_current_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Organization Current"
+      }
+    },
+    "/api/v5/organizations/{organization_id}/ingestion/connectors": {
+      "get": {
+        "operationId": "ingestion_connector_list_api_v5_organizations__organization_id__ingestion_connectors_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DataConnector"
+                  },
+                  "title": "Response Ingestion Connector List Api V5 Organizations  Organization Id  Ingestion Connectors Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Connector List"
+      },
+      "post": {
+        "operationId": "ingestion_connector_create_api_v5_organizations__organization_id__ingestion_connectors_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataConnectorCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataConnector"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Connector Create"
+      }
+    },
+    "/api/v5/organizations/{organization_id}/ingestion/jobs": {
+      "get": {
+        "operationId": "ingestion_job_list_api_v5_organizations__organization_id__ingestion_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IngestionJob"
+                  },
+                  "title": "Response Ingestion Job List Api V5 Organizations  Organization Id  Ingestion Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Job List"
+      },
+      "post": {
+        "operationId": "ingestion_job_create_api_v5_organizations__organization_id__ingestion_jobs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestionJobCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Job Create"
+      }
+    },
+    "/api/v5/organizations/{organization_id}/ingestion/jobs/{job_id}": {
+      "get": {
+        "operationId": "ingestion_job_detail_api_v5_organizations__organization_id__ingestion_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Job Detail"
+      }
+    },
+    "/api/v5/organizations/{organization_id}/ingestion/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "ingestion_job_cancel_api_v5_organizations__organization_id__ingestion_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Job Cancel"
+      }
+    },
+    "/api/v5/organizations/{organization_id}/ingestion/jobs/{job_id}/events": {
+      "get": {
+        "operationId": "ingestion_job_events_api_v5_organizations__organization_id__ingestion_jobs__job_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "After Seq",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IngestionEvent"
+                  },
+                  "title": "Response Ingestion Job Events Api V5 Organizations  Organization Id  Ingestion Jobs  Job Id  Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Job Events"
+      }
+    },
+    "/api/v5/organizations/{organization_id}/ingestion/jobs/{job_id}/execute": {
+      "post": {
+        "operationId": "ingestion_job_execute_api_v5_organizations__organization_id__ingestion_jobs__job_id__execute_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Job Execute"
+      }
+    },
+    "/api/v5/organizations/{organization_id}/ingestion/jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "ingestion_job_retry_api_v5_organizations__organization_id__ingestion_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Job Retry"
+      }
+    },
+    "/api/v5/organizations/{organization_id}/ingestion/policies": {
+      "get": {
+        "operationId": "ingestion_policy_list_api_v5_organizations__organization_id__ingestion_policies_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IngestionPolicy"
+                  },
+                  "title": "Response Ingestion Policy List Api V5 Organizations  Organization Id  Ingestion Policies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Policy List"
+      },
+      "post": {
+        "operationId": "ingestion_policy_create_api_v5_organizations__organization_id__ingestion_policies_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestionPolicyCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionPolicy"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Policy Create"
+      }
+    },
+    "/api/v5/organizations/{organization_id}/ingestion/summary": {
+      "get": {
+        "operationId": "ingestion_governance_summary_api_v5_organizations__organization_id__ingestion_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingestion Governance Summary"
+      }
+    },
+    "/api/v5/organizations/{organization_id}/members": {
+      "get": {
+        "operationId": "organization_member_list_api_v5_organizations__organization_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizationMember"
+                  },
+                  "title": "Response Organization Member List Api V5 Organizations  Organization Id  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Organization Member List"
+      },
+      "post": {
+        "operationId": "organization_member_add_api_v5_organizations__organization_id__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationMemberAddRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMember"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Organization Member Add"
+      }
+    },
+    "/api/v5/organizations/{organization_id}/projects": {
+      "get": {
+        "operationId": "organization_project_list_api_v5_organizations__organization_id__projects_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ResearchProject"
+                  },
+                  "title": "Response Organization Project List Api V5 Organizations  Organization Id  Projects Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Organization Project List"
+      },
+      "post": {
+        "operationId": "organization_project_create_api_v5_organizations__organization_id__projects_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchProjectCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchProject"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Organization Project Create"
       }
     },
     "/api/version": {

@@ -21,8 +21,8 @@ IDLE_MINUTES = 30
 ABSOLUTE_HOURS = 8
 PASSWORD_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4, hash_len=32, salt_len=16)
 ROLE_PERMISSIONS = {
-    "admin": {"read", "project_write", "run", "calibration", "review", "rule_submit", "rule_approve", "rule_activate", "users"},
-    "analyst": {"read", "project_write", "run", "calibration", "rule_submit"},
+    "admin": {"read", "project_write", "run", "calibration", "review", "rule_submit", "rule_approve", "rule_activate", "users", "organization_admin", "ingestion_write"},
+    "analyst": {"read", "project_write", "run", "calibration", "rule_submit", "ingestion_write"},
     "reviewer": {"read", "review", "rule_approve"},
     "viewer": {"read"},
 }
@@ -70,7 +70,11 @@ def create_user(username: str, password: str, display_name: str, role: UserRole)
         if "UNIQUE" in str(exc).upper():
             raise ValueError("Username already exists") from exc
         raise
-    return UserIdentity(user_id=user_id, username=normalized, display_name=display_name.strip() or normalized, role=role)
+    identity = UserIdentity(user_id=user_id, username=normalized, display_name=display_name.strip() or normalized, role=role)
+    from app.services.organizations import ensure_default_membership
+
+    ensure_default_membership(identity)
+    return identity
 
 
 def ensure_system_user() -> UserIdentity:
@@ -84,7 +88,11 @@ def ensure_system_user() -> UserIdentity:
                 (now, now),
             )
             row = conn.execute("SELECT * FROM users WHERE user_id = 'usr_system'").fetchone()
-    return _identity(row, active_override=True)
+    identity = _identity(row, active_override=True)
+    from app.services.organizations import ensure_default_membership
+
+    ensure_default_membership(identity)
+    return identity
 
 
 def login(username: str, password: str, request: Request) -> tuple[SessionStatus, str, str]:
@@ -92,7 +100,7 @@ def login(username: str, password: str, request: Request) -> tuple[SessionStatus
     ip = _client_ip(request)
     enforce_rate_limit("auth.login.failed", ip, limit=5, window_seconds=300)
     with connect() as conn:
-        row = conn.execute("SELECT * FROM users WHERE username = ? COLLATE NOCASE", (username.strip(),)).fetchone()
+        row = conn.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username.strip(),)).fetchone()
     valid = False
     if row is not None and bool(row["is_active"]):
         try:
@@ -179,6 +187,12 @@ def permission_for_request(method: str, path: str) -> str:
         return "calibration"
     if "/rule-packs" in path:
         return "rule_submit"
+    if path.startswith("/api/v5/organizations"):
+        if "/ingestion" in path:
+            return "ingestion_write"
+        if "/projects" in path:
+            return "project_write"
+        return "organization_admin"
     if "/runs" in path or "/war-room/run" in path:
         return "run"
     return "project_write"
