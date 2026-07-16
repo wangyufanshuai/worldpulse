@@ -29,6 +29,9 @@ def translate_query(sql: str) -> str:
 
 def translate_migration(sql: str) -> str:
     translated = re.sub(r"\s+COLLATE\s+NOCASE\b", "", sql, flags=re.IGNORECASE)
+    # SQLite INTEGER is arbitrary precision, while PostgreSQL INTEGER is 32-bit.
+    # Document storage quotas default to 5 GiB and therefore require BIGINT in PostgreSQL.
+    translated = re.sub(r"\bmax_document_bytes\s+INTEGER\b", "max_document_bytes BIGINT", translated, flags=re.IGNORECASE)
     translated = re.sub(r"\bREAL\b", "DOUBLE PRECISION", translated, flags=re.IGNORECASE)
     translated = re.sub(r"\bBLOB\b", "BYTEA", translated, flags=re.IGNORECASE)
     return translated

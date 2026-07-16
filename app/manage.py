@@ -60,6 +60,8 @@ def main() -> int:
     db_copy.add_argument("--source", default=str(DB_PATH), help="SQLite source path")
     db_copy.add_argument("--target-url", default=database_url(), help="PostgreSQL target URL")
     db_copy.add_argument("--verify-only", action="store_true", help="Only compare source and target")
+    blobs = sub.add_parser("blobs", help="Inspect content-addressed source document blobs")
+    blobs.add_argument("action", choices=("verify",))
     args = parser.parse_args()
     if args.command in {"migrate", "status", "verify"}:
         action = args.action if args.command == "migrate" else args.command
@@ -86,6 +88,11 @@ def main() -> int:
         result = copy_sqlite_to_postgres(args.source, args.target_url, verify_only=args.verify_only)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
+    if args.command == "blobs":
+        from app.services.scenario_compiler import ScenarioCompilerService
+        result = ScenarioCompilerService().verify_blobs()
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["status"] == "ok" else 1
     return 2
 
 

@@ -27,6 +27,8 @@ DEFAULT_QUOTA = {
     "max_active_runs": 10,
     "max_ingestion_jobs_per_day": 500,
     "max_evidence_snapshots": 100_000,
+    "max_source_documents": 500,
+    "max_document_bytes": 5_368_709_120,
 }
 
 
@@ -188,11 +190,13 @@ def update_quota(organization_id: str, payload: OrganizationQuotaUpdate, actor: 
             """
             UPDATE organization_quotas
             SET max_projects = ?, max_active_runs = ?, max_ingestion_jobs_per_day = ?,
-                max_evidence_snapshots = ?, updated_by_user_id = ?, updated_at = ?
+                max_evidence_snapshots = ?, max_source_documents = ?, max_document_bytes = ?,
+                updated_by_user_id = ?, updated_at = ?
             WHERE organization_id = ?
             """,
             (payload.max_projects, payload.max_active_runs, payload.max_ingestion_jobs_per_day,
-             payload.max_evidence_snapshots, actor.user_id, now, organization_id),
+             payload.max_evidence_snapshots, payload.max_source_documents, payload.max_document_bytes,
+             actor.user_id, now, organization_id),
         )
         conn.execute(
             """
@@ -219,8 +223,10 @@ def organization_usage(organization_id: str) -> OrganizationUsage:
                    AND j.status NOT IN ('completed','cancelled','failed')) AS active_runs,
               (SELECT COUNT(*) FROM ingestion_jobs WHERE organization_id = ? AND created_at >= ?) AS ingestion_jobs_today,
               (SELECT COUNT(*) FROM organization_resources WHERE organization_id = ? AND resource_type = 'evidence_snapshot') AS evidence_snapshots
+              ,(SELECT COUNT(*) FROM source_documents WHERE organization_id = ?) AS source_documents
+              ,(SELECT COALESCE(SUM(size_bytes), 0) FROM source_documents WHERE organization_id = ?) AS document_bytes
             """,
-            (organization_id, organization_id, organization_id, cutoff, organization_id),
+            (organization_id, organization_id, organization_id, cutoff, organization_id, organization_id, organization_id),
         ).fetchone()
     return OrganizationUsage(
         organization_id=organization_id,
@@ -228,6 +234,7 @@ def organization_usage(organization_id: str) -> OrganizationUsage:
         active_runs=int(row["active_runs"] or 0),
         ingestion_jobs_today=int(row["ingestion_jobs_today"] or 0),
         evidence_snapshots=int(row["evidence_snapshots"] or 0),
+        source_documents=int(row["source_documents"] or 0), document_bytes=int(row["document_bytes"] or 0),
         generated_at=_now(),
     )
 
@@ -282,6 +289,14 @@ def enforce_quota(organization_id: str, resource: str, *, requested: int = 1, co
                      + COALESCE((SELECT SUM(record_count) FROM ingestion_jobs
                                  WHERE organization_id = ? AND status IN ('queued','running')), 0)""",
                 (organization_id, organization_id), quota.max_evidence_snapshots,
+            ),
+            "source_document": (
+                "SELECT COUNT(*) FROM source_documents WHERE organization_id = ?",
+                (organization_id,), quota.max_source_documents,
+            ),
+            "document_bytes": (
+                "SELECT COALESCE(SUM(size_bytes), 0) FROM source_documents WHERE organization_id = ?",
+                (organization_id,), quota.max_document_bytes,
             ),
         }
         if resource not in queries:
@@ -348,7 +363,8 @@ def platform_readiness() -> PlatformReadiness:
                 """
                 SELECT
                   (SELECT COUNT(*) FROM run_jobs WHERE status = 'queued') AS queued_runs,
-                  (SELECT COUNT(*) FROM ingestion_jobs WHERE status = 'queued') AS queued_ingestion
+                  (SELECT COUNT(*) FROM ingestion_jobs WHERE status = 'queued') AS queued_ingestion,
+                  (SELECT COUNT(*) FROM document_extraction_jobs WHERE status = 'queued') AS queued_documents
                 """
             ).fetchone()
         schema_ok = True
@@ -357,7 +373,18 @@ def platform_readiness() -> PlatformReadiness:
             reasons.append("no_active_rule_pack")
     except Exception as exc:
         reasons.append(f"database:{type(exc).__name__}")
-        counts = {"queued_runs": 0, "queued_ingestion": 0}
+        counts = {"queued_runs": 0, "queued_ingestion": 0, "queued_documents": 0}
+    blob_ok = True
+    if os.getenv("WORLDPULSE_DOCUMENTS_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}:
+        try:
+            from app.services.scenario_compiler.blob_store import upload_root
+            root = upload_root(); root.mkdir(parents=True, exist_ok=True)
+            blob_ok = os.access(root, os.W_OK)
+            if not blob_ok:
+                reasons.append("blob_storage_not_writable")
+        except Exception:
+            blob_ok = False
+            reasons.append("blob_storage_unavailable")
     workers = list_workers() if schema_ok else []
     lifecycle = sum(1 for item in workers if item.worker_kind == "lifecycle" and item.fresh and item.status in {"ready", "busy", "draining"})
     ingestion = sum(1 for item in workers if item.worker_kind == "ingestion" and item.fresh and item.status in {"ready", "busy", "draining"})
@@ -365,7 +392,7 @@ def platform_readiness() -> PlatformReadiness:
     workers_met = lifecycle > 0 and ingestion > 0
     if require_workers and not workers_met:
         reasons.append("required_workers_unavailable")
-    ready = schema_ok and rule_pack_ok and (workers_met or not require_workers)
+    ready = schema_ok and rule_pack_ok and blob_ok and (workers_met or not require_workers)
     status = "ready" if ready and workers_met else "degraded" if ready else "not_ready"
     return PlatformReadiness(
         status=status,
@@ -378,6 +405,7 @@ def platform_readiness() -> PlatformReadiness:
         ingestion_workers_fresh=ingestion,
         queued_runs=int(counts["queued_runs"] or 0),
         queued_ingestion_jobs=int(counts["queued_ingestion"] or 0),
+        queued_document_jobs=int(counts["queued_documents"] or 0), blob_storage_ok=blob_ok,
         checked_at=_now(),
         reasons=reasons,
     )
@@ -412,6 +440,7 @@ def _quota(row) -> OrganizationQuota:
         organization_id=row["organization_id"], max_projects=int(row["max_projects"]),
         max_active_runs=int(row["max_active_runs"]), max_ingestion_jobs_per_day=int(row["max_ingestion_jobs_per_day"]),
         max_evidence_snapshots=int(row["max_evidence_snapshots"]), updated_by_user_id=row["updated_by_user_id"],
+        max_source_documents=int(row["max_source_documents"]), max_document_bytes=int(row["max_document_bytes"]),
         updated_at=row["updated_at"],
     )
 

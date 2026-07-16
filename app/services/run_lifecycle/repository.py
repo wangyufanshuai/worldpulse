@@ -884,6 +884,9 @@ def _job_from_row(row) -> RunJobStatus:
         job_kind=row["job_kind"] if "job_kind" in row.keys() else "war_room",
         agent_pack_id=row["agent_pack_id"] if "agent_pack_id" in row.keys() else None,
         agent_pack_hash=row["agent_pack_hash"] if "agent_pack_hash" in row.keys() else None,
+        scenario_draft_id=row["scenario_draft_id"] if "scenario_draft_id" in row.keys() else None,
+        scenario_draft_hash=row["scenario_draft_hash"] if "scenario_draft_hash" in row.keys() else None,
+        scenario_evidence_pack_hash=row["scenario_evidence_pack_hash"] if "scenario_evidence_pack_hash" in row.keys() else None,
         rule_pack_id=row["rule_pack_id"] if "rule_pack_id" in row.keys() else None,
         rule_pack_hash=row["rule_pack_hash"] if "rule_pack_hash" in row.keys() else None,
     )

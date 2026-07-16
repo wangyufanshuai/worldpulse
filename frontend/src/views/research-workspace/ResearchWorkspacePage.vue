@@ -26,6 +26,13 @@
           <article><span>正式报告</span><strong :class="trustSummary.report_allowed ? 'passed' : 'blocked'">{{ trustSummary.report_allowed ? '允许' : '禁止' }}</strong></article>
         </section>
 
+        <section v-if="activeSection === 'overview'" class="overview-trust-strip" data-testid="overview-compiler-summary">
+          <article><span>版本化材料</span><strong>{{ scenarioCompiler.summary.value.documentCount }}</strong></article>
+          <article><span>待确认候选</span><strong>{{ scenarioCompiler.summary.value.pendingCandidateCount }}</strong></article>
+          <article><span>待审批草稿</span><strong>{{ scenarioCompiler.summary.value.pendingDraftCount }}</strong></article>
+          <article><span>最新批准草稿</span><strong>{{ scenarioCompiler.summary.value.latestApproved ? `v${scenarioCompiler.summary.value.latestApproved.version}` : '--' }}</strong></article>
+        </section>
+
         <WarRoomOverviewConsole
           v-if="activeSection === 'overview'"
           :active-agents="lifecycleAgentStatus"
@@ -226,6 +233,33 @@
             @events="inspectIngestionEvents"
             @cancel="cancelIngestion"
             @retry="retryIngestion"
+          />
+
+          <WarRoomScenarioCompiler
+            v-else-if="activeSection === 'compiler'"
+            :organization="scenarioCompiler.organization.value"
+            :documents="scenarioCompiler.documents.value"
+            :jobs="scenarioCompiler.jobs.value"
+            :candidates="scenarioCompiler.candidates.value"
+            :drafts="scenarioCompiler.drafts.value"
+            :events="scenarioCompiler.selectedEvents.value"
+            :last-run="scenarioCompiler.lastRun.value"
+            :loading="scenarioCompiler.loading.value"
+            :error="scenarioCompiler.error.value"
+            :can-write="auth.permissions.value.canWrite"
+            :can-review="auth.permissions.value.canReview"
+            @refresh="loadScenarioCompiler"
+            @upload="uploadScenarioDocument"
+            @extract="extractScenarioDocument"
+            @events="inspectScenarioExtractionEvents"
+            @cancel="cancelScenarioExtraction"
+            @retry="retryScenarioExtraction"
+            @decision="decideScenarioCandidate"
+            @create-draft="createCompiledScenarioDraft"
+            @submit-draft="submitCompiledScenarioDraft"
+            @review-draft="reviewCompiledScenarioDraft"
+            @clone-draft="cloneCompiledScenarioDraft"
+            @run-draft="runCompiledScenarioDraft"
           />
 
           <WarRoomOperationsCenter
@@ -515,6 +549,7 @@ import {
   Search,
   Send,
   ServerCog,
+  ScanText,
   Settings,
   ShieldAlert,
   ShieldCheck,
@@ -536,6 +571,7 @@ import WarRoomEvidenceCenter from '../../components/war-room/WarRoomEvidenceCent
 import WarRoomIngestionCenter from '../../components/war-room/WarRoomIngestionCenter.vue'
 import WarRoomOperationsCenter from '../../components/war-room/WarRoomOperationsCenter.vue'
 import WarRoomNegotiationModule from '../../components/war-room/WarRoomNegotiationModule.vue'
+import WarRoomScenarioCompiler from '../../components/war-room/WarRoomScenarioCompiler.vue'
 import WarRoomTopNav from '../../components/war-room/WarRoomTopNav.vue'
 import { useRunLifecycle } from '../../composables/useRunLifecycle'
 import { useRunLifecycleConsole } from '../../composables/useRunLifecycleConsole'
@@ -549,6 +585,7 @@ import { useEvidenceRegistry } from '../../composables/useEvidenceRegistry'
 import { useIngestionGovernance } from '../../composables/useIngestionGovernance'
 import { useOperationsCenter } from '../../composables/useOperationsCenter'
 import { useNegotiation } from '../../composables/useNegotiation'
+import { useScenarioCompiler } from '../../composables/useScenarioCompiler'
 import { decisionLabels, eventFilterOptions, graphTypeOptions, localizedText, prompts } from './warRoomWorkspaceConfig'
 
 const props = defineProps({ projectId: String, section: String })
@@ -560,6 +597,7 @@ const auth = useAuthSession()
 const evidenceRegistry = useEvidenceRegistry(() => props.projectId)
 const ingestionGovernance = useIngestionGovernance(() => props.projectId)
 const operationsCenter = useOperationsCenter()
+const scenarioCompiler = useScenarioCompiler(() => props.projectId)
 const detail = ref(null)
 const workspaceState = ref(null)
 const graphEl = ref(null)
@@ -599,8 +637,9 @@ const shortRunId = (runId) => {
   return text ? text.replace(/^run_/, '#').slice(0, 13) : ''
 }
 
-const sectionKeys = ['overview', 'sandbox', 'analysis', 'negotiation', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence', 'ingestion', 'operations']
+const sectionKeys = ['overview', 'compiler', 'sandbox', 'analysis', 'negotiation', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence', 'ingestion', 'operations']
 const sectionMeta = {
+  compiler: { key: 'compiler', label: '场景编译', title: '证据驱动场景编译与材料导入', desc: '安全导入材料、核验带原文定位的候选、冻结 Evidence Pack 并经异人审批创建运行。', icon: ScanText },
   negotiation: { key: 'negotiation', label: '外交博弈', title: '受控多轮外交博弈与舆论扩散', desc: '观察 12 Agent、6 Tick 的结构化提案、反提案、承诺账本与确定性数值投影。', icon: UsersRound },
   overview: { key: 'overview', label: '战情总览', title: '全球态势总览', desc: '地图、KPI、Agent 和时间线的指挥台总览。', icon: ShieldAlert },
   sandbox: { key: 'sandbox', label: '推演沙盘', title: '场景构建与推演参数', desc: '集中管理目标国家、供应链、政策动作和高级假设。', icon: MapPinned },
@@ -614,8 +653,8 @@ const sectionMeta = {
   ingestion: { key: 'ingestion', label: '接入治理', title: '组织、连接器与受控采集', desc: '管理许可元数据、不可变策略、截点校验和采集任务审计。', icon: Cable },
   operations: { key: 'operations', label: '运维中心', title: '平台就绪度、Worker 与组织配额', desc: '监控执行节点心跳、安全排空、任务积压和组织资源容量。', icon: ServerCog }
 }
-const topSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.negotiation, sectionMeta.graph, sectionMeta.data]
-const railSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.negotiation, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.ingestion, sectionMeta.evidence, sectionMeta.trust, sectionMeta.operations, sectionMeta.replay, sectionMeta.settings]
+const topSections = [sectionMeta.overview, sectionMeta.compiler, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.negotiation, sectionMeta.graph, sectionMeta.data]
+const railSections = [sectionMeta.overview, sectionMeta.compiler, sectionMeta.sandbox, sectionMeta.negotiation, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.ingestion, sectionMeta.evidence, sectionMeta.trust, sectionMeta.operations, sectionMeta.replay, sectionMeta.settings]
 const isWarRoom = computed(() => detail.value?.project?.mode === 'war_room')
 const activeSection = computed(() => {
   const raw = String(route.params.section || props.section || 'overview')
@@ -1267,6 +1306,7 @@ async function load(runId = selectedRunId.value) {
   await loadTrustSummary()
   await loadEvidenceSummary()
   await loadIngestionGovernance()
+  await loadScenarioCompiler()
   await loadOperationsCenter()
   if (activeSection.value === 'negotiation') await negotiation.load()
   await nextTick()
@@ -1318,6 +1358,70 @@ async function loadOperationsCenter() {
   if (!isWarRoom.value) return
   try { await operationsCenter.load() }
   catch { /* section renders the platform-scoped error */ }
+}
+
+async function loadScenarioCompiler() {
+  if (!isWarRoom.value) return
+  try { await scenarioCompiler.load() }
+  catch { /* component renders the organization-scoped error */ }
+}
+
+async function uploadScenarioDocument(file, metadata) {
+  try {
+    const result = await scenarioCompiler.upload(file, metadata)
+    showToast(result.deduplicated ? '相同材料已存在，已复用版本化文档' : `材料已安全保存：${result.document.title}`)
+    await loadOperationsCenter()
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function extractScenarioDocument(documentId) {
+  try { const job = await scenarioCompiler.extract(documentId); showToast(`抽取任务已排队：${job.job_id}`) }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function inspectScenarioExtractionEvents(jobId) {
+  try { await scenarioCompiler.events(jobId) }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function cancelScenarioExtraction(jobId) {
+  try { await scenarioCompiler.cancel(jobId); showToast('抽取任务将在安全阶段边界取消') }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function retryScenarioExtraction(jobId) {
+  try { const job = await scenarioCompiler.retry(jobId); showToast(`抽取重试已创建：${job.job_id}`) }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function decideScenarioCandidate(candidateId, payload) {
+  try { await scenarioCompiler.decide(candidateId, payload); showToast(payload.decision === 'accepted' ? '候选已接受并追加审计' : '候选已拒绝并追加审计') }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function createCompiledScenarioDraft(payload) {
+  try { const draft = await scenarioCompiler.createDraft(payload); showToast(`场景草稿已编译：v${draft.version}`) }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function submitCompiledScenarioDraft(draftId) {
+  try { const draft = await scenarioCompiler.submit(draftId); showToast(`Evidence Pack 已冻结：${String(draft.evidence_pack_hash).slice(0, 12)}`); await loadTrustSummary() }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function reviewCompiledScenarioDraft(draftId, payload) {
+  try { await scenarioCompiler.review(draftId, payload); showToast('草稿复核决定已追加写入'); await loadTrustSummary() }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function cloneCompiledScenarioDraft(draftId) {
+  try { const draft = await scenarioCompiler.clone(draftId); showToast(`已克隆为修订草稿 v${draft.version}`) }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+
+async function runCompiledScenarioDraft(draftId, payload) {
+  try { const job = await scenarioCompiler.run(draftId, payload); showToast(`受控运行已排队：${job.run_id}`) }
+  catch (error) { showToast(error?.response?.data?.detail || error.message) }
 }
 
 async function saveOperationsQuota(payload) {
@@ -1663,6 +1767,7 @@ watch(activeSection, section => {
   if (!sectionKeys.includes(section)) router.replace(sectionPath('overview'))
   if (section === 'graph') nextTick(renderSectionGraph)
   if (section === 'negotiation') negotiation.load()
+  if (section === 'compiler') scenarioCompiler.load({ quiet: true })
 })
 watch(() => activeLifecycleRun.value?.updated_at, () => {
   if (activeLifecycleRun.value?.engine_mode === 'negotiation') negotiation.load({ quiet: true })

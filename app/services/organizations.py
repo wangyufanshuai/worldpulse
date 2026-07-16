@@ -164,7 +164,8 @@ def enforce_api_resource_scope(organization_id: str, actor: UserIdentity, method
             project_id = row["project_id"]
     if not project_id:
         return
-    allowed = ORG_WRITE_ROLES if method.upper() in {"POST", "PUT", "PATCH", "DELETE"} else {"owner", "admin", "analyst", "reviewer", "viewer"}
+    is_scenario_review = path.startswith("/api/v8/") and path.endswith("/review")
+    allowed = ({"owner", "admin", "reviewer"} if is_scenario_review else ORG_WRITE_ROLES) if method.upper() in {"POST", "PUT", "PATCH", "DELETE"} else {"owner", "admin", "analyst", "reviewer", "viewer"}
     require_organization_role(organization_id, actor, allowed)
     with connect() as conn:
         scoped = conn.execute(

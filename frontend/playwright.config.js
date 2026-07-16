@@ -10,6 +10,9 @@ process.env.AGENT_PROVIDER = 'mock'
 
 export default defineConfig({
   testDir: './tests/e2e',
+  // All E2E flows share one SQLite file and exercise the single local worker;
+  // serial execution prevents one test's queued job from being claimed by another.
+  workers: 1,
   timeout: 30_000,
   expect: { timeout: 8_000 },
   use: {
@@ -22,7 +25,7 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      command: `python -m app.manage create-admin --username e2e-admin --display-name "E2E Admin" --password "e2e administrator secret" && python -m uvicorn app.main:app --host 127.0.0.1 --port ${apiPort}`,
+      command: `python -m app.manage create-admin --username e2e-admin --display-name "E2E Admin" --password "e2e administrator secret" && python -m app.manage create-user --username e2e-reviewer --display-name "E2E Reviewer" --role reviewer --password "e2e reviewer secure secret" && python -m uvicorn app.main:app --host 127.0.0.1 --port ${apiPort}`,
       cwd: '..',
       env: { WORLDPULSE_DB_PATH: e2eDb, AGENT_PROVIDER: 'mock', WORLDPULSE_AUTH_MODE: 'local', WORLDPULSE_AUTO_MIGRATE: '1' },
       url: `${apiBase}/health`,

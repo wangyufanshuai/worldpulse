@@ -293,6 +293,55 @@
         "title": "AlertItem",
         "type": "object"
       },
+      "Body_document_upload_api_v8_organizations__organization_id__projects__project_id__documents_post": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "license_name": {
+            "title": "License Name",
+            "type": "string"
+          },
+          "license_url": {
+            "default": "",
+            "title": "License Url",
+            "type": "string"
+          },
+          "observed_at": {
+            "title": "Observed At",
+            "type": "string"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "title",
+          "category",
+          "publisher",
+          "license_name",
+          "observed_at",
+          "cutoff_at"
+        ],
+        "title": "Body_document_upload_api_v8_organizations__organization_id__projects__project_id__documents_post",
+        "type": "object"
+      },
       "CalibrationCase": {
         "properties": {
           "case_hash": {
@@ -1431,6 +1480,222 @@
           "note"
         ],
         "title": "DataSourceHealth",
+        "type": "object"
+      },
+      "DocumentExtractionEvent": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "seq",
+          "event_type",
+          "title",
+          "detail",
+          "created_at"
+        ],
+        "title": "DocumentExtractionEvent",
+        "type": "object"
+      },
+      "DocumentExtractionJob": {
+        "properties": {
+          "attempt_count": {
+            "default": 0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "extractor_version": {
+            "title": "Extractor Version",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "parent_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Job Id"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "request_hash": {
+            "title": "Request Hash",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "cancelling",
+              "cancelled",
+              "failed",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "worker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Id"
+          }
+        },
+        "required": [
+          "job_id",
+          "organization_id",
+          "project_id",
+          "document_id",
+          "status",
+          "request_hash",
+          "extractor_version",
+          "provider",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DocumentExtractionJob",
+        "type": "object"
+      },
+      "DocumentUploadResult": {
+        "properties": {
+          "deduplicated": {
+            "default": false,
+            "title": "Deduplicated",
+            "type": "boolean"
+          },
+          "document": {
+            "$ref": "#/components/schemas/SourceDocument"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "DocumentUploadResult",
         "type": "object"
       },
       "EventDigest": {
@@ -3913,27 +4178,45 @@
       "OrganizationQuota": {
         "properties": {
           "max_active_runs": {
+            "default": 10,
             "maximum": 10000.0,
             "minimum": 1.0,
             "title": "Max Active Runs",
             "type": "integer"
           },
+          "max_document_bytes": {
+            "default": 5368709120,
+            "maximum": 1099511627776.0,
+            "minimum": 1024.0,
+            "title": "Max Document Bytes",
+            "type": "integer"
+          },
           "max_evidence_snapshots": {
+            "default": 100000,
             "maximum": 10000000.0,
             "minimum": 1.0,
             "title": "Max Evidence Snapshots",
             "type": "integer"
           },
           "max_ingestion_jobs_per_day": {
+            "default": 500,
             "maximum": 1000000.0,
             "minimum": 1.0,
             "title": "Max Ingestion Jobs Per Day",
             "type": "integer"
           },
           "max_projects": {
+            "default": 100,
             "maximum": 100000.0,
             "minimum": 1.0,
             "title": "Max Projects",
+            "type": "integer"
+          },
+          "max_source_documents": {
+            "default": 500,
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Max Source Documents",
             "type": "integer"
           },
           "organization_id": {
@@ -3957,10 +4240,6 @@
           }
         },
         "required": [
-          "max_projects",
-          "max_active_runs",
-          "max_ingestion_jobs_per_day",
-          "max_evidence_snapshots",
           "organization_id",
           "updated_at"
         ],
@@ -3970,36 +4249,48 @@
       "OrganizationQuotaUpdate": {
         "properties": {
           "max_active_runs": {
+            "default": 10,
             "maximum": 10000.0,
             "minimum": 1.0,
             "title": "Max Active Runs",
             "type": "integer"
           },
+          "max_document_bytes": {
+            "default": 5368709120,
+            "maximum": 1099511627776.0,
+            "minimum": 1024.0,
+            "title": "Max Document Bytes",
+            "type": "integer"
+          },
           "max_evidence_snapshots": {
+            "default": 100000,
             "maximum": 10000000.0,
             "minimum": 1.0,
             "title": "Max Evidence Snapshots",
             "type": "integer"
           },
           "max_ingestion_jobs_per_day": {
+            "default": 500,
             "maximum": 1000000.0,
             "minimum": 1.0,
             "title": "Max Ingestion Jobs Per Day",
             "type": "integer"
           },
           "max_projects": {
+            "default": 100,
             "maximum": 100000.0,
             "minimum": 1.0,
             "title": "Max Projects",
             "type": "integer"
+          },
+          "max_source_documents": {
+            "default": 500,
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Max Source Documents",
+            "type": "integer"
           }
         },
-        "required": [
-          "max_projects",
-          "max_active_runs",
-          "max_ingestion_jobs_per_day",
-          "max_evidence_snapshots"
-        ],
         "title": "OrganizationQuotaUpdate",
         "type": "object"
       },
@@ -4007,6 +4298,11 @@
         "properties": {
           "active_runs": {
             "title": "Active Runs",
+            "type": "integer"
+          },
+          "document_bytes": {
+            "default": 0,
+            "title": "Document Bytes",
             "type": "integer"
           },
           "evidence_snapshots": {
@@ -4028,6 +4324,11 @@
           "projects": {
             "title": "Projects",
             "type": "integer"
+          },
+          "source_documents": {
+            "default": 0,
+            "title": "Source Documents",
+            "type": "integer"
           }
         },
         "required": [
@@ -4043,6 +4344,11 @@
       },
       "PlatformReadiness": {
         "properties": {
+          "blob_storage_ok": {
+            "default": true,
+            "title": "Blob Storage Ok",
+            "type": "boolean"
+          },
           "checked_at": {
             "title": "Checked At",
             "type": "string"
@@ -4061,6 +4367,11 @@
           },
           "lifecycle_workers_fresh": {
             "title": "Lifecycle Workers Fresh",
+            "type": "integer"
+          },
+          "queued_document_jobs": {
+            "default": 0,
+            "title": "Queued Document Jobs",
             "type": "integer"
           },
           "queued_ingestion_jobs": {
@@ -5876,6 +6187,39 @@
             "title": "Scenario",
             "type": "object"
           },
+          "scenario_draft_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Draft Hash"
+          },
+          "scenario_draft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Draft Id"
+          },
+          "scenario_evidence_pack_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Evidence Pack Hash"
+          },
           "seed": {
             "anyOf": [
               {
@@ -6102,6 +6446,593 @@
           "started_at"
         ],
         "title": "RunStepRecord",
+        "type": "object"
+      },
+      "ScenarioCandidate": {
+        "properties": {
+          "candidate_hash": {
+            "title": "Candidate Hash",
+            "type": "string"
+          },
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "candidate_type": {
+            "enum": [
+              "scenario_preset",
+              "country",
+              "supply_chain",
+              "policy_action",
+              "relationship",
+              "event_date"
+            ],
+            "title": "Candidate Type",
+            "type": "string"
+          },
+          "canonical_value": {
+            "title": "Canonical Value",
+            "type": "string"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_value": {
+            "title": "Display Value",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "extraction_id": {
+            "title": "Extraction Id",
+            "type": "string"
+          },
+          "extractor_source": {
+            "title": "Extractor Source",
+            "type": "string"
+          },
+          "latest_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioCandidateDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "locator": {
+            "additionalProperties": true,
+            "title": "Locator",
+            "type": "object"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "relation": {
+            "additionalProperties": true,
+            "title": "Relation",
+            "type": "object"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "validation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validation Reason"
+          },
+          "validation_status": {
+            "enum": [
+              "valid",
+              "invalid"
+            ],
+            "title": "Validation Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "extraction_id",
+          "organization_id",
+          "project_id",
+          "candidate_type",
+          "canonical_value",
+          "display_value",
+          "snapshot_id",
+          "locator",
+          "excerpt",
+          "confidence",
+          "extractor_source",
+          "validation_status",
+          "candidate_hash",
+          "created_at"
+        ],
+        "title": "ScenarioCandidate",
+        "type": "object"
+      },
+      "ScenarioCandidateDecision": {
+        "properties": {
+          "actor_user_id": {
+            "title": "Actor User Id",
+            "type": "string"
+          },
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "comment": {
+            "default": "",
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "decision_hash": {
+            "title": "Decision Hash",
+            "type": "string"
+          },
+          "decision_id": {
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "normalized_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Value"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_id",
+          "candidate_id",
+          "organization_id",
+          "project_id",
+          "decision",
+          "actor_user_id",
+          "decision_hash",
+          "created_at"
+        ],
+        "title": "ScenarioCandidateDecision",
+        "type": "object"
+      },
+      "ScenarioCandidateDecisionRequest": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "normalized_value": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Value"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "ScenarioCandidateDecisionRequest",
+        "type": "object"
+      },
+      "ScenarioDraft": {
+        "properties": {
+          "approved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At"
+          },
+          "approved_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By User Id"
+          },
+          "candidate_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Candidate Ids",
+            "type": "array"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "compiler_version": {
+            "title": "Compiler Version",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "title": "Created By User Id",
+            "type": "string"
+          },
+          "draft_hash": {
+            "title": "Draft Hash",
+            "type": "string"
+          },
+          "draft_id": {
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "evidence_pack_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Pack Hash"
+          },
+          "evidence_pack_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Pack Id"
+          },
+          "manual_assumptions": {
+            "additionalProperties": true,
+            "title": "Manual Assumptions",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "parent_draft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Draft Id"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "review_case_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Case Id"
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioDraftReview"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "scenario": {
+            "additionalProperties": true,
+            "title": "Scenario",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "submitted",
+              "approved",
+              "revision_requested",
+              "rejected",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "submitted_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted By User Id"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "draft_id",
+          "organization_id",
+          "project_id",
+          "version",
+          "status",
+          "name",
+          "scenario",
+          "manual_assumptions",
+          "compiler_version",
+          "draft_hash",
+          "created_by_user_id",
+          "created_at"
+        ],
+        "title": "ScenarioDraft",
+        "type": "object"
+      },
+      "ScenarioDraftCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "assumption_reason": {
+            "default": "",
+            "maxLength": 3000,
+            "title": "Assumption Reason",
+            "type": "string"
+          },
+          "candidate_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Candidate Ids",
+            "type": "array"
+          },
+          "duration_days": {
+            "anyOf": [
+              {
+                "maximum": 90.0,
+                "minimum": 7.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Days"
+          },
+          "intensity": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.05,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intensity"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Name",
+            "type": "string"
+          },
+          "propagation": {
+            "anyOf": [
+              {
+                "maximum": 0.9,
+                "minimum": 0.05,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Propagation"
+          }
+        },
+        "required": [
+          "name",
+          "candidate_ids"
+        ],
+        "title": "ScenarioDraftCreateRequest",
+        "type": "object"
+      },
+      "ScenarioDraftReview": {
+        "properties": {
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "request_revision",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "draft_id": {
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "review_hash": {
+            "title": "Review Hash",
+            "type": "string"
+          },
+          "review_id": {
+            "title": "Review Id",
+            "type": "string"
+          },
+          "reviewer_user_id": {
+            "title": "Reviewer User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_id",
+          "draft_id",
+          "decision",
+          "comment",
+          "reviewer_user_id",
+          "review_hash",
+          "created_at"
+        ],
+        "title": "ScenarioDraftReview",
+        "type": "object"
+      },
+      "ScenarioDraftReviewRequest": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "maxLength": 3000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "request_revision",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "ScenarioDraftReviewRequest",
+        "type": "object"
+      },
+      "ScenarioDraftRunRequest": {
+        "properties": {
+          "engine_mode": {
+            "default": "deterministic",
+            "enum": [
+              "deterministic",
+              "hybrid",
+              "negotiation"
+            ],
+            "title": "Engine Mode",
+            "type": "string"
+          },
+          "max_attempts": {
+            "default": 3,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "seed": {
+            "default": 42,
+            "title": "Seed",
+            "type": "integer"
+          }
+        },
+        "title": "ScenarioDraftRunRequest",
         "type": "object"
       },
       "ScenarioSuggestion": {
@@ -6594,6 +7525,118 @@
           "shocks"
         ],
         "title": "SimulationScenario",
+        "type": "object"
+      },
+      "SourceDocument": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By User Id"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "license_name": {
+            "title": "License Name",
+            "type": "string"
+          },
+          "license_url": {
+            "default": "",
+            "title": "License Url",
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "application/pdf",
+              "text/plain",
+              "text/markdown",
+              "text/csv"
+            ],
+            "title": "Media Type",
+            "type": "string"
+          },
+          "observed_at": {
+            "title": "Observed At",
+            "type": "string"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "original_filename": {
+            "title": "Original Filename",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
+            "type": "string"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "uploaded",
+              "extracting",
+              "ready",
+              "failed",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "organization_id",
+          "project_id",
+          "original_filename",
+          "media_type",
+          "size_bytes",
+          "content_hash",
+          "title",
+          "category",
+          "publisher",
+          "license_name",
+          "observed_at",
+          "cutoff_at",
+          "status",
+          "created_at"
+        ],
+        "title": "SourceDocument",
         "type": "object"
       },
       "SpeciesCountryCount": {
@@ -8056,7 +9099,7 @@
   "info": {
     "description": "全球多源综合风险指数与世界局势情景模拟器",
     "title": "WorldPulse",
-    "version": "1.8.0-rc1"
+    "version": "1.9.0-rc1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -12876,6 +13919,1110 @@
           }
         },
         "summary": "Negotiation Rounds"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/documents": {
+      "get": {
+        "operationId": "document_list_api_v8_organizations__organization_id__projects__project_id__documents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SourceDocument"
+                  },
+                  "title": "Response Document List Api V8 Organizations  Organization Id  Projects  Project Id  Documents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Document List"
+      },
+      "post": {
+        "operationId": "document_upload_api_v8_organizations__organization_id__projects__project_id__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_document_upload_api_v8_organizations__organization_id__projects__project_id__documents_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentUploadResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Document Upload"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/documents/{document_id}": {
+      "get": {
+        "operationId": "document_detail_api_v8_organizations__organization_id__projects__project_id__documents__document_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDocument"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Document Detail"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/documents/{document_id}/download": {
+      "get": {
+        "operationId": "document_download_api_v8_organizations__organization_id__projects__project_id__documents__document_id__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Document Download"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/documents/{document_id}/extract": {
+      "post": {
+        "operationId": "extraction_create_api_v8_organizations__organization_id__projects__project_id__documents__document_id__extract_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentExtractionJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Extraction Create"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/extraction-jobs": {
+      "get": {
+        "operationId": "extraction_list_api_v8_organizations__organization_id__projects__project_id__extraction_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentExtractionJob"
+                  },
+                  "title": "Response Extraction List Api V8 Organizations  Organization Id  Projects  Project Id  Extraction Jobs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Extraction List"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/extraction-jobs/{job_id}": {
+      "get": {
+        "operationId": "extraction_detail_api_v8_organizations__organization_id__projects__project_id__extraction_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentExtractionJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Extraction Detail"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/extraction-jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "extraction_cancel_api_v8_organizations__organization_id__projects__project_id__extraction_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentExtractionJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Extraction Cancel"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/extraction-jobs/{job_id}/events": {
+      "get": {
+        "operationId": "extraction_events_api_v8_organizations__organization_id__projects__project_id__extraction_jobs__job_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After Seq",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentExtractionEvent"
+                  },
+                  "title": "Response Extraction Events Api V8 Organizations  Organization Id  Projects  Project Id  Extraction Jobs  Job Id  Events Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Extraction Events"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/extraction-jobs/{job_id}/retry": {
+      "post": {
+        "operationId": "extraction_retry_api_v8_organizations__organization_id__projects__project_id__extraction_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentExtractionJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Extraction Retry"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/scenario-candidates": {
+      "get": {
+        "operationId": "scenario_candidates_api_v8_organizations__organization_id__projects__project_id__scenario_candidates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScenarioCandidate"
+                  },
+                  "title": "Response Scenario Candidates Api V8 Organizations  Organization Id  Projects  Project Id  Scenario Candidates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scenario Candidates"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/scenario-candidates/{candidate_id}/decision": {
+      "post": {
+        "operationId": "scenario_candidate_decision_api_v8_organizations__organization_id__projects__project_id__scenario_candidates__candidate_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioCandidateDecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioCandidateDecision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scenario Candidate Decision"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/scenario-drafts": {
+      "get": {
+        "operationId": "scenario_draft_list_api_v8_organizations__organization_id__projects__project_id__scenario_drafts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScenarioDraft"
+                  },
+                  "title": "Response Scenario Draft List Api V8 Organizations  Organization Id  Projects  Project Id  Scenario Drafts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scenario Draft List"
+      },
+      "post": {
+        "operationId": "scenario_draft_create_api_v8_organizations__organization_id__projects__project_id__scenario_drafts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioDraftCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioDraft"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scenario Draft Create"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/scenario-drafts/{draft_id}": {
+      "get": {
+        "operationId": "scenario_draft_detail_api_v8_organizations__organization_id__projects__project_id__scenario_drafts__draft_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioDraft"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scenario Draft Detail"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/scenario-drafts/{draft_id}/clone": {
+      "post": {
+        "operationId": "scenario_draft_clone_api_v8_organizations__organization_id__projects__project_id__scenario_drafts__draft_id__clone_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioDraft"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scenario Draft Clone"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/scenario-drafts/{draft_id}/review": {
+      "post": {
+        "operationId": "scenario_draft_review_api_v8_organizations__organization_id__projects__project_id__scenario_drafts__draft_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioDraftReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioDraft"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scenario Draft Review"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/scenario-drafts/{draft_id}/runs": {
+      "post": {
+        "operationId": "scenario_draft_run_api_v8_organizations__organization_id__projects__project_id__scenario_drafts__draft_id__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioDraftRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunJobStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scenario Draft Run"
+      }
+    },
+    "/api/v8/organizations/{organization_id}/projects/{project_id}/scenario-drafts/{draft_id}/submit": {
+      "post": {
+        "operationId": "scenario_draft_submit_api_v8_organizations__organization_id__projects__project_id__scenario_drafts__draft_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioDraft"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scenario Draft Submit"
       }
     },
     "/api/version": {

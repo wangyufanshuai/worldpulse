@@ -27,10 +27,12 @@ class WorkerNode(BaseModel):
 
 
 class OrganizationQuotaUpdate(BaseModel):
-    max_projects: int = Field(ge=1, le=100_000)
-    max_active_runs: int = Field(ge=1, le=10_000)
-    max_ingestion_jobs_per_day: int = Field(ge=1, le=1_000_000)
-    max_evidence_snapshots: int = Field(ge=1, le=10_000_000)
+    max_projects: int = Field(default=100, ge=1, le=100_000)
+    max_active_runs: int = Field(default=10, ge=1, le=10_000)
+    max_ingestion_jobs_per_day: int = Field(default=500, ge=1, le=1_000_000)
+    max_evidence_snapshots: int = Field(default=100_000, ge=1, le=10_000_000)
+    max_source_documents: int = Field(default=500, ge=1, le=1_000_000)
+    max_document_bytes: int = Field(default=5_368_709_120, ge=1_024, le=1_099_511_627_776)
 
 
 class OrganizationQuota(OrganizationQuotaUpdate):
@@ -45,6 +47,8 @@ class OrganizationUsage(BaseModel):
     active_runs: int
     ingestion_jobs_today: int
     evidence_snapshots: int
+    source_documents: int = 0
+    document_bytes: int = 0
     generated_at: str
 
 
@@ -59,6 +63,8 @@ class PlatformReadiness(BaseModel):
     ingestion_workers_fresh: int
     queued_runs: int
     queued_ingestion_jobs: int
+    queued_document_jobs: int = 0
+    blob_storage_ok: bool = True
     checked_at: str
     reasons: list[str] = Field(default_factory=list)
 

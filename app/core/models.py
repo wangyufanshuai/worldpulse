@@ -776,6 +776,9 @@ class RunJobStatus(BaseModel):
     job_kind: str = "war_room"
     agent_pack_id: str | None = None
     agent_pack_hash: str | None = None
+    scenario_draft_id: str | None = None
+    scenario_draft_hash: str | None = None
+    scenario_evidence_pack_hash: str | None = None
     rule_pack_id: str | None = None
     rule_pack_hash: str | None = None
 

@@ -11,6 +11,7 @@ data/*.bak
 data/*.log
 data/cache/
 data/reports/
+data/uploads/
 frontend/node_modules/
 frontend/dist/
 frontend/output/

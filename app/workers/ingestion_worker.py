@@ -7,12 +7,34 @@ from uuid import uuid4
 
 from app.services.ingestion import claim_next_job, execute_claimed_job
 from app.services import operations
+from app.services.project_store import connect
+from app.services.scenario_compiler import ScenarioCompilerService
+
+
+scenario_compiler = ScenarioCompilerService()
 
 
 def process_once(worker_id: str) -> bool:
+    with connect() as conn:
+        ingestion = conn.execute("SELECT created_at FROM ingestion_jobs WHERE status = 'queued' ORDER BY created_at, job_id LIMIT 1").fetchone()
+        document = conn.execute("SELECT created_at FROM document_extraction_jobs WHERE status = 'queued' ORDER BY created_at, job_id LIMIT 1").fetchone()
+    document_first = document is not None and (ingestion is None or document["created_at"] <= ingestion["created_at"])
+    if document_first:
+        claimed_document = scenario_compiler.claim_next_extraction_job(worker_id)
+        if claimed_document is not None:
+            organization_id, project_id, job_id = claimed_document
+            operations.heartbeat_registered_worker(worker_id, status="busy", current_job_id=job_id)
+            scenario_compiler.execute_claimed_extraction(organization_id, project_id, job_id, worker_id)
+            return True
     claimed = claim_next_job(worker_id)
     if claimed is None:
-        return False
+        claimed_document = scenario_compiler.claim_next_extraction_job(worker_id)
+        if claimed_document is None:
+            return False
+        organization_id, project_id, job_id = claimed_document
+        operations.heartbeat_registered_worker(worker_id, status="busy", current_job_id=job_id)
+        scenario_compiler.execute_claimed_extraction(organization_id, project_id, job_id, worker_id)
+        return True
     organization_id, job_id = claimed
     operations.heartbeat_registered_worker(worker_id, status="busy", current_job_id=job_id)
     execute_claimed_job(organization_id, job_id, worker_id)

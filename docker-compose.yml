@@ -14,6 +14,9 @@ services:
       WORLDPULSE_REQUIRE_WORKERS: ${WORLDPULSE_REQUIRE_WORKERS:-0}
       AGENT_PROVIDER: ${AGENT_PROVIDER:-mock}
       AGENT_FALLBACK_MODE: ${AGENT_FALLBACK_MODE:-mock}
+      WORLDPULSE_UPLOAD_ROOT: /app/data/uploads
+      SCENARIO_EXTRACTION_PROVIDER: ${SCENARIO_EXTRACTION_PROVIDER:-disabled}
+      SCENARIO_EXTRACTION_FALLBACK: ${SCENARIO_EXTRACTION_FALLBACK:-deterministic}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/api/ready', timeout=3)"]
       interval: 10s
@@ -33,6 +36,25 @@ services:
       WORLDPULSE_AUTH_MODE: ${WORLDPULSE_AUTH_MODE:-disabled}
       AGENT_PROVIDER: ${AGENT_PROVIDER:-mock}
       AGENT_FALLBACK_MODE: ${AGENT_FALLBACK_MODE:-mock}
+      WORLDPULSE_UPLOAD_ROOT: /app/data/uploads
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  ingestion-worker:
+    build: .
+    command: ["python", "-m", "app.workers.ingestion_worker"]
+    volumes:
+      - ./data:/app/data
+    environment:
+      WORLDPULSE_DB_PATH: /app/data/worldpulse.db
+      WORLDPULSE_ENV: ${WORLDPULSE_ENV:-development}
+      WORLDPULSE_AUTO_MIGRATE: ${WORLDPULSE_AUTO_MIGRATE:-1}
+      WORLDPULSE_AUTH_MODE: ${WORLDPULSE_AUTH_MODE:-disabled}
+      WORLDPULSE_UPLOAD_ROOT: /app/data/uploads
+      SCENARIO_EXTRACTION_PROVIDER: ${SCENARIO_EXTRACTION_PROVIDER:-disabled}
+      SCENARIO_EXTRACTION_FALLBACK: ${SCENARIO_EXTRACTION_FALLBACK:-deterministic}
     depends_on:
       api:
         condition: service_started

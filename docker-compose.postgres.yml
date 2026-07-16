@@ -32,13 +32,13 @@ services:
         condition: service_healthy
 
   ingestion-worker:
-    build: .
-    command: ["python", "-m", "app.workers.ingestion_worker"]
     environment:
       WORLDPULSE_DATABASE_URL: postgresql://worldpulse:${WORLDPULSE_POSTGRES_PASSWORD:-worldpulse-dev}@postgres:5432/worldpulse
       WORLDPULSE_ENV: ${WORLDPULSE_ENV:-development}
       WORLDPULSE_AUTO_MIGRATE: ${WORLDPULSE_AUTO_MIGRATE:-1}
       WORLDPULSE_AUTH_MODE: ${WORLDPULSE_AUTH_MODE:-disabled}
+      WORLDPULSE_UPLOAD_ROOT: /app/data/uploads
+      SCENARIO_EXTRACTION_FALLBACK: ${SCENARIO_EXTRACTION_FALLBACK:-deterministic}
     depends_on:
       api:
         condition: service_started

@@ -278,6 +278,90 @@ export async function getNegotiationCommitments(runId) {
   return data
 }
 
+export async function uploadSourceDocument(organizationId, projectId, formData) {
+  const { data } = await api.post(`/v8/organizations/${organizationId}/projects/${projectId}/documents`, formData)
+  return data
+}
+
+export async function listSourceDocuments(organizationId, projectId) {
+  const { data } = await api.get(`/v8/organizations/${organizationId}/projects/${projectId}/documents`)
+  return data
+}
+
+export function sourceDocumentDownloadUrl(organizationId, projectId, documentId) {
+  return `/api/v8/organizations/${organizationId}/projects/${projectId}/documents/${documentId}/download`
+}
+
+export async function createDocumentExtraction(organizationId, projectId, documentId) {
+  const { data } = await api.post(`/v8/organizations/${organizationId}/projects/${projectId}/documents/${documentId}/extract`)
+  return data
+}
+
+export async function getDocumentExtractionJob(organizationId, projectId, jobId) {
+  const { data } = await api.get(`/v8/organizations/${organizationId}/projects/${projectId}/extraction-jobs/${jobId}`)
+  return data
+}
+
+export async function listDocumentExtractionJobs(organizationId, projectId) {
+  const { data } = await api.get(`/v8/organizations/${organizationId}/projects/${projectId}/extraction-jobs`)
+  return data
+}
+
+export async function getDocumentExtractionEvents(organizationId, projectId, jobId, afterSeq = 0) {
+  const { data } = await api.get(`/v8/organizations/${organizationId}/projects/${projectId}/extraction-jobs/${jobId}/events`, { params: { after_seq: afterSeq } })
+  return data
+}
+
+export async function cancelDocumentExtraction(organizationId, projectId, jobId) {
+  const { data } = await api.post(`/v8/organizations/${organizationId}/projects/${projectId}/extraction-jobs/${jobId}/cancel`)
+  return data
+}
+
+export async function retryDocumentExtraction(organizationId, projectId, jobId) {
+  const { data } = await api.post(`/v8/organizations/${organizationId}/projects/${projectId}/extraction-jobs/${jobId}/retry`)
+  return data
+}
+
+export async function listScenarioCandidates(organizationId, projectId) {
+  const { data } = await api.get(`/v8/organizations/${organizationId}/projects/${projectId}/scenario-candidates`)
+  return data
+}
+
+export async function decideScenarioCandidate(organizationId, projectId, candidateId, payload) {
+  const { data } = await api.post(`/v8/organizations/${organizationId}/projects/${projectId}/scenario-candidates/${candidateId}/decision`, payload)
+  return data
+}
+
+export async function listScenarioDrafts(organizationId, projectId) {
+  const { data } = await api.get(`/v8/organizations/${organizationId}/projects/${projectId}/scenario-drafts`)
+  return data
+}
+
+export async function createScenarioDraft(organizationId, projectId, payload) {
+  const { data } = await api.post(`/v8/organizations/${organizationId}/projects/${projectId}/scenario-drafts`, payload)
+  return data
+}
+
+export async function submitScenarioDraft(organizationId, projectId, draftId) {
+  const { data } = await api.post(`/v8/organizations/${organizationId}/projects/${projectId}/scenario-drafts/${draftId}/submit`)
+  return data
+}
+
+export async function reviewScenarioDraft(organizationId, projectId, draftId, payload) {
+  const { data } = await api.post(`/v8/organizations/${organizationId}/projects/${projectId}/scenario-drafts/${draftId}/review`, payload)
+  return data
+}
+
+export async function cloneScenarioDraft(organizationId, projectId, draftId) {
+  const { data } = await api.post(`/v8/organizations/${organizationId}/projects/${projectId}/scenario-drafts/${draftId}/clone`)
+  return data
+}
+
+export async function runScenarioDraft(organizationId, projectId, draftId, payload) {
+  const { data } = await api.post(`/v8/organizations/${organizationId}/projects/${projectId}/scenario-drafts/${draftId}/runs`, payload)
+  return data
+}
+
 export async function pauseLifecycleRun(runId) {
   const { data } = await api.post(`/v2/runs/${runId}/pause`)
   return data

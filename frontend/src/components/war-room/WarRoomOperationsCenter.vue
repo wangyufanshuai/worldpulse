@@ -21,6 +21,8 @@
         <article><span>采集 Worker</span><strong>{{ summary.readiness.ingestion_workers_fresh }}</strong><small>新鲜心跳</small></article>
         <article><span>排队运行</span><strong>{{ summary.readiness.queued_runs }}</strong><small>run_jobs</small></article>
         <article><span>排队采集</span><strong>{{ summary.readiness.queued_ingestion_jobs }}</strong><small>ingestion_jobs</small></article>
+        <article><span>排队抽取</span><strong>{{ summary.readiness.queued_document_jobs }}</strong><small>document_extraction_jobs</small></article>
+        <article><span>材料共享卷</span><strong>{{ summary.readiness.blob_storage_ok ? 'WRITABLE' : 'FAILED' }}</strong><small>content-addressed blobs</small></article>
       </section>
 
       <section class="operations-grid">
@@ -66,7 +68,7 @@ const props = defineProps({
   canOperate: Boolean,
 })
 const emit = defineEmits(['refresh', 'save-quota', 'drain'])
-const quotaDraft = reactive({ max_projects: 1, max_active_runs: 1, max_ingestion_jobs_per_day: 1, max_evidence_snapshots: 1 })
+const quotaDraft = reactive({ max_projects: 1, max_active_runs: 1, max_ingestion_jobs_per_day: 1, max_evidence_snapshots: 1, max_source_documents: 1, max_document_bytes: 1024 })
 
 watch(() => props.summary?.quota, quota => {
   if (quota) Object.assign(quotaDraft, quota)
@@ -80,6 +82,8 @@ function submitQuota() {
     max_active_runs: quotaDraft.max_active_runs,
     max_ingestion_jobs_per_day: quotaDraft.max_ingestion_jobs_per_day,
     max_evidence_snapshots: quotaDraft.max_evidence_snapshots,
+    max_source_documents: quotaDraft.max_source_documents,
+    max_document_bytes: quotaDraft.max_document_bytes,
   })
 }
 const readinessLabel = operationsReadinessLabel

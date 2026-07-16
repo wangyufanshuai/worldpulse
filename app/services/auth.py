@@ -181,6 +181,8 @@ def permission_for_request(method: str, path: str) -> str:
         return "operations"
     if path.startswith("/api/v6/organizations") and path.endswith("/quota"):
         return "organization_admin"
+    if path.startswith("/api/v8/") and path.endswith("/review"):
+        return "review"
     if path.endswith("/activate"):
         return "rule_activate"
     if path.endswith("/approve"):

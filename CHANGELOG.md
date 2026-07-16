@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.0-rc1 - 2026-07-16
+
+- Added content-addressed, quota-governed PDF/TXT/Markdown/CSV source document import with MIME/signature, cutoff, UTF-8, size and blob-integrity gates.
+- Added resumable document extraction jobs on the existing ingestion worker with deterministic versioned text chunks, evidence snapshots, candidate hashes, monotonic events and optional fail-closed DeepSeek/SiliconFlow candidate enrichment.
+- Added immutable scenario candidates, append-only analyst decisions, compiler manifests, manual-assumption diffs, Evidence Pack freezing, clone lineage and independent Reviewer/Admin approval before a run can be created.
+- Added v8 scenario compiler APIs and a six-step Chinese War Room compiler console; approved runs pin Draft and Evidence Pack hashes into lifecycle audit, Replay Pack and Trust Manifest.
+- Added document storage quota/readiness metrics, shared upload volume Compose wiring, blob verification CLI, PostgreSQL BIGINT quota translation and V1.9 deterministic/format/security/live integration gates.
+
 ## 1.8.0-rc1 - 2026-07-16
 
 - Added a controlled 12-Agent, 6-Tick negotiation runtime for diplomacy, alliances and public narratives while retaining deterministic numeric authority.

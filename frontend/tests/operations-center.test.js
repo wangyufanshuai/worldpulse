@@ -9,14 +9,15 @@ describe('V1.7 operations center projection', () => {
       .toEqual(['平台就绪', '容量降级', '平台未就绪'])
   })
 
-  it('projects organization usage against all four enforced quotas', () => {
+  it('projects organization usage against all six enforced quotas', () => {
     const rows = operationsQuotaRows({
-      usage: { projects: 3, active_runs: 2, ingestion_jobs_today: 5, evidence_snapshots: 11 },
-      quota: { max_projects: 10, max_active_runs: 4, max_ingestion_jobs_per_day: 20, max_evidence_snapshots: 100 },
+      usage: { projects: 3, active_runs: 2, ingestion_jobs_today: 5, evidence_snapshots: 11, source_documents: 7, document_bytes: 2048 },
+      quota: { max_projects: 10, max_active_runs: 4, max_ingestion_jobs_per_day: 20, max_evidence_snapshots: 100, max_source_documents: 500, max_document_bytes: 5368709120 },
     })
     expect(rows.map(item => [item.key, item.used, item.limit])).toEqual([
       ['max_projects', 3, 10], ['max_active_runs', 2, 4],
       ['max_ingestion_jobs_per_day', 5, 20], ['max_evidence_snapshots', 11, 100],
+      ['max_source_documents', 7, 500], ['max_document_bytes', 2048, 5368709120],
     ])
   })
 

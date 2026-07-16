@@ -1,6 +1,6 @@
 <template>
   <div class="section-card-grid settings-grid" data-testid="war-room-settings-module">
-    <article data-testid="worldpulse-version-setting"><span>平台版本</span><strong>{{ WORLDPULSE_VERSION }}</strong><p>候选发布 · API contract v7</p></article>
+    <article data-testid="worldpulse-version-setting"><span>平台版本</span><strong>{{ WORLDPULSE_VERSION }}</strong><p>候选发布 · API contract v8</p></article>
     <article class="settings-control-card">
       <span>生命周期执行模式</span>
       <strong>{{ engineModeLabel }}</strong>

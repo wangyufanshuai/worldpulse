@@ -10,6 +10,8 @@ export function operationsQuotaRows(summary = {}) {
     { key: 'max_active_runs', label: '活跃运行', used: usage.active_runs || 0, limit: quota.max_active_runs || 1 },
     { key: 'max_ingestion_jobs_per_day', label: '24 小时采集任务', used: usage.ingestion_jobs_today || 0, limit: quota.max_ingestion_jobs_per_day || 1 },
     { key: 'max_evidence_snapshots', label: '证据快照', used: usage.evidence_snapshots || 0, limit: quota.max_evidence_snapshots || 1 },
+    { key: 'max_source_documents', label: '版本化文档', used: usage.source_documents || 0, limit: quota.max_source_documents || 1 },
+    { key: 'max_document_bytes', label: '材料存储（Bytes）', used: usage.document_bytes || 0, limit: quota.max_document_bytes || 1 },
   ]
 }
 
