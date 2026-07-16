@@ -4,6 +4,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
+const API = process.env.WORLDPULSE_E2E_API_BASE || 'http://127.0.0.1:8010/api'
 
 test('War Room lifecycle shell and modules remain interactive', async ({ page, request }) => {
   const browserErrors = []
@@ -12,12 +13,12 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   })
   page.on('pageerror', (error) => browserErrors.push(error.message))
 
-  const loggedIn = await page.request.post('http://127.0.0.1:8010/api/v3/auth/login', {
+  const loggedIn = await page.request.post(`${API}/v3/auth/login`, {
     data: { username: 'e2e-admin', password: 'e2e administrator secret' },
   })
   expect(loggedIn.ok()).toBeTruthy()
   const csrf = (await loggedIn.json()).csrf_token
-  const created = await page.request.post('http://127.0.0.1:8010/api/projects', {
+  const created = await page.request.post(`${API}/projects`, {
     headers: { 'X-CSRF-Token': csrf },
     data: {
       title: 'Playwright V0.7 smoke',

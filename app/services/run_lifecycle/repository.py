@@ -16,6 +16,7 @@ from app.core.models import (
     WarRoomScenarioRequest,
 )
 from app.services.consistency.hashing import stable_hash
+from app.db.postgres import is_postgres_url
 from app.services.project_store import connect, dumps, init_db, loads
 from app.services.security import redact_secrets, redact_structure
 from app.services.rule_packs import active_rule_pack, get_rule_pack
@@ -56,7 +57,8 @@ def create_job(
     now = now_iso()
     existing_run_id: str | None = None
     with connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        if not is_postgres_url():
+            conn.execute("BEGIN IMMEDIATE")
         project = conn.execute("SELECT project_id FROM research_projects WHERE project_id = ?", (project_id,)).fetchone()
         if project is None:
             raise HTTPException(status_code=404, detail=f"Unknown project: {project_id}")
@@ -150,20 +152,28 @@ def append_event(
     safe_detail = redact_secrets(detail, max_length=2000) or ""
     safe_payload = redact_structure(payload or {})
     with connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        if not is_postgres_url():
+            conn.execute("BEGIN IMMEDIATE")
         job = conn.execute("SELECT run_id FROM run_jobs WHERE run_id = ?", (run_id,)).fetchone()
         if job is None:
             raise HTTPException(status_code=404, detail=f"Unknown lifecycle run: {run_id}")
         conn.execute("INSERT INTO run_event_counters(run_id, next_seq) VALUES (?, 1) ON CONFLICT(run_id) DO NOTHING", (run_id,))
-        counter = conn.execute(
-            "SELECT next_seq FROM run_event_counters WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
-        seq = int(counter["next_seq"])
-        conn.execute(
-            "UPDATE run_event_counters SET next_seq = ? WHERE run_id = ?",
-            (seq + 1, run_id),
-        )
+        if is_postgres_url():
+            counter = conn.execute(
+                "UPDATE run_event_counters SET next_seq = next_seq + 1 WHERE run_id = ? RETURNING next_seq - 1 AS seq",
+                (run_id,),
+            ).fetchone()
+            seq = int(counter["seq"])
+        else:
+            counter = conn.execute(
+                "SELECT next_seq FROM run_event_counters WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            seq = int(counter["next_seq"])
+            conn.execute(
+                "UPDATE run_event_counters SET next_seq = ? WHERE run_id = ?",
+                (seq + 1, run_id),
+            )
         conn.execute(
             """
             INSERT INTO run_events
@@ -191,14 +201,16 @@ def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300) ->
     now = now_iso()
     lease_expires_at = _lease_expiry(lease_seconds)
     with connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        if not is_postgres_url():
+            conn.execute("BEGIN IMMEDIATE")
+        lock_clause = " FOR UPDATE SKIP LOCKED" if is_postgres_url() else ""
         row = conn.execute(
-            """
+            f"""
             SELECT * FROM run_jobs
             WHERE status = ?
               AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
               AND COALESCE(attempt_count, 0) < COALESCE(max_attempts, 3)
-            ORDER BY created_at ASC LIMIT 1
+            ORDER BY created_at ASC LIMIT 1{lock_clause}
             """,
             (CLAIMABLE_STATUS, now),
         ).fetchone()
@@ -257,13 +269,15 @@ def recover_stale_jobs(*, recovered_by: str = "worker-recovery", now: str | None
     cutoff = now or now_iso()
     recovered: list[tuple[str, str, str, str | None]] = []
     with connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        if not is_postgres_url():
+            conn.execute("BEGIN IMMEDIATE")
+        lock_clause = " FOR UPDATE SKIP LOCKED" if is_postgres_url() else ""
         rows = conn.execute(
-            """
+            f"""
             SELECT run_id, status, current_phase, current_attempt_id, attempt_count, max_attempts FROM run_jobs
             WHERE status IN ('preparing', 'running', 'pausing', 'cancelling')
               AND lease_expires_at IS NOT NULL AND lease_expires_at < ?
-            ORDER BY updated_at ASC
+            ORDER BY updated_at ASC{lock_clause}
             """,
             (cutoff,),
         ).fetchall()

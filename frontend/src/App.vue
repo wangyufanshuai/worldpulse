@@ -12,16 +12,22 @@
         <RouterLink to="/"><LayoutDashboard :size="16" /> 控制台</RouterLink>
         <a href="/api/health" target="_blank" rel="noreferrer"><Activity :size="16" /> API</a>
         <a href="https://github.com/wangyufanshuai/worldpulse" target="_blank" rel="noreferrer"><Github :size="16" /> GitHub</a>
+        <label class="organization-switcher" data-testid="organization-switcher">
+          <Building2 :size="14" />
+          <select :value="organization.currentId.value" :disabled="organization.state.loading" data-testid="organization-select" @change="switchOrganization">
+            <option v-for="item in organization.state.organizations" :key="item.organization_id" :value="item.organization_id">{{ item.name }} · {{ item.member_role }}</option>
+          </select>
+        </label>
         <span class="session-role" data-testid="session-role">{{ roleLabel }}</span>
         <button type="button" class="session-logout" data-testid="session-logout" @click="signOut">退出</button>
       </nav>
     </header>
-    <RouterView />
+    <RouterView :key="organization.state.epoch" />
   </div>
   <main v-else-if="auth.state.ready" class="login-shell" data-testid="login-screen">
     <form class="login-card" @submit.prevent="submitLogin">
       <span class="brand-mark"><Globe2 :size="24" /></span>
-      <div class="section-kicker">WorldPulse V1.3 · 内部决策平台</div>
+      <div class="section-kicker">WorldPulse V1.6 · 生产化决策平台</div>
       <h1>登录可信决策指挥台</h1>
       <p>本地账户、服务端 Session、CSRF 与角色权限均由后端强制执行。</p>
       <label>用户名<input v-model="credentials.username" autocomplete="username" data-testid="login-username" /></label>
@@ -36,22 +42,36 @@
 <script setup>
 import { computed, onMounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { Activity, Github, Globe2, LayoutDashboard } from 'lucide-vue-next'
+import { Activity, Building2, Github, Globe2, LayoutDashboard } from 'lucide-vue-next'
 import { useAuthSession } from './composables/useAuthSession'
+import { useOrganizationContext } from './composables/useOrganizationContext'
 
 const router = useRouter()
 const auth = useAuthSession()
+const organization = useOrganizationContext()
 const credentials = reactive({ username: '', password: '' })
 const roleLabel = computed(() => ({ admin: '管理员', analyst: '分析员', reviewer: '审阅者', viewer: '只读' }[auth.role.value] || auth.role.value))
 
 async function submitLogin() {
-  try { await auth.signIn(credentials.username, credentials.password) } catch { /* rendered by state */ }
+  try {
+    await auth.signIn(credentials.username, credentials.password)
+    await organization.load()
+  } catch { /* rendered by state */ }
+}
+
+async function switchOrganization(event) {
+  await organization.select(event.target.value)
+  await router.push('/')
 }
 
 async function signOut() {
   await auth.signOut()
+  organization.clear()
   await router.push('/')
 }
 
-onMounted(auth.initialize)
+onMounted(async () => {
+  await auth.initialize()
+  if (auth.user.value) await organization.load()
+})
 </script>

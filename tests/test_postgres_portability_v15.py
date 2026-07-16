@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.db.postgres import HybridRow, migration_plan, portability_report, render_postgres_schema, translate_migration, translate_query
+from app.db.transfer import TABLE_ORDER, rows_digest
 
 
 def test_runtime_query_translation_and_hybrid_rows_preserve_contract():
@@ -35,3 +36,18 @@ def test_runtime_portability_gate_has_no_sqlite_query_blockers():
     assert report["status"] == "ready"
     assert report["blocker_count"] == 0
     assert report["migration_count"] == 4
+
+
+def test_database_transfer_order_covers_all_business_tables_and_dependencies():
+    assert len(TABLE_ORDER) == 36
+    assert TABLE_ORDER.index("users") < TABLE_ORDER.index("organizations")
+    assert TABLE_ORDER.index("research_projects") < TABLE_ORDER.index("run_jobs")
+    assert TABLE_ORDER.index("run_jobs") < TABLE_ORDER.index("run_events")
+    assert TABLE_ORDER.index("evidence_snapshots") < TABLE_ORDER.index("ingestion_records")
+
+
+def test_transfer_digest_is_order_independent_and_binary_safe():
+    first = [HybridRow(("b", memoryview(b"two")), ["id", "payload"]), HybridRow(("a", b"one"), ["id", "payload"])]
+    second = list(reversed(first))
+    assert rows_digest(first) == rows_digest(second)
+    assert rows_digest(first) != rows_digest([HybridRow(("a", b"changed"), ["id", "payload"])])

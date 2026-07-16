@@ -24,7 +24,7 @@ export function useIngestionGovernance(projectIdRef) {
     loading.value = true
     error.value = ''
     try {
-      organization.value ||= await getCurrentOrganization()
+      organization.value = await getCurrentOrganization()
       const orgId = organization.value.organization_id
       ;[summary.value, members.value] = await Promise.all([
         getIngestionSummary(orgId), listOrganizationMembers(orgId),

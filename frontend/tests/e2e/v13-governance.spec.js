@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const API = 'http://127.0.0.1:8010/api'
+const API = process.env.WORLDPULSE_E2E_API_BASE || 'http://127.0.0.1:8010/api'
 
 async function login(request) {
   const response = await request.post(`${API}/v3/auth/login`, { data: { username: 'e2e-admin', password: 'e2e administrator secret' } })

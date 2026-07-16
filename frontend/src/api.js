@@ -6,7 +6,23 @@ const api = axios.create({
   withCredentials: true
 })
 
+const ORGANIZATION_STORAGE_KEY = 'worldpulse_organization'
+
+export function getActiveOrganization() {
+  if (typeof window === 'undefined') return ''
+  return window.localStorage.getItem(ORGANIZATION_STORAGE_KEY) || ''
+}
+
+export function setActiveOrganization(organizationId) {
+  if (typeof window === 'undefined') return
+  if (organizationId) window.localStorage.setItem(ORGANIZATION_STORAGE_KEY, organizationId)
+  else window.localStorage.removeItem(ORGANIZATION_STORAGE_KEY)
+}
+
 api.interceptors.request.use((config) => {
+  config.headers ||= {}
+  const organizationId = getActiveOrganization()
+  if (organizationId && !config.skipOrganization) config.headers['X-WorldPulse-Org'] = organizationId
   const method = String(config.method || 'get').toLowerCase()
   if (['post', 'put', 'patch', 'delete'].includes(method)) {
     const token = document.cookie.split('; ').find(item => item.startsWith('worldpulse_csrf='))?.split('=').slice(1).join('=')
@@ -61,7 +77,7 @@ export async function syncCalibrationEvidence() {
 }
 
 export async function listOrganizations() {
-  const { data } = await api.get('/v5/organizations')
+  const { data } = await api.get('/v5/organizations', { skipOrganization: true })
   return data
 }
 
@@ -72,6 +88,11 @@ export async function getCurrentOrganization() {
 
 export async function listOrganizationMembers(organizationId) {
   const { data } = await api.get(`/v5/organizations/${organizationId}/members`)
+  return data
+}
+
+export async function listOrganizationProjects(organizationId) {
+  const { data } = await api.get(`/v5/organizations/${organizationId}/projects`)
   return data
 }
 
@@ -228,7 +249,9 @@ export async function retryLifecycleRun(runId) {
 }
 
 export function lifecycleEventStreamUrl(runId, afterSeq = 0) {
-  return `/api/v2/runs/${runId}/events/stream?after_seq=${encodeURIComponent(afterSeq)}`
+  const organizationId = getActiveOrganization()
+  const organizationQuery = organizationId ? `&organization_id=${encodeURIComponent(organizationId)}` : ''
+  return `/api/v2/runs/${runId}/events/stream?after_seq=${encodeURIComponent(afterSeq)}${organizationQuery}`
 }
 
 export async function getWarRoomReplayPack(projectId, params = {}) {

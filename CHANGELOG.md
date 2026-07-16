@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0-rc1 - 2026-07-16
+
+- Promoted PostgreSQL from a translation-only readiness target to a live-tested runtime with canonical migrations, deterministic worker completion, legacy workspace/Replay Pack projection, and row-lock concurrency gates.
+- Added PostgreSQL-safe `SKIP LOCKED` job claiming and atomic event sequence allocation for both lifecycle and ingestion workers while preserving SQLite transaction semantics.
+- Added `python -m app.manage db-copy` for foreign-key-ordered SQLite-to-PostgreSQL transfer with per-table row counts and order-independent SHA-256 verification.
+- Added a PostgreSQL Compose overlay with API, lifecycle worker, ingestion worker, health checks, and persistent storage; the default Compose path remains SQLite-compatible.
+- Added a persistent organization selector, organization header propagation, SSE organization context, stale-selection recovery, and backend-enforced V4 evidence source/snapshot/claim/pack isolation.
+- Added live PostgreSQL CI gates and organization isolation regression coverage without changing the v1-v5 response contracts or deterministic risk authority.
+
 ## 1.5.0-rc1 - 2026-07-16
 
 - Added organization membership and backend-enforced project/lifecycle resource scopes while preserving existing v1-v4 response contracts.

@@ -1,1 +1,1 @@
-export const WORLDPULSE_VERSION = '1.5.0-rc1'
+export const WORLDPULSE_VERSION = '1.6.0-rc1'

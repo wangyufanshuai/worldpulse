@@ -1,0 +1,16 @@
+.git
+.github
+.playwright-cli
+.pytest_cache
+**/__pycache__
+**/*.py[cod]
+**/*.log
+**/*.out.log
+**/*.err.log
+data
+frontend/node_modules
+frontend/dist
+frontend/output
+frontend/.vite
+docs
+tests/*.py

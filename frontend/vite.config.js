@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     proxy: {
-      '/api': 'http://127.0.0.1:8010'
+      '/api': process.env.WORLDPULSE_API_PROXY || 'http://127.0.0.1:8010'
     }
   }
 })

@@ -16,6 +16,7 @@ from app.services.auth import (
     authenticate_request,
     configured_cors_origins,
     enforce_actor_rate_limit,
+    ensure_system_user,
     permission_for_request,
     record_security_event,
     require_csrf,
@@ -55,18 +56,22 @@ app.add_middleware(
 
 @app.middleware("http")
 async def local_session_guard(request: Request, call_next):
-    if auth_mode() == "disabled" or request.method == "OPTIONS":
+    if request.method == "OPTIONS":
         return await call_next(request)
     path = request.url.path
     public = {"/api/health", "/api/version", "/api/v3/auth/login"}
     if path in public or not path.startswith("/api"):
         return await call_next(request)
     try:
-        identity = authenticate_request(request)
+        authentication_disabled = auth_mode() == "disabled"
+        identity = ensure_system_user() if authentication_disabled else authenticate_request(request)
         request.state.user = identity
-        organization = organizations.current_organization(identity, request.headers.get("x-worldpulse-org"))
+        requested_organization = request.headers.get("x-worldpulse-org") or request.query_params.get("organization_id")
+        organization = organizations.current_organization(identity, requested_organization)
         request.state.organization_id = organization.organization_id
         organizations.enforce_api_resource_scope(organization.organization_id, identity, request.method, path)
+        if authentication_disabled:
+            return await call_next(request)
         permission = permission_for_request(request.method, path)
         require_permission(identity, permission)
         if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:

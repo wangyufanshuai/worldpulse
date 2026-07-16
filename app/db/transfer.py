@@ -1,0 +1,162 @@
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import sqlite3
+from pathlib import Path
+from typing import Any, Iterable
+
+from app.db.migrations import verify_schema
+from app.db.postgres import apply_postgres_migrations, connect_postgres, verify_postgres_schema
+
+
+# Foreign-key-safe order. schema_migrations is intentionally excluded because the
+# PostgreSQL target owns its canonical migration ledger.
+TABLE_ORDER = (
+    "users",
+    "organizations",
+    "organization_members",
+    "research_projects",
+    "organization_resources",
+    "research_runs",
+    "causal_graph_snapshots",
+    "ai_reports",
+    "chat_messages",
+    "rule_packs",
+    "rule_pack_reviews",
+    "run_jobs",
+    "run_event_counters",
+    "run_events",
+    "run_attempts",
+    "run_steps",
+    "run_artifacts",
+    "calibration_cases",
+    "calibration_runs",
+    "calibration_results",
+    "review_cases",
+    "review_decisions",
+    "security_audit_events",
+    "auth_sessions",
+    "evidence_sources",
+    "evidence_snapshots",
+    "evidence_claims",
+    "evidence_links",
+    "evidence_packs",
+    "evidence_pack_items",
+    "ingestion_policies",
+    "data_connectors",
+    "ingestion_jobs",
+    "ingestion_event_counters",
+    "ingestion_events",
+    "ingestion_records",
+)
+
+
+def copy_sqlite_to_postgres(
+    source: str | Path,
+    target_url: str,
+    *,
+    verify_only: bool = False,
+) -> dict[str, Any]:
+    source_path = Path(source).resolve()
+    verify_schema(source_path)
+    apply_postgres_migrations(target_url)
+    verify_postgres_schema(target_url)
+
+    sqlite_connection = sqlite3.connect(f"file:{source_path.as_posix()}?mode=ro", uri=True)
+    sqlite_connection.row_factory = sqlite3.Row
+    target = connect_postgres(target_url)
+    copied: dict[str, int] = {}
+    try:
+        source_tables = _sqlite_tables(sqlite_connection)
+        missing = [table for table in TABLE_ORDER if table not in source_tables]
+        if missing:
+            raise RuntimeError(f"SQLite source is missing required tables: {', '.join(missing)}")
+
+        if not verify_only:
+            for table in TABLE_ORDER:
+                rows = _source_rows(sqlite_connection, table)
+                if rows:
+                    columns = list(rows[0].keys())
+                    placeholders = ", ".join("?" for _ in columns)
+                    statement = (
+                        f"INSERT INTO {table} ({', '.join(columns)}) "
+                        f"VALUES ({placeholders}) ON CONFLICT DO NOTHING"
+                    )
+                    for row in rows:
+                        target.execute(statement, tuple(row[column] for column in columns))
+                copied[table] = len(rows)
+
+        verification = _verify_all_tables(sqlite_connection, target)
+        if not verification["verified"]:
+            failures = [item["table"] for item in verification["tables"] if not item["matches"]]
+            raise RuntimeError(f"Database transfer verification failed for: {', '.join(failures)}")
+        target.commit()
+        return {
+            "status": "ok",
+            "source": str(source_path),
+            "target_backend": "postgresql",
+            "mode": "verify-only" if verify_only else "copy-and-verify",
+            "tables": len(TABLE_ORDER),
+            "rows": sum(item["source_count"] for item in verification["tables"]),
+            "copied": copied,
+            "verification": verification,
+        }
+    except Exception:
+        target.rollback()
+        raise
+    finally:
+        sqlite_connection.close()
+        target.close()
+
+
+def _sqlite_tables(connection: sqlite3.Connection) -> set[str]:
+    return {
+        str(row[0])
+        for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
+    }
+
+
+def _source_rows(connection: sqlite3.Connection, table: str) -> list[sqlite3.Row]:
+    return connection.execute(f"SELECT * FROM {table}").fetchall()
+
+
+def _verify_all_tables(source: sqlite3.Connection, target) -> dict[str, Any]:
+    tables: list[dict[str, Any]] = []
+    for table in TABLE_ORDER:
+        source_rows = _source_rows(source, table)
+        target_rows = target.execute(f"SELECT * FROM {table}").fetchall()
+        source_digest = rows_digest(source_rows)
+        target_digest = rows_digest(target_rows)
+        matches = len(source_rows) == len(target_rows) and source_digest == target_digest
+        tables.append(
+            {
+                "table": table,
+                "source_count": len(source_rows),
+                "target_count": len(target_rows),
+                "sha256": source_digest,
+                "matches": matches,
+            }
+        )
+    return {"verified": all(item["matches"] for item in tables), "tables": tables}
+
+
+def rows_digest(rows: Iterable[Any]) -> str:
+    encoded_rows = []
+    for row in rows:
+        keys = list(row.keys())
+        payload = {key: _normalise(row[key]) for key in sorted(keys)}
+        encoded_rows.append(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+    encoded_rows.sort()
+    return hashlib.sha256("\n".join(encoded_rows).encode("utf-8")).hexdigest()
+
+
+def _normalise(value: Any) -> Any:
+    if isinstance(value, memoryview):
+        value = value.tobytes()
+    if isinstance(value, bytes):
+        return {"$binary": base64.b64encode(value).decode("ascii")}
+    if isinstance(value, float):
+        return {"$float": format(value, ".17g")}
+    return value

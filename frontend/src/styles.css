@@ -46,6 +46,26 @@
 .login-card input { min-height: 44px; }
 .session-role { color: #5ce1e6; font-size: 12px; }
 .session-logout { border: 1px solid rgba(255, 255, 255, .14); background: transparent; color: #c8d4df; }
+.organization-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid rgba(92, 225, 230, .2);
+  border-radius: 7px;
+  color: #5ce1e6;
+  background: rgba(92, 225, 230, .045);
+}
+.organization-switcher select {
+  max-width: 210px;
+  min-height: 30px;
+  padding: 0 24px 0 4px;
+  border: 0;
+  color: #cfe5ed;
+  background: transparent;
+  font-size: 12px;
+}
 
 .overview-trust-strip,
 .trust-summary-grid {

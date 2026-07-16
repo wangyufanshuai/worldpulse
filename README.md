@@ -1,5 +1,7 @@
 # WorldPulse 全球综合风险指数
 
+V1.6.0-rc1 完成 PostgreSQL 生产化收口：真实 PostgreSQL 迁移、并发 worker、确定性结果投影和 SQLite 全量转移均进入自动门禁；新增组织切换、SSE 组织上下文与 V4 证据资源隔离。SQLite 仍是零配置开发默认，团队部署推荐使用 PostgreSQL Compose overlay。详见 [`V1.6 PostgreSQL 生产手册`](docs/runbooks/v1.6-postgresql-production.md)。
+
 V1.5.0-rc1 将 WorldPulse 推进到组织级运行与受控数据接入：组织成员和项目作用域由后端强制校验，版本化连接器与采集策略在写入 Evidence Registry 前执行许可、大小、类别和时间截点门禁；SQLite 继续可用，同时新增 PostgreSQL 运行时与编号迁移适配。确定性风险、供应链数值、Run Diff、Replay Pack 以及 V1–V4 合同保持不变。详见 [`V1.5 架构`](docs/architecture/v1.5-organization-ingestion.md)、[`V5 API`](docs/api/v5-organization-ingestion.md) 和 [`PostgreSQL 迁移手册`](docs/runbooks/v1.5-postgresql-migration.md)。
 
 WorldPulse 是一个基于 FastAPI 的全球多源风险监测与预测看板。它不是“预测未来一切”的神秘模型，而是一个可扩展的数据工程项目：

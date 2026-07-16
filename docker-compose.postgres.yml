@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: ${WORLDPULSE_POSTGRES_IMAGE:-postgres:16-alpine}
+    environment:
+      POSTGRES_USER: worldpulse
+      POSTGRES_PASSWORD: ${WORLDPULSE_POSTGRES_PASSWORD:-worldpulse-dev}
+      POSTGRES_DB: worldpulse
+    volumes:
+      - worldpulse-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U worldpulse -d worldpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    environment:
+      WORLDPULSE_DATABASE_URL: postgresql://worldpulse:${WORLDPULSE_POSTGRES_PASSWORD:-worldpulse-dev}@postgres:5432/worldpulse
+      WORLDPULSE_AUTO_MIGRATE: ${WORLDPULSE_AUTO_MIGRATE:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    environment:
+      WORLDPULSE_DATABASE_URL: postgresql://worldpulse:${WORLDPULSE_POSTGRES_PASSWORD:-worldpulse-dev}@postgres:5432/worldpulse
+
+  ingestion-worker:
+    build: .
+    command: ["python", "-m", "app.workers.ingestion_worker"]
+    environment:
+      WORLDPULSE_DATABASE_URL: postgresql://worldpulse:${WORLDPULSE_POSTGRES_PASSWORD:-worldpulse-dev}@postgres:5432/worldpulse
+      WORLDPULSE_ENV: ${WORLDPULSE_ENV:-development}
+      WORLDPULSE_AUTO_MIGRATE: ${WORLDPULSE_AUTO_MIGRATE:-1}
+      WORLDPULSE_AUTH_MODE: ${WORLDPULSE_AUTH_MODE:-disabled}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  worldpulse-postgres:

@@ -4,8 +4,9 @@ from fastapi.testclient import TestClient
 import pytest
 
 from app.core.organization_models import DataConnectorCreateRequest, IngestionJobCreateRequest, IngestionRecordInput, OrganizationCreateRequest
+from app.core.evidence_models import EvidenceSnapshotCreate, EvidenceSourceCreate
 from app.main import app
-from app.services import ingestion, organizations, project_store
+from app.services import evidence_registry, ingestion, organizations, project_store
 from app.services.auth import create_user, ensure_system_user, permission_for_request
 from app.workers.ingestion_worker import process_once
 
@@ -124,6 +125,26 @@ def test_organization_membership_isolates_ingestion_resources(monkeypatch, tmp_p
     assert getattr(denied.value, "status_code", None) == 403
 
 
+def test_evidence_registry_lists_and_details_are_organization_scoped(monkeypatch, tmp_path):
+    actor = _setup(monkeypatch, tmp_path)
+    second = organizations.create_organization(OrganizationCreateRequest(name="Evidence Vault", slug="evidence-vault"), actor)
+    source = evidence_registry.create_source(EvidenceSourceCreate(
+        source_type="dataset", name="Default-only source", locator="worldpulse://org/default-only",
+    ), actor, organization_id="org_default")
+    snapshot = evidence_registry.create_snapshot(EvidenceSnapshotCreate(
+        source_id=source.source_id, external_ref="default-1", title="Default evidence",
+        category="energy", content={"risk": 61}, observed_at="2026-06-01", cutoff_at="2026-06-30",
+    ), actor, organization_id="org_default")
+
+    assert [item.source_id for item in evidence_registry.list_sources(organization_id="org_default")] == [source.source_id]
+    assert evidence_registry.search_evidence(organization_id="org_default").snapshots[0].snapshot_id == snapshot.snapshot_id
+    assert evidence_registry.list_sources(organization_id=second.organization_id) == []
+    assert evidence_registry.search_evidence(organization_id=second.organization_id).total == 0
+    with pytest.raises(Exception) as denied:
+        evidence_registry.get_snapshot(snapshot.snapshot_id, organization_id=second.organization_id)
+    assert getattr(denied.value, "status_code", None) == 404
+
+
 def test_v5_api_rbac_and_bounded_execute(monkeypatch, tmp_path):
     _setup(monkeypatch, tmp_path)
     monkeypatch.setenv("WORLDPULSE_AUTH_MODE", "disabled")
@@ -163,6 +184,10 @@ def test_v5_organization_projects_are_scoped_without_changing_v1_models(monkeypa
         assert [item["project_id"] for item in scoped.json()] == [project_id]
         default_projects = client.get("/api/v5/organizations/org_default/projects")
         assert project_id not in [item["project_id"] for item in default_projects.json()]
+        legacy_default = client.get("/api/projects", headers={"X-WorldPulse-Org": "org_default"})
+        legacy_scoped = client.get("/api/projects", headers={"X-WorldPulse-Org": org_id})
+        assert project_id not in [item["project_id"] for item in legacy_default.json()]
+        assert [item["project_id"] for item in legacy_scoped.json()] == [project_id]
         with pytest.raises(Exception):
             organizations.require_resource_scope("org_default", "project", project_id)
 

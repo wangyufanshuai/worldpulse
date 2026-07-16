@@ -8,6 +8,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: worldpulse
+          POSTGRES_PASSWORD: worldpulse-ci
+          POSTGRES_DB: worldpulse_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U worldpulse -d worldpulse_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,6 +43,21 @@ jobs:
         run: python -m compileall app
       - name: Python tests
         run: python -m pytest -q
+      - name: Live PostgreSQL migration and concurrency gates
+        env:
+          WORLDPULSE_DATABASE_URL: postgresql://worldpulse:worldpulse-ci@127.0.0.1:5432/worldpulse_ci
+          WORLDPULSE_TEST_POSTGRES_URL: postgresql://worldpulse:worldpulse-ci@127.0.0.1:5432/worldpulse_ci
+          WORLDPULSE_AUTO_MIGRATE: "1"
+        run: |
+          python -m app.manage migrate
+          python -m app.manage verify
+          python -m pytest -q tests/test_postgres_integration_v16.py
+      - name: SQLite to PostgreSQL audited transfer
+        env:
+          WORLDPULSE_TRANSFER_URL: postgresql://worldpulse:worldpulse-ci@127.0.0.1:5432/worldpulse_transfer
+        run: |
+          python -c "import psycopg; c=psycopg.connect('postgresql://worldpulse:worldpulse-ci@127.0.0.1:5432/postgres', autocommit=True); c.execute('CREATE DATABASE worldpulse_transfer'); c.close()"
+          python -m app.manage db-copy --source data/ci-migration.db --target-url "$WORLDPULSE_TRANSFER_URL"
       - name: OpenAPI snapshot
         run: |
           python scripts/export_openapi.py

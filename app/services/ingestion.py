@@ -21,6 +21,7 @@ from app.core.organization_models import (
 from app.core.trust_models import UserIdentity
 from app.services import evidence_registry
 from app.services.consistency.hashing import stable_hash
+from app.db.postgres import is_postgres_url
 from app.services.organizations import ORG_WRITE_ROLES, require_organization_role, require_resource_scope, scope_resource
 from app.services.project_store import connect, dumps, init_db, loads
 from app.services.security import redact_secrets
@@ -295,8 +296,10 @@ def retry_job(organization_id: str, job_id: str, actor: UserIdentity) -> Ingesti
 def claim_next_job(worker_id: str) -> tuple[str, str] | None:
     init_db()
     with connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
-        row = conn.execute("SELECT job_id, organization_id FROM ingestion_jobs WHERE status = 'queued' ORDER BY created_at, job_id LIMIT 1").fetchone()
+        if not is_postgres_url():
+            conn.execute("BEGIN IMMEDIATE")
+        lock_clause = " FOR UPDATE SKIP LOCKED" if is_postgres_url() else ""
+        row = conn.execute(f"SELECT job_id, organization_id FROM ingestion_jobs WHERE status = 'queued' ORDER BY created_at, job_id LIMIT 1{lock_clause}").fetchone()
         if row is None:
             return None
         updated = conn.execute("UPDATE ingestion_jobs SET status = 'running', worker_id = ?, started_at = ?, updated_at = ? WHERE job_id = ? AND status = 'queued'", (worker_id, _now(), _now(), row["job_id"]))
@@ -347,11 +350,16 @@ def list_events(organization_id: str, job_id: str, actor: UserIdentity, *, after
 
 def append_event(job_id: str, event_type: str, title: str, detail: str, payload: dict) -> IngestionEvent:
     with connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        if not is_postgres_url():
+            conn.execute("BEGIN IMMEDIATE")
         conn.execute("INSERT INTO ingestion_event_counters(job_id, next_seq) VALUES (?, 1) ON CONFLICT(job_id) DO NOTHING", (job_id,))
-        counter = conn.execute("SELECT next_seq FROM ingestion_event_counters WHERE job_id = ?", (job_id,)).fetchone()
-        seq = int(counter["next_seq"])
-        conn.execute("UPDATE ingestion_event_counters SET next_seq = ? WHERE job_id = ?", (seq + 1, job_id))
+        if is_postgres_url():
+            counter = conn.execute("UPDATE ingestion_event_counters SET next_seq = next_seq + 1 WHERE job_id = ? RETURNING next_seq - 1 AS seq", (job_id,)).fetchone()
+            seq = int(counter["seq"])
+        else:
+            counter = conn.execute("SELECT next_seq FROM ingestion_event_counters WHERE job_id = ?", (job_id,)).fetchone()
+            seq = int(counter["next_seq"])
+            conn.execute("UPDATE ingestion_event_counters SET next_seq = ? WHERE job_id = ?", (seq + 1, job_id))
         now = _now()
         conn.execute(
             "INSERT INTO ingestion_events(job_id, seq, event_type, title, detail, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
