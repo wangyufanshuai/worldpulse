@@ -1,0 +1,1 @@
+{"case_id":"alliance_accepted","kind":"response","message_type":"accept","parent_tick":1,"response_tick":2,"sender":"agent:country_policy:B","recipient":"agent:alliance:A","authorized":true,"result_status":"active"}

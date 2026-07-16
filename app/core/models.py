@@ -774,6 +774,8 @@ class RunJobStatus(BaseModel):
     next_attempt_at: str | None = None
     terminal_reason: str | None = None
     job_kind: str = "war_room"
+    agent_pack_id: str | None = None
+    agent_pack_hash: str | None = None
     rule_pack_id: str | None = None
     rule_pack_hash: str | None = None
 

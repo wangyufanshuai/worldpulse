@@ -5,3 +5,6 @@
 Golden 测试验证同版本同输入的确定性输出和 hash，不声称现实预测准确率。规则改变时必须升级规则版本、重新生成期望值并在 CHANGELOG 解释原因；不得静默修改 fixture。
 
 敏感性测试覆盖 intensity、propagation、duration、policy actions 以及 chain substitution/lag，验证方向性和边界而不是统计预测能力。
+# V1.8 协商 Golden Scenarios
+
+`tests/negotiation_golden/` 固定六类协商合同：联盟接受、联盟拒绝、反提案接受、冲突承诺拒绝、稳定型叙事和全球强硬叙事累计上限。它们只验证消息/承诺准入与 `narrative-diffusion.v1`，不会让 Agent 输出成为数值权威。

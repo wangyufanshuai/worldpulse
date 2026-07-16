@@ -163,10 +163,10 @@ def list_rule_pack_reviews(rule_pack_id: str) -> list[RulePackReview]:
 def trust_manifest_for_job(lifecycle_job_id: str | None = None) -> dict:
     if lifecycle_job_id:
         with connect() as conn:
-            row = conn.execute("SELECT rule_pack_id, rule_pack_hash FROM run_jobs WHERE run_id = ?", (lifecycle_job_id,)).fetchone()
+            row = conn.execute("SELECT rule_pack_id, rule_pack_hash, agent_pack_id, agent_pack_hash FROM run_jobs WHERE run_id = ?", (lifecycle_job_id,)).fetchone()
         if row and row["rule_pack_id"]:
             pack = get_rule_pack(row["rule_pack_id"])
-            return {"rule_pack_id": pack.rule_pack_id, "rule_pack_version": pack.version, "rule_pack_hash": row["rule_pack_hash"], "status_at_export": pack.status}
+            return {"rule_pack_id": pack.rule_pack_id, "rule_pack_version": pack.version, "rule_pack_hash": row["rule_pack_hash"], "status_at_export": pack.status, "agent_pack_id": row["agent_pack_id"], "agent_pack_hash": row["agent_pack_hash"]}
     pack = active_rule_pack()
     return {"rule_pack_id": pack.rule_pack_id, "rule_pack_version": pack.version, "rule_pack_hash": pack.manifest_hash, "status_at_export": pack.status}
 

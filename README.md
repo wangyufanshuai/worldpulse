@@ -1,5 +1,7 @@
 # WorldPulse 全球综合风险指数
 
+V1.8.0-rc1 新增受控多轮外交博弈：12 个 Agent 在 6 个 Tick 内生成结构化提案、反提案、接受与公开声明；一致性评估器、承诺账本和确定性适配器决定哪些行动可以进入下一轮世界状态。风险、供应链压力和舆论数值仍只由确定性引擎生成。详见 [`V1.8 架构`](docs/architecture/v1.8-negotiation-runtime.md)、[`V7 API`](docs/api/v7-negotiation.md) 和 [`V1.8 运行手册`](docs/runbooks/v1.8-negotiation.md)。
+
 V1.7.0-rc1 在 V1.6 PostgreSQL 生产基线上增加运维控制平面：生命周期与采集 worker 具备持久化注册、心跳、状态和安全排空；`/api/ready` 区分进程存活与平台就绪；组织项目、活跃运行、24 小时采集任务和证据快照受后端配额约束。War Room 新增中文“运维中心”。这些能力只治理执行容量，不改变确定性风险、供应链压力、Run Diff 或 Replay Pack。详见 [`V1.7 架构`](docs/architecture/v1.7-operations-control-plane.md)、[`V6 API`](docs/api/v6-operations.md) 与 [`V1.7 运维手册`](docs/runbooks/v1.7-operations.md)。
 
 V1.6.0-rc1 完成 PostgreSQL 生产化收口：真实 PostgreSQL 迁移、并发 worker、确定性结果投影和 SQLite 全量转移均进入自动门禁；新增组织切换、SSE 组织上下文与 V4 证据资源隔离。SQLite 仍是零配置开发默认，团队部署推荐使用 PostgreSQL Compose overlay。详见 [`V1.6 PostgreSQL 生产手册`](docs/runbooks/v1.6-postgresql-production.md)。

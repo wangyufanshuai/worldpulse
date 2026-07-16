@@ -253,6 +253,31 @@ export async function getLifecycleAudit(runId) {
   return data
 }
 
+export async function listAgentPacks() {
+  const { data } = await api.get('/v7/agent-packs')
+  return data
+}
+
+export async function getRunNegotiation(runId) {
+  const { data } = await api.get(`/v7/runs/${runId}/negotiation`)
+  return data
+}
+
+export async function getNegotiationRounds(runId) {
+  const { data } = await api.get(`/v7/runs/${runId}/negotiation/rounds`)
+  return data
+}
+
+export async function getNegotiationMessages(runId, params = {}) {
+  const { data } = await api.get(`/v7/runs/${runId}/negotiation/messages`, { params })
+  return data
+}
+
+export async function getNegotiationCommitments(runId) {
+  const { data } = await api.get(`/v7/runs/${runId}/negotiation/commitments`)
+  return data
+}
+
 export async function pauseLifecycleRun(runId) {
   const { data } = await api.post(`/v2/runs/${runId}/pause`)
   return data

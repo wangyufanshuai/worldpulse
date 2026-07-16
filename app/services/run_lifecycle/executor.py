@@ -16,6 +16,7 @@ from app.services.projects import persist_war_room_result
 from app.services.security import redact_secrets
 from app.services.war_room_engine import run_war_room
 from app.services.reviews import create_review_case
+from app.services.negotiation import run_negotiation
 
 from . import checkpoints, repository, steps
 
@@ -233,6 +234,18 @@ def process_job(run_id: str) -> RunJobStatus:
         elif phase == "consistency_audit":
             if result is None:
                 raise HTTPException(status_code=500, detail="Consistency audit requires a deterministic War Room result")
+            if job.engine_mode == "negotiation":
+                result, negotiation_summary = run_negotiation(
+                    result,
+                    run_id=run_id,
+                    seed=job.seed or 42,
+                    should_stop=lambda: repository.get_job(run_id).status in {"pausing", "paused", "cancelling", "cancelled"},
+                )
+                interrupted = _apply_boundary_control(run_id)
+                if interrupted:
+                    return interrupted
+                repository.add_artifact(run_id, "negotiation_summary", "negotiation-summary.v1", negotiation_summary)
+                repository.add_artifact(run_id, "negotiation_final_result", "war-room-result.negotiation.v1", result.model_dump(mode="json"))
             report = evaluate_war_room_result(
                 result,
                 run_id=run_id,

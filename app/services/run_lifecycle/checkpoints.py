@@ -120,6 +120,8 @@ def _restore_execution_state(job: RunJobStatus, state: CheckpointState) -> None:
 
     if job.engine_mode == "hybrid" and state.artifacts.get("hybrid_war_room_result"):
         state.result = WarRoomRun.model_validate(state.artifacts["hybrid_war_room_result"])
+    if job.engine_mode == "negotiation" and state.artifacts.get("negotiation_final_result"):
+        state.result = WarRoomRun.model_validate(state.artifacts["negotiation_final_result"])
 
     projection = state.artifacts.get("projection")
     if projection:

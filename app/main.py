@@ -12,6 +12,7 @@ from app.api.v3 import router as v3_router
 from app.api.v4 import router as v4_router
 from app.api.v5 import router as v5_router
 from app.api.v6 import router as v6_router
+from app.api.v7 import router as v7_router
 from app.services.auth import (
     auth_mode,
     authenticate_request,
@@ -113,6 +114,7 @@ app.include_router(v3_router, prefix="/api/v3")
 app.include_router(v4_router, prefix="/api/v4")
 app.include_router(v5_router, prefix="/api/v5")
 app.include_router(v6_router, prefix="/api/v6")
+app.include_router(v7_router, prefix="/api/v7")
 
 
 @app.get("/favicon.ico")

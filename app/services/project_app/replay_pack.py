@@ -17,6 +17,12 @@ HYBRID_REPLAY_ARTIFACTS = (
     "agent_action_projection_audit",
     "deterministic_action_modifiers",
     "hybrid_replay_record",
+    "negotiation_summary",
+    "negotiation_final_result",
+    "negotiation_round",
+    "commitment_ledger",
+    "narrative_diffusion",
+    "negotiation_replay",
 )
 
 
@@ -51,7 +57,7 @@ def _replay_pack_lifecycle_artifacts(target: ResearchRun) -> dict:
         if row["artifact_type"] == "agent_action_projection_audit":
             projection_audit = AgentActionProjectionAudit.model_validate(verified[row["artifact_type"]]["content"])
             verify_action_projection_audit(projection_audit)
-    if "hybrid_replay_record" not in verified:
+    if "hybrid_replay_record" not in verified and "negotiation_replay" not in verified:
         return {}
     return {"lifecycle_job_id": lifecycle_job_id, "artifacts": verified}
 

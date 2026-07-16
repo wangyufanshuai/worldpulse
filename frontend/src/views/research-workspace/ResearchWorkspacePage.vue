@@ -12,6 +12,13 @@
 
         <WarRoomLifecycleRail :stages="lifecycleStages" />
 
+        <section v-if="activeSection === 'overview' && negotiation.detail.value" class="overview-trust-strip" data-testid="overview-negotiation-summary">
+          <article><span>协商 Tick</span><strong>{{ negotiation.summary.value.currentTick }}/6</strong></article>
+          <article><span>受控 Agent</span><strong>{{ negotiation.summary.value.agentCount }}/12</strong></article>
+          <article><span>有效承诺</span><strong>{{ negotiation.summary.value.activeCommitments }}</strong></article>
+          <article><span>结构化消息</span><strong>{{ negotiation.summary.value.messageCount }}</strong></article>
+        </section>
+
         <section v-if="activeSection === 'overview' && trustSummary" class="overview-trust-strip" data-testid="overview-trust-summary">
           <article><span>当前规则版本</span><strong>{{ trustSummary.rule_pack?.version || '--' }}</strong></article>
           <article><span>校准状态</span><strong>{{ trustSummary.calibration_status }}</strong></article>
@@ -107,6 +114,17 @@
             :risk-channel="riskChannel"
             :runtime-audit="lifecycleAudit?.agent_runtime"
             :consistency-audit="consistencyAudit"
+          />
+
+          <WarRoomNegotiationModule
+            v-else-if="activeSection === 'negotiation'"
+            :detail="negotiation.detail.value"
+            :rounds="negotiation.rounds.value"
+            :messages="negotiation.messages.value"
+            :commitments="negotiation.commitments.value"
+            :summary="negotiation.summary.value"
+            :loading="negotiation.loading.value"
+            :error="negotiation.error.value"
           />
 
           <WarRoomGraphModule
@@ -517,6 +535,7 @@ import WarRoomTrustCenter from '../../components/war-room/WarRoomTrustCenter.vue
 import WarRoomEvidenceCenter from '../../components/war-room/WarRoomEvidenceCenter.vue'
 import WarRoomIngestionCenter from '../../components/war-room/WarRoomIngestionCenter.vue'
 import WarRoomOperationsCenter from '../../components/war-room/WarRoomOperationsCenter.vue'
+import WarRoomNegotiationModule from '../../components/war-room/WarRoomNegotiationModule.vue'
 import WarRoomTopNav from '../../components/war-room/WarRoomTopNav.vue'
 import { useRunLifecycle } from '../../composables/useRunLifecycle'
 import { useRunLifecycleConsole } from '../../composables/useRunLifecycleConsole'
@@ -529,6 +548,7 @@ import { useAuthSession } from '../../composables/useAuthSession'
 import { useEvidenceRegistry } from '../../composables/useEvidenceRegistry'
 import { useIngestionGovernance } from '../../composables/useIngestionGovernance'
 import { useOperationsCenter } from '../../composables/useOperationsCenter'
+import { useNegotiation } from '../../composables/useNegotiation'
 import { decisionLabels, eventFilterOptions, graphTypeOptions, localizedText, prompts } from './warRoomWorkspaceConfig'
 
 const props = defineProps({ projectId: String, section: String })
@@ -579,8 +599,9 @@ const shortRunId = (runId) => {
   return text ? text.replace(/^run_/, '#').slice(0, 13) : ''
 }
 
-const sectionKeys = ['overview', 'sandbox', 'analysis', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence', 'ingestion', 'operations']
+const sectionKeys = ['overview', 'sandbox', 'analysis', 'negotiation', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence', 'ingestion', 'operations']
 const sectionMeta = {
+  negotiation: { key: 'negotiation', label: '外交博弈', title: '受控多轮外交博弈与舆论扩散', desc: '观察 12 Agent、6 Tick 的结构化提案、反提案、承诺账本与确定性数值投影。', icon: UsersRound },
   overview: { key: 'overview', label: '战情总览', title: '全球态势总览', desc: '地图、KPI、Agent 和时间线的指挥台总览。', icon: ShieldAlert },
   sandbox: { key: 'sandbox', label: '推演沙盘', title: '场景构建与推演参数', desc: '集中管理目标国家、供应链、政策动作和高级假设。', icon: MapPinned },
   analysis: { key: 'analysis', label: '智能分析', title: 'Agent 决策与风险解释', desc: '解释当前国家 Agent 的触发源、驱动因素、预期代价和关联事件。', icon: Activity },
@@ -593,8 +614,8 @@ const sectionMeta = {
   ingestion: { key: 'ingestion', label: '接入治理', title: '组织、连接器与受控采集', desc: '管理许可元数据、不可变策略、截点校验和采集任务审计。', icon: Cable },
   operations: { key: 'operations', label: '运维中心', title: '平台就绪度、Worker 与组织配额', desc: '监控执行节点心跳、安全排空、任务积压和组织资源容量。', icon: ServerCog }
 }
-const topSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.graph, sectionMeta.data]
-const railSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.ingestion, sectionMeta.evidence, sectionMeta.trust, sectionMeta.operations, sectionMeta.replay, sectionMeta.settings]
+const topSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.negotiation, sectionMeta.graph, sectionMeta.data]
+const railSections = [sectionMeta.overview, sectionMeta.sandbox, sectionMeta.negotiation, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.ingestion, sectionMeta.evidence, sectionMeta.trust, sectionMeta.operations, sectionMeta.replay, sectionMeta.settings]
 const isWarRoom = computed(() => detail.value?.project?.mode === 'war_room')
 const activeSection = computed(() => {
   const raw = String(route.params.section || props.section || 'overview')
@@ -710,6 +731,12 @@ const lifecycleControlForRole = computed(() => auth.permissions.value.canRun ? l
   canRetry: false,
   disclaimer: '当前账户为只读/审阅角色；运行控制由后端 RBAC 禁止。',
 })
+const negotiationRunId = computed(() => {
+  if (activeLifecycleRun.value?.engine_mode === 'negotiation' && Number(activeLifecycleRun.value?.progress || 0) >= 74) return activeLifecycleRun.value.run_id
+  const latest = detail.value?.latest_run?.data_snapshot || {}
+  return latest.trust_manifest?.agent_pack_id ? latest.lifecycle_job_id : ''
+})
+const negotiation = useNegotiation(() => negotiationRunId.value)
 const insightCards = computed(() => Array.isArray(workspaceState.value?.insight_cards) && workspaceState.value.insight_cards.length ? workspaceState.value.insight_cards : (Array.isArray(warRoomUi.value?.insight_cards) ? warRoomUi.value.insight_cards : []))
 const entityDetails = computed(() => workspaceState.value?.entity_details || warRoomUi.value?.entity_details || {})
 const topRiskCountry = computed(() => [...(warRoom.value?.risk_heatmap || [])].sort((a, b) => Number(b.risk || 0) - Number(a.risk || 0))[0] || null)
@@ -1241,6 +1268,7 @@ async function load(runId = selectedRunId.value) {
   await loadEvidenceSummary()
   await loadIngestionGovernance()
   await loadOperationsCenter()
+  if (activeSection.value === 'negotiation') await negotiation.load()
   await nextTick()
   renderGraph()
 }
@@ -1634,6 +1662,10 @@ watch(() => detail.value?.graph?.graph_id, () => nextTick(renderGraph))
 watch(activeSection, section => {
   if (!sectionKeys.includes(section)) router.replace(sectionPath('overview'))
   if (section === 'graph') nextTick(renderSectionGraph)
+  if (section === 'negotiation') negotiation.load()
+})
+watch(() => activeLifecycleRun.value?.updated_at, () => {
+  if (activeLifecycleRun.value?.engine_mode === 'negotiation') negotiation.load({ quiet: true })
 })
 watch(filteredGraphEdges, () => {
   if (activeSection.value === 'graph') nextTick(renderSectionGraph)

@@ -371,6 +371,7 @@ def update_job_status(
                 """,
                 (status, now, error_code, redact_secrets(error_message), current.current_attempt_id),
             )
+        _sync_negotiation_session_status(conn, run_id, status, now)
     return get_job(run_id)
 
 
@@ -447,6 +448,7 @@ def pause_job(run_id: str) -> RunJobStatus:
             "UPDATE run_jobs SET status = ?, pause_requested_at = ?, updated_at = ? WHERE run_id = ?",
             (next_status, now, now, run_id),
         )
+        _sync_negotiation_session_status(conn, run_id, next_status, now)
     append_event(run_id, "WORKER", job.current_phase, "Pause requested", "暂停请求已记录，将在阶段边界生效。", payload={"status": next_status})
     return get_job(run_id)
 
@@ -466,6 +468,7 @@ def resume_job(run_id: str) -> RunJobStatus:
             """,
             ("queued", now, run_id),
         )
+        _sync_negotiation_session_status(conn, run_id, "running", now)
     append_event(run_id, "WORKER", job.current_phase, "Run resumed", "任务已恢复排队，等待 worker 继续处理。", payload={"status": "queued"})
     return get_job(run_id)
 
@@ -497,6 +500,7 @@ def cancel_job(run_id: str) -> RunJobStatus:
                 """,
                 (now, job.current_attempt_id),
             )
+        _sync_negotiation_session_status(conn, run_id, next_status, now)
     append_event(run_id, "WORKER", job.current_phase, "Cancel requested", "取消请求已记录；未完成任务不会投影到 research_runs。", payload={"status": next_status})
     return get_job(run_id)
 
@@ -721,6 +725,7 @@ def get_projected_result_run_id(run_id: str) -> str | None:
 
 def get_audit(run_id: str) -> dict:
     hybrid_record = get_latest_artifact_content(run_id, "hybrid_replay_record")
+    negotiation_summary = get_latest_artifact_content(run_id, "negotiation_summary")
     return {
         "run": get_job(run_id).model_dump(),
         "events": [event.model_dump() for event in get_events(run_id)],
@@ -738,6 +743,7 @@ def get_audit(run_id: str) -> dict:
             "baseline_result": get_latest_artifact_content(run_id, "war_room_result"),
             "final_result": get_latest_artifact_content(run_id, "hybrid_war_room_result"),
         } if hybrid_record else None,
+        "negotiation": negotiation_summary,
     }
 
 
@@ -825,7 +831,20 @@ def _scenario_payload(raw: WarRoomScenarioRequest | dict, seed: int | None) -> d
 
 def _engine_mode(value: str | None) -> str:
     normalized = str(value or "deterministic").lower()
-    return normalized if normalized in {"deterministic", "mock_agent", "controlled_agent", "hybrid", "hybrid_recorded"} else "deterministic"
+    return normalized if normalized in {"deterministic", "mock_agent", "controlled_agent", "hybrid", "hybrid_recorded", "negotiation"} else "deterministic"
+
+
+def _sync_negotiation_session_status(conn, run_id: str, status: str, now: str) -> None:
+    if status not in {"running", "paused", "cancelled", "failed", "completed"}:
+        return
+    conn.execute(
+        """
+        UPDATE negotiation_sessions
+        SET status = ?, completed_at = CASE WHEN ? IN ('cancelled','failed','completed') THEN COALESCE(completed_at, ?) ELSE NULL END
+        WHERE run_id = ?
+        """,
+        (status, status, now, run_id),
+    )
 
 
 def _ensure_job_exists(run_id: str) -> None:
@@ -863,6 +882,8 @@ def _job_from_row(row) -> RunJobStatus:
         next_attempt_at=row["next_attempt_at"],
         terminal_reason=row["terminal_reason"],
         job_kind=row["job_kind"] if "job_kind" in row.keys() else "war_room",
+        agent_pack_id=row["agent_pack_id"] if "agent_pack_id" in row.keys() else None,
+        agent_pack_hash=row["agent_pack_hash"] if "agent_pack_hash" in row.keys() else None,
         rule_pack_id=row["rule_pack_id"] if "rule_pack_id" in row.keys() else None,
         rule_pack_hash=row["rule_pack_hash"] if "rule_pack_hash" in row.keys() else None,
     )

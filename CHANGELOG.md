@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.0-rc1 - 2026-07-16
+
+- Added a controlled 12-Agent, 6-Tick negotiation runtime for diplomacy, alliances and public narratives while retaining deterministic numeric authority.
+- Added immutable Agent Packs, append-only message hash chains, commitment event ledgers, per-Tick checkpoints and provider-free offline replay.
+- Added `narrative-diffusion.v1`, bilateral acceptance gates and deterministic per-Tick projection through the existing consistency evaluator and action adapter.
+- Added read-only v7 negotiation APIs and a Chinese War Room diplomacy console with timeline, Agent network, message filters, commitment ledger and diffusion audit.
+- Added migration `0006_v18_negotiation` for SQLite/PostgreSQL and preserved v1-v6 API and lifecycle contracts.
+
 ## 1.7.0-rc1 - 2026-07-16
 
 - Added a persisted worker registry for lifecycle and ingestion processes with leases, heartbeat freshness, current-job visibility, completion counters, graceful signal handling, and administrator-triggered draining.

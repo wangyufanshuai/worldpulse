@@ -1,6 +1,6 @@
 <template>
   <div class="section-card-grid settings-grid" data-testid="war-room-settings-module">
-    <article data-testid="worldpulse-version-setting"><span>平台版本</span><strong>{{ WORLDPULSE_VERSION }}</strong><p>候选发布 · API contract v5</p></article>
+    <article data-testid="worldpulse-version-setting"><span>平台版本</span><strong>{{ WORLDPULSE_VERSION }}</strong><p>候选发布 · API contract v7</p></article>
     <article class="settings-control-card">
       <span>生命周期执行模式</span>
       <strong>{{ engineModeLabel }}</strong>
@@ -13,6 +13,7 @@
         <option value="mock_agent">可重复 Mock Agent</option>
         <option value="controlled_agent">受控 Agent Runtime</option>
         <option value="hybrid">受控混合推演（推荐）</option>
+        <option value="negotiation">多轮外交博弈（12 Agent × 6 Tick）</option>
       </select>
       <p>{{ modeDescription }}</p>
     </article>
@@ -57,12 +58,14 @@ const runtime = computed(() => ({
 }))
 
 const engineModeLabel = computed(() => ({
+  negotiation: '受控多轮外交博弈',
   deterministic: '纯确定性模式',
   mock_agent: 'Mock Agent 合同模式',
   controlled_agent: '受控 Agent Runtime',
   hybrid: '受控混合推演',
 }[props.engineMode] || props.engineMode))
 const modeDescription = computed(() => ({
+  negotiation: '12 个受控 Agent 在 6 个 Tick 内协商；承诺必须互相接受并通过一致性评估，权威数值仅由确定性引擎生成。',
   deterministic: '仅运行确定性引擎和只读一致性审计。',
   mock_agent: '生成可重复的结构化提案并执行一致性准入；不会修改确定性数值。',
   controlled_agent: '使用 provider allowlist、调用预算、超时和审计；默认安全降级到 Mock Provider。',

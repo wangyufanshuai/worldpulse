@@ -14,10 +14,13 @@ from app.services.auth import ensure_system_user
 from app.core.operations_models import OrganizationQuotaUpdate
 
 
-pytestmark = pytest.mark.skipif(
-    not is_postgres_url(os.getenv("WORLDPULSE_TEST_POSTGRES_URL")),
-    reason="WORLDPULSE_TEST_POSTGRES_URL is required for live PostgreSQL integration tests",
-)
+pytestmark = [
+    pytest.mark.postgres_live,
+    pytest.mark.skipif(
+        not is_postgres_url(os.getenv("WORLDPULSE_TEST_POSTGRES_URL")),
+        reason="WORLDPULSE_TEST_POSTGRES_URL is required for live PostgreSQL integration tests",
+    ),
+]
 
 
 @pytest.fixture(autouse=True)

@@ -162,6 +162,56 @@
         "title": "AgentDecision",
         "type": "object"
       },
+      "AgentPackManifest": {
+        "properties": {
+          "agent_pack_id": {
+            "title": "Agent Pack Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/NegotiationAgentProfile"
+            },
+            "title": "Profiles",
+            "type": "array"
+          },
+          "schema_version": {
+            "default": "agent-pack-manifest.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "status": {
+            "default": "active",
+            "enum": [
+              "active",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_pack_id",
+          "seed",
+          "profiles",
+          "manifest_hash",
+          "created_at"
+        ],
+        "title": "AgentPackManifest",
+        "type": "object"
+      },
       "AgentState": {
         "properties": {
           "conflict_pressure": {
@@ -830,6 +880,76 @@
           "evidence_sources"
         ],
         "title": "CausalGraphSnapshot",
+        "type": "object"
+      },
+      "CommitmentEvent": {
+        "properties": {
+          "actor_agent_id": {
+            "title": "Actor Agent Id",
+            "type": "string"
+          },
+          "commitment_id": {
+            "title": "Commitment Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_hash": {
+            "title": "Event Hash",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source_message_id": {
+            "title": "Source Message Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "proposed",
+              "active",
+              "rejected",
+              "withdrawn",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tick": {
+            "title": "Tick",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_id",
+          "commitment_id",
+          "session_id",
+          "tick",
+          "seq",
+          "status",
+          "actor_agent_id",
+          "source_message_id",
+          "reason",
+          "event_hash",
+          "created_at"
+        ],
+        "title": "CommitmentEvent",
         "type": "object"
       },
       "ComponentAnalysis": {
@@ -3159,6 +3279,423 @@
         "title": "MarketImpact",
         "type": "object"
       },
+      "NegotiationAgentProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "action_budget": {
+            "default": 6,
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Action Budget",
+            "type": "integer"
+          },
+          "actor_type": {
+            "enum": [
+              "country_policy",
+              "diplomacy",
+              "alliance",
+              "public_opinion",
+              "explanation"
+            ],
+            "title": "Actor Type",
+            "type": "string"
+          },
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "enum": [
+                "diplomatic_signal",
+                "alliance_request",
+                "alliance_response",
+                "sanction_proposal",
+                "trade_reroute_request",
+                "public_narrative",
+                "humanitarian_offer",
+                "deescalation_offer",
+                "intelligence_request"
+              ],
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "country_code": {
+            "title": "Country Code",
+            "type": "string"
+          },
+          "country_name": {
+            "title": "Country Name",
+            "type": "string"
+          },
+          "profile_hash": {
+            "title": "Profile Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "actor_type",
+          "country_code",
+          "country_name",
+          "capabilities",
+          "profile_hash"
+        ],
+        "title": "NegotiationAgentProfile",
+        "type": "object"
+      },
+      "NegotiationCommitment": {
+        "properties": {
+          "action_type": {
+            "enum": [
+              "diplomatic_signal",
+              "alliance_request",
+              "alliance_response",
+              "sanction_proposal",
+              "trade_reroute_request",
+              "public_narrative",
+              "humanitarian_offer",
+              "deescalation_offer",
+              "intelligence_request"
+            ],
+            "title": "Action Type",
+            "type": "string"
+          },
+          "commitment_hash": {
+            "title": "Commitment Hash",
+            "type": "string"
+          },
+          "commitment_id": {
+            "title": "Commitment Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/CommitmentEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "party_agent_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Party Agent Ids",
+            "type": "array"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source_message_id": {
+            "title": "Source Message Id",
+            "type": "string"
+          },
+          "source_proposal_id": {
+            "title": "Source Proposal Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "proposed",
+            "enum": [
+              "proposed",
+              "active",
+              "rejected",
+              "withdrawn",
+              "expired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "terms": {
+            "additionalProperties": true,
+            "title": "Terms",
+            "type": "object"
+          }
+        },
+        "required": [
+          "commitment_id",
+          "session_id",
+          "source_message_id",
+          "source_proposal_id",
+          "action_type",
+          "party_agent_ids",
+          "terms",
+          "commitment_hash",
+          "created_at"
+        ],
+        "title": "NegotiationCommitment",
+        "type": "object"
+      },
+      "NegotiationMessage": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "estimated_tokens": {
+            "default": 0,
+            "title": "Estimated Tokens",
+            "type": "integer"
+          },
+          "fallback_used": {
+            "default": false,
+            "title": "Fallback Used",
+            "type": "boolean"
+          },
+          "latency_ms": {
+            "default": 0,
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "message_hash": {
+            "title": "Message Hash",
+            "type": "string"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "message_type": {
+            "enum": [
+              "proposal",
+              "counteroffer",
+              "accept",
+              "reject",
+              "withdrawal",
+              "public_statement"
+            ],
+            "title": "Message Type",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "narrative": {
+            "title": "Narrative",
+            "type": "string"
+          },
+          "parent_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Message Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "previous_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Hash"
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "recipient_agent_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recipient Agent Ids",
+            "type": "array"
+          },
+          "round_id": {
+            "title": "Round Id",
+            "type": "string"
+          },
+          "sender_agent_id": {
+            "title": "Sender Agent Id",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "tick": {
+            "title": "Tick",
+            "type": "integer"
+          },
+          "visibility": {
+            "enum": [
+              "public",
+              "direct"
+            ],
+            "title": "Visibility",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "session_id",
+          "round_id",
+          "tick",
+          "seq",
+          "sender_agent_id",
+          "recipient_agent_ids",
+          "message_type",
+          "visibility",
+          "narrative",
+          "provider",
+          "model",
+          "message_hash",
+          "created_at"
+        ],
+        "title": "NegotiationMessage",
+        "type": "object"
+      },
+      "NegotiationRound": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "input": {
+            "additionalProperties": true,
+            "title": "Input",
+            "type": "object"
+          },
+          "input_hash": {
+            "title": "Input Hash",
+            "type": "string"
+          },
+          "modifier_bundle_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modifier Bundle Hash"
+          },
+          "output": {
+            "additionalProperties": true,
+            "title": "Output",
+            "type": "object"
+          },
+          "output_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Hash"
+          },
+          "previous_state_hash": {
+            "title": "Previous State Hash",
+            "type": "string"
+          },
+          "result_state_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result State Hash"
+          },
+          "round_id": {
+            "title": "Round Id",
+            "type": "string"
+          },
+          "scheduled_agents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scheduled Agents",
+            "type": "array"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "simulation_day": {
+            "title": "Simulation Day",
+            "type": "integer"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tick": {
+            "title": "Tick",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "round_id",
+          "session_id",
+          "tick",
+          "simulation_day",
+          "status",
+          "scheduled_agents",
+          "input",
+          "output",
+          "input_hash",
+          "previous_state_hash",
+          "started_at"
+        ],
+        "title": "NegotiationRound",
+        "type": "object"
+      },
       "Organization": {
         "properties": {
           "created_at": {
@@ -5139,6 +5676,28 @@
       },
       "RunJobStatus": {
         "properties": {
+          "agent_pack_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Pack Hash"
+          },
+          "agent_pack_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Pack Id"
+          },
           "attempt_count": {
             "default": 0,
             "title": "Attempt Count",
@@ -7497,7 +8056,7 @@
   "info": {
     "description": "全球多源综合风险指数与世界局势情景模拟器",
     "title": "WorldPulse",
-    "version": "1.7.0-rc1"
+    "version": "1.8.0-rc1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -12095,6 +12654,228 @@
           }
         },
         "summary": "Worker Drain"
+      }
+    },
+    "/api/v7/agent-packs": {
+      "get": {
+        "operationId": "agent_pack_list_api_v7_agent_packs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentPackManifest"
+                  },
+                  "title": "Response Agent Pack List Api V7 Agent Packs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Agent Pack List"
+      }
+    },
+    "/api/v7/runs/{run_id}/negotiation": {
+      "get": {
+        "operationId": "negotiation_detail_api_v7_runs__run_id__negotiation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Negotiation Detail Api V7 Runs  Run Id  Negotiation Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Negotiation Detail"
+      }
+    },
+    "/api/v7/runs/{run_id}/negotiation/commitments": {
+      "get": {
+        "operationId": "negotiation_commitments_api_v7_runs__run_id__negotiation_commitments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NegotiationCommitment"
+                  },
+                  "title": "Response Negotiation Commitments Api V7 Runs  Run Id  Negotiation Commitments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Negotiation Commitments"
+      }
+    },
+    "/api/v7/runs/{run_id}/negotiation/messages": {
+      "get": {
+        "operationId": "negotiation_messages_api_v7_runs__run_id__negotiation_messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "After Seq",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tick",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 6,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tick"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NegotiationMessage"
+                  },
+                  "title": "Response Negotiation Messages Api V7 Runs  Run Id  Negotiation Messages Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Negotiation Messages"
+      }
+    },
+    "/api/v7/runs/{run_id}/negotiation/rounds": {
+      "get": {
+        "operationId": "negotiation_rounds_api_v7_runs__run_id__negotiation_rounds_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NegotiationRound"
+                  },
+                  "title": "Response Negotiation Rounds Api V7 Runs  Run Id  Negotiation Rounds Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Negotiation Rounds"
       }
     },
     "/api/version": {

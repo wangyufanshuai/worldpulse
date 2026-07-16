@@ -7,11 +7,15 @@ const execFileAsync = promisify(execFile)
 const API = process.env.WORLDPULSE_E2E_API_BASE || 'http://127.0.0.1:8010/api'
 
 test('War Room lifecycle shell and modules remain interactive', async ({ page, request }) => {
+  test.setTimeout(120_000)
   const browserErrors = []
   page.on('console', (message) => {
     if (message.type() === 'error') browserErrors.push(message.text())
   })
   page.on('pageerror', (error) => browserErrors.push(error.message))
+  page.on('response', (response) => {
+    if (response.status() >= 400) browserErrors.push(`${response.status()} ${response.url()}`)
+  })
 
   const loggedIn = await page.request.post(`${API}/v3/auth/login`, {
     data: { username: 'e2e-admin', password: 'e2e administrator secret' },
@@ -98,7 +102,7 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
   await expect(page.getByTestId('worker-status-setting')).toContainText('completed')
 
   const modules = {
-    sandbox: 'war-room-sandbox-module', analysis: 'war-room-analysis-module',
+    sandbox: 'war-room-sandbox-module', analysis: 'war-room-analysis-module', negotiation: 'war-room-negotiation-module',
     graph: 'war-room-graph-module', data: 'war-room-data-module',
     settings: 'war-room-settings-module', replay: 'war-room-replay-module', trust: 'war-room-trust-center',
     evidence: 'war-room-evidence-center', ingestion: 'war-room-ingestion-center', operations: 'war-room-operations-center',
@@ -107,5 +111,20 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
     await page.goto(`projects/${project.project_id}/war-room/${section}`)
     await expect(page.getByTestId(testId)).toBeVisible()
   }
+
+  await page.goto(`projects/${project.project_id}/war-room/settings`)
+  await page.getByTestId('lifecycle-engine-mode').selectOption('negotiation')
+  await page.locator('.section-title button.secondary').click()
+  await page.getByTestId('war-room-run-action').click()
+  await execFileAsync('python', ['-m', 'app.workers.run_worker', '--once'], {
+    cwd: path.resolve(process.cwd(), '..'),
+    env: { ...process.env, WORLDPULSE_DB_PATH: process.env.WORLDPULSE_E2E_DB, AGENT_PROVIDER: 'mock' },
+  })
+  await expect(page.getByTestId('war-room-lifecycle-control')).toContainText('completed', { timeout: 20_000 })
+  await page.goto(`projects/${project.project_id}/war-room/negotiation`)
+  await expect(page.getByTestId('negotiation-agent-network')).toBeVisible()
+  await expect(page.getByTestId('negotiation-agent-network').locator('.agent-node')).toHaveCount(12)
+  await expect(page.getByTestId('negotiation-message-stream').getByTestId('negotiation-message')).toHaveCount(6)
+  await expect(page.getByTestId('negotiation-commitment-ledger')).toBeVisible()
   expect(browserErrors).toEqual([])
 })

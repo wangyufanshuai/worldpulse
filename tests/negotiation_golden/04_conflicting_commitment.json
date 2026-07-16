@@ -1,0 +1,1 @@
+{"case_id":"conflicting_commitment","kind":"conflict","action_type":"alliance_request","parties":["agent:alliance:A","agent:country_policy:B"],"existing_status":"active","conflicts":true,"result_status":"rejected"}

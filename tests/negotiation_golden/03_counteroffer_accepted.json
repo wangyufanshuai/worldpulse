@@ -1,0 +1,1 @@
+{"case_id":"counteroffer_accepted","kind":"response","message_type":"accept","parent_tick":3,"response_tick":4,"sender":"agent:alliance:A","recipient":"agent:country_policy:B","authorized":true,"result_status":"active"}
