@@ -69,6 +69,19 @@ TABLE_ORDER = (
     "ingestion_event_counters",
     "ingestion_events",
     "ingestion_records",
+    "monitoring_sources",
+    "monitoring_poll_jobs",
+    "monitoring_poll_event_counters",
+    "monitoring_poll_events",
+    "monitoring_entries",
+    "monitoring_watchlists",
+    "monitoring_watch_rules",
+    "intelligence_alerts",
+    "intelligence_alert_events",
+    "alert_subscriptions",
+    "organization_notification_counters",
+    "in_app_notifications",
+    "webhook_deliveries",
 )
 
 

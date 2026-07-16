@@ -20,9 +20,10 @@
       <RouterLink class="top-icon-action" :to="sectionPath('trust')" aria-label="可信度中心" data-testid="war-room-trust-link"><ShieldCheck :size="17" /></RouterLink>
       <RouterLink class="top-icon-action" :to="sectionPath('evidence')" aria-label="证据中心" data-testid="war-room-evidence-link"><LibraryBig :size="17" /></RouterLink>
       <RouterLink class="top-icon-action" :to="sectionPath('ingestion')" aria-label="接入治理" data-testid="war-room-ingestion-link"><Cable :size="17" /></RouterLink>
+      <RouterLink class="top-icon-action" :to="sectionPath('intelligence')" aria-label="持续情报" data-testid="war-room-intelligence-link"><Cable :size="17" /></RouterLink>
       <RouterLink class="top-icon-action" :to="sectionPath('operations')" aria-label="运维中心" data-testid="war-room-operations-link"><ServerCog :size="17" /></RouterLink>
       <RouterLink class="top-icon-action" :to="sectionPath('settings')" aria-label="设置"><Settings :size="17" /></RouterLink>
-      <button type="button" class="top-icon-action" @click="$emit('show-upcoming', '通知中心', '告警订阅和运行完成提醒将在后续版本接入。')"><Bell :size="17" /></button>
+      <button type="button" class="top-icon-action notification-trigger" data-testid="war-room-notification-trigger" @click="$emit('open-notifications')"><Bell :size="17" /><b v-if="notificationCount">{{ notificationCount > 99 ? '99+' : notificationCount }}</b></button>
       <span class="commander-avatar">指挥官</span>
       <ChevronDown :size="15" />
     </div>
@@ -36,8 +37,9 @@ import { WORLDPULSE_VERSION } from '../../version'
 defineProps({
   activeSection: { type: String, required: true },
   sectionPath: { type: Function, required: true },
-  topSections: { type: Array, required: true }
+  topSections: { type: Array, required: true },
+  notificationCount: { type: Number, default: 0 }
 })
 
-defineEmits(['open-command-search', 'show-upcoming'])
+defineEmits(['open-command-search', 'show-upcoming', 'open-notifications'])
 </script>

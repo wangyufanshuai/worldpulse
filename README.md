@@ -1,5 +1,7 @@
 # WorldPulse 全球综合风险指数
 
+V1.10.0-rc1 新增默认关闭的持续情报链路：公开 RSS/Atom/JSON Feed 经 SSRF 门禁、版本检测和不可变 Watchlist 匹配后，只能固化为受治理材料和待核验场景候选；它不会自动创建 Draft、启动推演或改写权威数值。详见 [`V1.10 架构`](docs/architecture/v1.10-continuous-intelligence.md)、[`V9 API`](docs/api/v9-continuous-intelligence.md) 和 [`V1.10 运行手册`](docs/runbooks/v1.10-continuous-intelligence.md)。
+
 V1.9.0-rc1 增加证据驱动场景编译：PDF/TXT/Markdown/CSV 通过内容寻址上传、版本化抽取和确定性候选生成后，由 Analyst 整理、Reviewer/Admin 双人审批并冻结 Evidence Pack，才能编译为 deterministic、hybrid 或 negotiation 运行。材料与可选 LLM 只能提供带定位的定性候选，不能写入风险、供应链压力或国家/链路 override。详见 [`V1.9 架构`](docs/architecture/v1.9-scenario-compiler.md)、[`V8 API`](docs/api/v8-scenario-compiler.md) 和 [`V1.9 运行手册`](docs/runbooks/v1.9-scenario-compiler.md)。
 
 V1.8.0-rc1 新增受控多轮外交博弈：12 个 Agent 在 6 个 Tick 内生成结构化提案、反提案、接受与公开声明；一致性评估器、承诺账本和确定性适配器决定哪些行动可以进入下一轮世界状态。风险、供应链压力和舆论数值仍只由确定性引擎生成。详见 [`V1.8 架构`](docs/architecture/v1.8-negotiation-runtime.md)、[`V7 API`](docs/api/v7-negotiation.md) 和 [`V1.8 运行手册`](docs/runbooks/v1.8-negotiation.md)。

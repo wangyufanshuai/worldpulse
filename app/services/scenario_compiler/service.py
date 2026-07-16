@@ -26,7 +26,7 @@ from app.services.run_lifecycle import repository as lifecycle_repository
 from app.services.security import redact_secrets
 from app.services.war_room.data import POLICY_ACTIONS, SCENARIOS, SUPPLY_CHAINS, COUNTRIES
 
-from .blob_store import resolve_blob, store_upload, verify_blob
+from .blob_store import resolve_blob, store_bytes, store_upload, verify_blob
 from .extraction import EXTRACTOR_VERSION, deterministic_candidates, extract_chunks, optional_llm_candidates
 
 
@@ -36,6 +36,56 @@ COMPILER_VERSION = "scenario-compiler.v1"
 
 
 class ScenarioCompilerService:
+    def register_generated_document(
+        self, organization_id: str, project_id: str, content: str, actor: UserIdentity, *,
+        filename: str, title: str, category: str, publisher: str, license_name: str,
+        license_url: str, observed_at: str, cutoff_at: str,
+    ) -> DocumentUploadResult:
+        """Register deterministic application-generated Markdown through V1.9 governance."""
+        require_organization_role(organization_id, actor, ORG_WRITE_ROLES)
+        require_resource_scope(organization_id, "project", project_id)
+        observed, cutoff = _parse_time(observed_at), _parse_time(cutoff_at)
+        if observed > cutoff or cutoff > datetime.now(timezone.utc):
+            raise HTTPException(status_code=422, detail="Document requires observed_at <= cutoff_at <= current time")
+        content_hash, size, blob_key, media_type, _created = store_bytes(content.encode("utf-8"), media_type="text/markdown")
+        with connect() as conn:
+            existing = conn.execute(
+                "SELECT * FROM source_documents WHERE organization_id = ? AND project_id = ? AND content_hash = ?",
+                (organization_id, project_id, content_hash),
+            ).fetchone()
+        if existing:
+            return DocumentUploadResult(document=_document(existing), deduplicated=True)
+        from app.services.operations import enforce_quota
+        document_id = f"doc_{uuid4().hex[:20]}"; now = _now()
+        try:
+            with connect() as conn:
+                if not is_postgres_url():
+                    conn.execute("BEGIN IMMEDIATE")
+                enforce_quota(organization_id, "source_document", connection=conn)
+                enforce_quota(organization_id, "document_bytes", requested=size, connection=conn)
+                conn.execute(
+                    """INSERT INTO source_documents
+                    (document_id, organization_id, project_id, original_filename, media_type, size_bytes,
+                     content_hash, blob_key, title, category, publisher, license_name, license_url,
+                     observed_at, cutoff_at, status, created_by_user_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'uploaded', ?, ?)""",
+                    (document_id, organization_id, project_id, filename, media_type, size, content_hash, blob_key,
+                     title.strip(), category.strip(), publisher.strip(), license_name.strip(), license_url.strip(),
+                     _iso(observed), _iso(cutoff), actor.user_id, now),
+                )
+        except Exception as exc:
+            if "UNIQUE" in str(exc).upper():
+                with connect() as conn:
+                    row = conn.execute(
+                        "SELECT * FROM source_documents WHERE organization_id = ? AND project_id = ? AND content_hash = ?",
+                        (organization_id, project_id, content_hash),
+                    ).fetchone()
+                if row:
+                    return DocumentUploadResult(document=_document(row), deduplicated=True)
+            raise
+        scope_resource(organization_id, "source_document", document_id)
+        return DocumentUploadResult(document=self.get_document(organization_id, project_id, document_id, actor))
+
     async def upload_document(
         self, organization_id: str, project_id: str, upload: UploadFile, actor: UserIdentity, *,
         title: str, category: str, publisher: str, license_name: str, license_url: str,
@@ -124,10 +174,12 @@ class ScenarioCompilerService:
             raise HTTPException(status_code=409, detail="Source document integrity verification failed")
         return path, document
 
-    def create_extraction_job(self, organization_id: str, project_id: str, document_id: str, actor: UserIdentity) -> DocumentExtractionJob:
+    def create_extraction_job(self, organization_id: str, project_id: str, document_id: str, actor: UserIdentity, *, provider_override: str | None = None) -> DocumentExtractionJob:
         require_organization_role(organization_id, actor, ORG_WRITE_ROLES)
         document = self.get_document(organization_id, project_id, document_id, actor)
-        provider = _provider_name()
+        provider = provider_override or _provider_name()
+        if provider not in {"disabled", "deepseek", "siliconflow"}:
+            raise HTTPException(status_code=422, detail="Extraction provider is not allowlisted")
         request_hash = stable_hash({"document_hash": document.content_hash, "extractor_version": EXTRACTOR_VERSION, "provider": provider})
         with connect() as conn:
             existing = conn.execute("SELECT * FROM document_extraction_jobs WHERE document_id = ? AND request_hash = ?", (document_id, request_hash)).fetchone()
@@ -282,7 +334,7 @@ class ScenarioCompilerService:
             self._cancel_boundary(job_id)
             snapshot_ids = [item.snapshot_id for item in snapshots]
             candidates = deterministic_candidates(chunks, snapshot_ids)
-            llm_candidates, provider_audit, warnings = optional_llm_candidates(chunks, snapshot_ids)
+            llm_candidates, provider_audit, warnings = optional_llm_candidates(chunks, snapshot_ids, provider_override=job.provider)
             candidates.extend(llm_candidates)
             extraction_core = {
                 "schema_version": "document-extraction.v1", "document_hash": document.content_hash,
@@ -578,7 +630,16 @@ class ScenarioCompilerService:
     def _candidate_with_decision(self, row) -> ScenarioCandidate:
         with connect() as conn:
             decision = conn.execute("SELECT * FROM scenario_candidate_decisions WHERE candidate_id = ? ORDER BY created_at DESC, decision_id DESC LIMIT 1", (row["candidate_id"],)).fetchone()
-        return _candidate(row, _decision(decision) if decision else None)
+            origin_row = conn.execute(
+                """SELECT me.entry_id, me.source_id, me.document_id, ia.alert_id
+                FROM document_extractions de
+                JOIN monitoring_entries me ON me.extraction_job_id = de.job_id
+                LEFT JOIN intelligence_alerts ia ON ia.latest_entry_id = me.entry_id
+                WHERE de.extraction_id = ? ORDER BY ia.alert_id LIMIT 1""",
+                (row["extraction_id"],),
+            ).fetchone()
+        origin = ({"kind": "continuous_intelligence", "entry_id": origin_row["entry_id"], "source_id": origin_row["source_id"], "document_id": origin_row["document_id"], "alert_id": origin_row["alert_id"]} if origin_row else {"kind": "document_upload"})
+        return _candidate(row, _decision(decision) if decision else None, origin=origin)
 
     def _get_decision(self, decision_id: str) -> ScenarioCandidateDecision:
         with connect() as conn:
@@ -665,8 +726,8 @@ def _extraction(row) -> DocumentExtraction:
     return DocumentExtraction(extraction_id=row["extraction_id"], job_id=row["job_id"], document_id=row["document_id"], extractor_version=row["extractor_version"], chunk_manifest=loads(row["chunk_manifest_json"], []), snapshot_ids=loads(row["snapshot_ids_json"], []), provider_audit=loads(row["provider_audit_json"], {}), extraction_hash=row["extraction_hash"], total_chars=int(row["total_chars"]), total_chunks=int(row["total_chunks"]), created_at=row["created_at"])
 
 
-def _candidate(row, latest_decision=None) -> ScenarioCandidate:
-    return ScenarioCandidate(candidate_id=row["candidate_id"], extraction_id=row["extraction_id"], organization_id=row["organization_id"], project_id=row["project_id"], candidate_type=row["candidate_type"], canonical_value=row["canonical_value"], display_value=row["display_value"], relation=loads(row["relation_json"], {}), snapshot_id=row["snapshot_id"], locator=loads(row["locator_json"], {}), excerpt=row["excerpt"], confidence=float(row["confidence"]), extractor_source=row["extractor_source"], validation_status=row["validation_status"], validation_reason=row["validation_reason"], candidate_hash=row["candidate_hash"], created_at=row["created_at"], latest_decision=latest_decision)
+def _candidate(row, latest_decision=None, *, origin=None) -> ScenarioCandidate:
+    return ScenarioCandidate(candidate_id=row["candidate_id"], extraction_id=row["extraction_id"], organization_id=row["organization_id"], project_id=row["project_id"], candidate_type=row["candidate_type"], canonical_value=row["canonical_value"], display_value=row["display_value"], relation=loads(row["relation_json"], {}), snapshot_id=row["snapshot_id"], locator=loads(row["locator_json"], {}), excerpt=row["excerpt"], confidence=float(row["confidence"]), extractor_source=row["extractor_source"], validation_status=row["validation_status"], validation_reason=row["validation_reason"], candidate_hash=row["candidate_hash"], created_at=row["created_at"], origin=origin or {"kind": "document_upload"}, latest_decision=latest_decision)
 
 
 def _decision(row) -> ScenarioCandidateDecision:

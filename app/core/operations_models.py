@@ -64,6 +64,9 @@ class PlatformReadiness(BaseModel):
     queued_runs: int
     queued_ingestion_jobs: int
     queued_document_jobs: int = 0
+    queued_monitoring_polls: int = 0
+    queued_webhook_deliveries: int = 0
+    continuous_intelligence_enabled: bool = False
     blob_storage_ok: bool = True
     checked_at: str
     reasons: list[str] = Field(default_factory=list)
@@ -75,4 +78,5 @@ class OrganizationOperationsSummary(BaseModel):
     usage: OrganizationUsage
     workers: list[WorkerNode]
     readiness: PlatformReadiness
+    continuous_intelligence: dict = Field(default_factory=dict)
     generated_at: str

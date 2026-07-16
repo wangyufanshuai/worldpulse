@@ -62,6 +62,10 @@ def main() -> int:
     db_copy.add_argument("--verify-only", action="store_true", help="Only compare source and target")
     blobs = sub.add_parser("blobs", help="Inspect content-addressed source document blobs")
     blobs.add_argument("action", choices=("verify",))
+    monitoring = sub.add_parser("monitoring", help="Inspect continuous intelligence monitoring")
+    monitoring.add_argument("action", choices=("verify", "poll-due"))
+    notifications = sub.add_parser("notifications", help="Manage notification deliveries")
+    notifications.add_argument("action", choices=("retry-failed",))
     args = parser.parse_args()
     if args.command in {"migrate", "status", "verify"}:
         action = args.action if args.command == "migrate" else args.command
@@ -93,6 +97,17 @@ def main() -> int:
         result = ScenarioCompilerService().verify_blobs()
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result["status"] == "ok" else 1
+    if args.command == "monitoring":
+        from app.services.continuous_intelligence import ContinuousIntelligenceService
+        service = ContinuousIntelligenceService()
+        result = service.verify() if args.action == "verify" else {"status": "ok", "queued": service.enqueue_due_polls()}
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result.get("status") == "ok" else 1
+    if args.command == "notifications":
+        from app.services.continuous_intelligence import ContinuousIntelligenceService
+        changed = ContinuousIntelligenceService().retry_failed_deliveries()
+        print(json.dumps({"status": "ok", "retried": changed}, ensure_ascii=False, indent=2))
+        return 0
     return 2
 
 

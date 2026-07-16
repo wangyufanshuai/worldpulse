@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 
-WORLDPULSE_VERSION = "1.9.0-rc1"
-API_CONTRACT_VERSION = "v8"
+WORLDPULSE_VERSION = "1.10.0-rc1"
+API_CONTRACT_VERSION = "v9"
 RELEASE_CHANNEL = "release-candidate"
 
 

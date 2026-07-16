@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.0-rc1 - 2026-07-16
+
+- Added opt-in RSS, Atom and JSON Feed monitoring with SSRF protection, checked redirects, response limits, ETag/Last-Modified handling and deterministic entry revisions.
+- Added immutable monitoring sources and watchlists, resumable Poll Jobs, append-only alert history and lineage into the V1.9 document/extraction/candidate pipeline.
+- Added organization notification sequences, resumable SSE, role-governed alert actions and HMAC-SHA256 webhook delivery without storing signing secrets.
+- Reused the ingestion worker for fair scheduling, lease recovery and bounded retries; automated monitoring always uses deterministic extraction and never creates Drafts or Runs.
+- Added v9 APIs, the Chinese Continuous Intelligence console, Operations metrics, migration `0008_v110_continuous_intelligence`, verification commands and deployment/runbook documentation.
+
 ## 1.9.0-rc1 - 2026-07-16
 
 - Added content-addressed, quota-governed PDF/TXT/Markdown/CSV source document import with MIME/signature, cutoff, UTF-8, size and blob-integrity gates.

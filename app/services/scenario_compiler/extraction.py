@@ -82,8 +82,8 @@ def deterministic_candidates(chunks: list[dict[str, Any]], snapshot_ids: list[st
     return list(sorted(unique.values(), key=lambda item: (item["candidate_type"], item["canonical_value"], item["snapshot_id"])))[:2000]
 
 
-def optional_llm_candidates(chunks: list[dict[str, Any]], snapshot_ids: list[str]) -> tuple[list[dict[str, Any]], dict, list[dict]]:
-    provider = os.getenv("SCENARIO_EXTRACTION_PROVIDER", "disabled").strip().lower()
+def optional_llm_candidates(chunks: list[dict[str, Any]], snapshot_ids: list[str], *, provider_override: str | None = None) -> tuple[list[dict[str, Any]], dict, list[dict]]:
+    provider = (provider_override or os.getenv("SCENARIO_EXTRACTION_PROVIDER", "disabled")).strip().lower()
     fallback = os.getenv("SCENARIO_EXTRACTION_FALLBACK", "deterministic").strip().lower()
     audit = {"provider": provider, "mode": "disabled", "calls": 0, "estimated_tokens": 0, "prompt_hashes": [], "response_hashes": [], "fallback_used": False}
     warnings: list[dict] = []

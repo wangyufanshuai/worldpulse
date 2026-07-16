@@ -136,6 +136,7 @@
 import { computed, defineComponent, h, reactive, ref, watch } from 'vue'
 import { Braces, CheckCircle2, FileJson2, FilePlus2, FileUp, ListChecks, Play, PlayCircle, RefreshCw, ScanText, ShieldCheck, UploadCloud, UserCheck } from 'lucide-vue-next'
 import { acceptedCandidateIds, compactCompilerHash, compilerSteps, compilerStepState, formatBytes as bytesLabel } from '../../composables/scenarioCompilerProjection'
+import { continuousIntelligenceCandidates } from '../../composables/continuousIntelligenceProjection'
 
 const props = defineProps({ organization: Object, documents: { type: Array, default: () => [] }, jobs: { type: Array, default: () => [] }, candidates: { type: Array, default: () => [] }, drafts: { type: Array, default: () => [] }, events: { type: Array, default: () => [] }, lastRun: Object, loading: Boolean, error: String, canWrite: Boolean, canReview: Boolean })
 const emit = defineEmits(['refresh', 'upload', 'extract', 'events', 'cancel', 'retry', 'decision', 'create-draft', 'submit-draft', 'review-draft', 'clone-draft', 'run-draft'])
@@ -150,10 +151,14 @@ const uploadDraft = reactive({ title: '', category: 'other', publisher: '', lice
 const draftForm = reactive({ name: '证据驱动场景', duration_days: 30, intensity: 0.65, propagation: 0.35, assumption_reason: '' })
 const runForm = reactive({ draft_id: '', engine_mode: 'deterministic', seed: 42 })
 const candidateFilter = ref('all')
-const candidateFilters = ['all', 'scenario_preset', 'country', 'supply_chain', 'policy_action', 'relationship', 'event_date']
+const candidateFilters = ['all', 'continuous_intelligence', 'scenario_preset', 'country', 'supply_chain', 'policy_action', 'relationship', 'event_date']
 const acceptedIds = computed(() => acceptedCandidateIds(props.candidates))
 const approvedDrafts = computed(() => props.drafts.filter(item => item.status === 'approved'))
-const filteredCandidates = computed(() => candidateFilter.value === 'all' ? props.candidates : props.candidates.filter(item => item.candidate_type === candidateFilter.value))
+const filteredCandidates = computed(() => candidateFilter.value === 'all'
+  ? props.candidates
+  : candidateFilter.value === 'continuous_intelligence'
+    ? continuousIntelligenceCandidates(props.candidates)
+    : props.candidates.filter(item => item.candidate_type === candidateFilter.value))
 watch(approvedDrafts, items => { if (items.length && !items.some(item => item.draft_id === runForm.draft_id)) runForm.draft_id = items[0].draft_id }, { immediate: true })
 
 function stepState(step) { return compilerStepState(step, props) }
@@ -167,7 +172,7 @@ function compactHash(value) { return compactCompilerHash(value) }
 function formatBytes(value) { return bytesLabel(value) }
 function shortTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '--' }
 function locatorLabel(locator = {}) { return locator.page ? `第 ${locator.page} 页` : locator.start_line ? `第 ${locator.start_line}-${locator.end_line || locator.start_line} 行` : locator.start_row ? `CSV ${locator.start_row}-${locator.end_row || locator.start_row} 行` : '版本化快照' }
-function typeLabel(type) { return ({ scenario_preset: '场景预设', country: '国家', supply_chain: '供应链', policy_action: '政策动作', relationship: '关系', event_date: '事件日期' })[type] || type }
+function typeLabel(type) { return ({ continuous_intelligence: '持续情报', scenario_preset: '场景预设', country: '国家', supply_chain: '供应链', policy_action: '政策动作', relationship: '关系', event_date: '事件日期' })[type] || type }
 
 const DraftList = defineComponent({
   props: { drafts: Array, canWrite: Boolean }, emits: ['submit', 'clone'],

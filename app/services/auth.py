@@ -21,10 +21,10 @@ IDLE_MINUTES = 30
 ABSOLUTE_HOURS = 8
 PASSWORD_HASHER = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4, hash_len=32, salt_len=16)
 ROLE_PERMISSIONS = {
-    "admin": {"read", "project_write", "run", "calibration", "review", "rule_submit", "rule_approve", "rule_activate", "users", "organization_admin", "ingestion_write", "operations"},
-    "analyst": {"read", "project_write", "run", "calibration", "rule_submit", "ingestion_write"},
-    "reviewer": {"read", "review", "rule_approve"},
-    "viewer": {"read"},
+    "admin": {"read", "project_write", "run", "calibration", "review", "rule_submit", "rule_approve", "rule_activate", "users", "organization_admin", "ingestion_write", "operations", "monitoring_write", "notification_write"},
+    "analyst": {"read", "project_write", "run", "calibration", "rule_submit", "ingestion_write", "monitoring_write", "notification_write"},
+    "reviewer": {"read", "review", "rule_approve", "notification_write"},
+    "viewer": {"read", "notification_write"},
 }
 
 
@@ -181,6 +181,10 @@ def permission_for_request(method: str, path: str) -> str:
         return "operations"
     if path.startswith("/api/v6/organizations") and path.endswith("/quota"):
         return "organization_admin"
+    if path.startswith("/api/v9/"):
+        if "/notifications" in path or "/notification-subscriptions" in path:
+            return "notification_write"
+        return "monitoring_write"
     if path.startswith("/api/v8/") and path.endswith("/review"):
         return "review"
     if path.endswith("/activate"):

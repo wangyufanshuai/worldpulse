@@ -13,7 +13,7 @@ def test_fresh_database_applies_versioned_schema(tmp_path):
     assert [item.version for item in applied] == [
         "0001_v12_baseline", "0002_v13_trust_governance", "0003_v14_evidence_registry",
         "0004_v15_organization_ingestion", "0005_v17_operations_control", "0006_v18_negotiation",
-        "0007_v19_scenario_compiler",
+        "0007_v19_scenario_compiler", "0008_v110_continuous_intelligence",
     ]
     assert verify_schema(database)["status"] == "ok"
     with sqlite3.connect(database) as conn:
@@ -24,6 +24,7 @@ def test_fresh_database_applies_versioned_schema(tmp_path):
     assert {"organizations", "organization_members", "data_connectors", "ingestion_jobs", "ingestion_records"} <= tables
     assert {"worker_nodes", "organization_quotas", "organization_quota_events"} <= tables
     assert {"source_documents", "document_extraction_jobs", "document_extractions", "scenario_candidates", "scenario_drafts", "scenario_draft_reviews"} <= tables
+    assert {"monitoring_sources", "monitoring_poll_jobs", "monitoring_entries", "monitoring_watchlists", "intelligence_alerts", "in_app_notifications", "webhook_deliveries"} <= tables
     assert {"scenario_draft_id", "scenario_draft_hash", "scenario_evidence_pack_hash"} <= columns
 
 
@@ -40,6 +41,7 @@ def test_existing_v12_database_is_registered_without_rebuilding(tmp_path):
     assert [item.version for item in applied] == [
         "0002_v13_trust_governance", "0003_v14_evidence_registry", "0004_v15_organization_ingestion",
         "0005_v17_operations_control", "0006_v18_negotiation", "0007_v19_scenario_compiler",
+        "0008_v110_continuous_intelligence",
     ]
     with sqlite3.connect(database) as conn:
         assert conn.execute("SELECT project_id FROM research_projects").fetchone()[0] == marker

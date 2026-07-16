@@ -6,7 +6,9 @@
           :active-section="activeSection"
           :section-path="sectionPath"
           :top-sections="topSections"
+          :notification-count="continuousIntelligence.unreadCount.value"
           @open-command-search="commandSearchOpen = true"
+          @open-notifications="notificationDrawerOpen = true"
           @show-upcoming="showUpcoming"
         />
 
@@ -31,6 +33,13 @@
           <article><span>待确认候选</span><strong>{{ scenarioCompiler.summary.value.pendingCandidateCount }}</strong></article>
           <article><span>待审批草稿</span><strong>{{ scenarioCompiler.summary.value.pendingDraftCount }}</strong></article>
           <article><span>最新批准草稿</span><strong>{{ scenarioCompiler.summary.value.latestApproved ? `v${scenarioCompiler.summary.value.latestApproved.version}` : '--' }}</strong></article>
+        </section>
+
+        <section v-if="activeSection === 'overview'" class="overview-trust-strip" data-testid="overview-intelligence-summary">
+          <article><span>活跃情报源</span><strong>{{ continuousIntelligence.summary.value?.active_sources ?? 0 }}</strong></article>
+          <article><span>开放告警</span><strong>{{ continuousIntelligence.summary.value?.open_alerts ?? 0 }}</strong></article>
+          <article><span>高等级告警</span><strong>{{ continuousIntelligence.summary.value?.high_alerts ?? 0 }}</strong></article>
+          <article><span>未读通知</span><strong>{{ continuousIntelligence.unreadCount.value }}</strong></article>
         </section>
 
         <WarRoomOverviewConsole
@@ -235,6 +244,24 @@
             @retry="retryIngestion"
           />
 
+          <WarRoomIntelligenceModule
+            v-else-if="activeSection === 'intelligence'"
+            :summary="continuousIntelligence.summary.value"
+            :sources="continuousIntelligence.sources.value"
+            :watchlists="continuousIntelligence.watchlists.value"
+            :alerts="continuousIntelligence.alerts.value"
+            :loading="continuousIntelligence.loading.value"
+            :error="continuousIntelligence.error.value"
+            :can-write="auth.permissions.value.canWrite"
+            @refresh="loadContinuousIntelligence"
+            @create-source="createContinuousSource"
+            @poll="pollContinuousSource"
+            @source-status="setContinuousSourceStatus"
+            @create-watchlist="createContinuousWatchlist"
+            @watchlist-status="setContinuousWatchlistStatus"
+            @alert-status="setContinuousAlertStatus"
+          />
+
           <WarRoomScenarioCompiler
             v-else-if="activeSection === 'compiler'"
             :organization="scenarioCompiler.organization.value"
@@ -341,6 +368,19 @@
             <small v-if="step.error_code">{{ step.error_code }}</small>
           </div>
         </section>
+      </aside>
+
+      <aside v-if="notificationDrawerOpen" class="feature-drawer notification-drawer" data-testid="war-room-notification-drawer">
+        <button class="drawer-close" type="button" @click="notificationDrawerOpen = false"><X :size="16" /> 关闭</button>
+        <div class="section-kicker">CONTINUOUS INTELLIGENCE</div>
+        <h2>通知中心</h2>
+        <div class="drawer-action-row"><button type="button" @click="continuousIntelligence.readAllNotifications()">全部标记已读</button><button type="button" @click="navigateSection('intelligence'); notificationDrawerOpen = false">进入持续情报</button></div>
+        <div class="notification-list">
+          <button v-for="item in [...continuousIntelligence.notifications.value].reverse()" :key="item.notification_id" type="button" :class="{ unread: !item.read_at }" @click="continuousIntelligence.readNotification(item.notification_id)">
+            <span>{{ item.severity }} · {{ item.event_type }}</span><strong>{{ item.title }}</strong><small>{{ item.body }}</small>
+          </button>
+          <p v-if="!continuousIntelligence.notifications.value.length" class="sandbox-note">暂无持续情报告警通知。</p>
+        </div>
       </aside>
 
       <aside v-if="upcomingFeature" class="feature-drawer">
@@ -569,6 +609,7 @@ import WarRoomSettingsModule from '../../components/war-room/WarRoomSettingsModu
 import WarRoomTrustCenter from '../../components/war-room/WarRoomTrustCenter.vue'
 import WarRoomEvidenceCenter from '../../components/war-room/WarRoomEvidenceCenter.vue'
 import WarRoomIngestionCenter from '../../components/war-room/WarRoomIngestionCenter.vue'
+import WarRoomIntelligenceModule from '../../components/war-room/WarRoomIntelligenceModule.vue'
 import WarRoomOperationsCenter from '../../components/war-room/WarRoomOperationsCenter.vue'
 import WarRoomNegotiationModule from '../../components/war-room/WarRoomNegotiationModule.vue'
 import WarRoomScenarioCompiler from '../../components/war-room/WarRoomScenarioCompiler.vue'
@@ -583,6 +624,7 @@ import { useWarRoomScenarioDraft } from '../../composables/useWarRoomScenarioDra
 import { useAuthSession } from '../../composables/useAuthSession'
 import { useEvidenceRegistry } from '../../composables/useEvidenceRegistry'
 import { useIngestionGovernance } from '../../composables/useIngestionGovernance'
+import { useContinuousIntelligence } from '../../composables/useContinuousIntelligence'
 import { useOperationsCenter } from '../../composables/useOperationsCenter'
 import { useNegotiation } from '../../composables/useNegotiation'
 import { useScenarioCompiler } from '../../composables/useScenarioCompiler'
@@ -596,6 +638,7 @@ const runLifecycle = useRunLifecycle(() => props.projectId)
 const auth = useAuthSession()
 const evidenceRegistry = useEvidenceRegistry(() => props.projectId)
 const ingestionGovernance = useIngestionGovernance(() => props.projectId)
+const continuousIntelligence = useContinuousIntelligence(() => props.projectId)
 const operationsCenter = useOperationsCenter()
 const scenarioCompiler = useScenarioCompiler(() => props.projectId)
 const detail = ref(null)
@@ -621,6 +664,7 @@ const decisionDrawer = ref(null)
 const entityDetailDrawer = ref(null)
 const runDetailsDrawer = ref(false)
 const commandSearchOpen = ref(false)
+const notificationDrawerOpen = ref(false)
 const commandQuery = ref('')
 const showDeltaOverlay = ref(false)
 const focusedEntityId = ref('')
@@ -637,7 +681,7 @@ const shortRunId = (runId) => {
   return text ? text.replace(/^run_/, '#').slice(0, 13) : ''
 }
 
-const sectionKeys = ['overview', 'compiler', 'sandbox', 'analysis', 'negotiation', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence', 'ingestion', 'operations']
+const sectionKeys = ['overview', 'compiler', 'sandbox', 'analysis', 'negotiation', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence', 'ingestion', 'intelligence', 'operations']
 const sectionMeta = {
   compiler: { key: 'compiler', label: '场景编译', title: '证据驱动场景编译与材料导入', desc: '安全导入材料、核验带原文定位的候选、冻结 Evidence Pack 并经异人审批创建运行。', icon: ScanText },
   negotiation: { key: 'negotiation', label: '外交博弈', title: '受控多轮外交博弈与舆论扩散', desc: '观察 12 Agent、6 Tick 的结构化提案、反提案、承诺账本与确定性数值投影。', icon: UsersRound },
@@ -651,10 +695,11 @@ const sectionMeta = {
   trust: { key: 'trust', label: '可信度中心', title: '规则、校准与人工复核', desc: '检查 Rule Pack、晋升门槛、证据覆盖与不可绕过的一致性准入。', icon: ShieldCheck },
   evidence: { key: 'evidence', label: '证据中心', title: '证据注册表与时间截点治理', desc: '统一检索冻结快照、报告声明、引用链和证据包完整性。', icon: FileSearch },
   ingestion: { key: 'ingestion', label: '接入治理', title: '组织、连接器与受控采集', desc: '管理许可元数据、不可变策略、截点校验和采集任务审计。', icon: Cable },
+  intelligence: { key: 'intelligence', label: '持续情报', title: '持续情报监测与告警闭环', desc: '从公开 RSS、Atom 和 JSON Feed 生成受治理材料与待核验场景候选。', icon: Cable },
   operations: { key: 'operations', label: '运维中心', title: '平台就绪度、Worker 与组织配额', desc: '监控执行节点心跳、安全排空、任务积压和组织资源容量。', icon: ServerCog }
 }
 const topSections = [sectionMeta.overview, sectionMeta.compiler, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.negotiation, sectionMeta.graph, sectionMeta.data]
-const railSections = [sectionMeta.overview, sectionMeta.compiler, sectionMeta.sandbox, sectionMeta.negotiation, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.ingestion, sectionMeta.evidence, sectionMeta.trust, sectionMeta.operations, sectionMeta.replay, sectionMeta.settings]
+const railSections = [sectionMeta.overview, sectionMeta.compiler, sectionMeta.sandbox, sectionMeta.negotiation, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.ingestion, sectionMeta.intelligence, sectionMeta.evidence, sectionMeta.trust, sectionMeta.operations, sectionMeta.replay, sectionMeta.settings]
 const isWarRoom = computed(() => detail.value?.project?.mode === 'war_room')
 const activeSection = computed(() => {
   const raw = String(route.params.section || props.section || 'overview')
@@ -1306,6 +1351,7 @@ async function load(runId = selectedRunId.value) {
   await loadTrustSummary()
   await loadEvidenceSummary()
   await loadIngestionGovernance()
+  await loadContinuousIntelligence()
   await loadScenarioCompiler()
   await loadOperationsCenter()
   if (activeSection.value === 'negotiation') await negotiation.load()
@@ -1352,6 +1398,53 @@ async function loadIngestionGovernance() {
   if (!isWarRoom.value) return
   try { await ingestionGovernance.load() }
   catch { /* section renders the organization-scoped error */ }
+}
+
+async function loadContinuousIntelligence() {
+  if (!isWarRoom.value) return
+  const organizationId = ingestionGovernance.organization.value?.organization_id
+  try {
+    await continuousIntelligence.load(organizationId)
+    await continuousIntelligence.loadNotifications()
+    continuousIntelligence.subscribeNotifications()
+  } catch { /* the module renders the scoped error without breaking the workspace */ }
+}
+
+async function createContinuousSource(payload) {
+  try {
+    const result = await continuousIntelligence.createSource(payload, ingestionGovernance.organization.value?.organization_id)
+    showToast(`持续情报 Source 已创建：${result.name}，请激活后开始轮询`)
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+async function pollContinuousSource(sourceId) {
+  try {
+    const result = await continuousIntelligence.poll(sourceId, ingestionGovernance.organization.value?.organization_id)
+    showToast(`Feed 轮询已排队：${result.poll_id}`)
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+async function setContinuousSourceStatus(sourceId, status) {
+  try {
+    await continuousIntelligence.setSourceStatus(sourceId, status, ingestionGovernance.organization.value?.organization_id)
+    showToast(`Source 已${status === 'active' ? '启用' : '暂停'}`)
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+async function createContinuousWatchlist(payload) {
+  try {
+    const result = await continuousIntelligence.createWatchlist(payload, ingestionGovernance.organization.value?.organization_id)
+    showToast(`监测清单已创建：${result.name}，请激活后生效`)
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+async function setContinuousWatchlistStatus(id, action) {
+  try {
+    await continuousIntelligence.setWatchlistStatus(id, action, ingestionGovernance.organization.value?.organization_id)
+    showToast(`监测清单已${action === 'activate' ? '激活' : '暂停'}`)
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
+async function setContinuousAlertStatus(id, action) {
+  try {
+    await continuousIntelligence.setAlertStatus(id, action, ingestionGovernance.organization.value?.organization_id)
+    showToast('告警状态已更新')
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
 }
 
 async function loadOperationsCenter() {

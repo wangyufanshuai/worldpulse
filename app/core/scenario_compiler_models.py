@@ -116,6 +116,7 @@ class ScenarioCandidate(BaseModel):
     validation_reason: str | None = None
     candidate_hash: str
     created_at: str
+    origin: dict[str, Any] = Field(default_factory=dict)
     latest_decision: ScenarioCandidateDecision | None = None
 
 

@@ -14,6 +14,7 @@ from app.api.v5 import router as v5_router
 from app.api.v6 import router as v6_router
 from app.api.v7 import router as v7_router
 from app.api.v8 import router as v8_router
+from app.api.v9 import router as v9_router
 from app.services.auth import (
     auth_mode,
     authenticate_request,
@@ -85,6 +86,8 @@ async def local_session_guard(request: Request, call_next):
                 enforce_actor_rate_limit("rate.rule_submit", identity.user_id, limit=10, window_seconds=60)
             elif permission == "ingestion_write":
                 enforce_actor_rate_limit("rate.ingestion_write", identity.user_id, limit=20, window_seconds=60)
+            elif permission == "monitoring_write":
+                enforce_actor_rate_limit("rate.monitoring_write", identity.user_id, limit=30, window_seconds=60)
         response = await call_next(request)
         if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
             record_security_event(
@@ -92,7 +95,7 @@ async def local_session_guard(request: Request, call_next):
                 resource_type=permission, resource_id=path, client_ip=request.client.host if request.client else None,
                 detail={"method": request.method, "status_code": response.status_code},
             )
-            if permission in {"run", "rule_submit"}:
+            if permission in {"run", "rule_submit", "monitoring_write"}:
                 record_security_event(f"rate.{permission}", "counted", actor_user_id=identity.user_id, resource_id=path)
         return response
     except HTTPException as exc:
@@ -117,6 +120,7 @@ app.include_router(v5_router, prefix="/api/v5")
 app.include_router(v6_router, prefix="/api/v6")
 app.include_router(v7_router, prefix="/api/v7")
 app.include_router(v8_router, prefix="/api/v8")
+app.include_router(v9_router, prefix="/api/v9")
 
 
 @app.get("/favicon.ico")

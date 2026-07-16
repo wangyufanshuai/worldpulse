@@ -362,6 +362,68 @@ export async function runScenarioDraft(organizationId, projectId, draftId, paylo
   return data
 }
 
+export async function listMonitoringSources(organizationId, projectId) {
+  const { data } = await api.get(`/v9/organizations/${organizationId}/projects/${projectId}/monitoring/sources`)
+  return data
+}
+export async function createMonitoringSource(organizationId, projectId, payload) {
+  const { data } = await api.post(`/v9/organizations/${organizationId}/projects/${projectId}/monitoring/sources`, payload)
+  return data
+}
+export async function pollMonitoringSource(organizationId, projectId, sourceId) {
+  const { data } = await api.post(`/v9/organizations/${organizationId}/projects/${projectId}/monitoring/sources/${sourceId}/poll`)
+  return data
+}
+export async function updateMonitoringSourceStatus(organizationId, projectId, sourceId, status) {
+  const { data } = await api.post(`/v9/organizations/${organizationId}/projects/${projectId}/monitoring/sources/${sourceId}/status`, { status })
+  return data
+}
+export async function listMonitoringPolls(organizationId, projectId) {
+  const { data } = await api.get(`/v9/organizations/${organizationId}/projects/${projectId}/monitoring/polls`)
+  return data
+}
+export async function listMonitoringWatchlists(organizationId, projectId) {
+  const { data } = await api.get(`/v9/organizations/${organizationId}/projects/${projectId}/watchlists`)
+  return data
+}
+export async function createMonitoringWatchlist(organizationId, projectId, payload) {
+  const { data } = await api.post(`/v9/organizations/${organizationId}/projects/${projectId}/watchlists`, payload)
+  return data
+}
+export async function updateMonitoringWatchlistStatus(organizationId, projectId, watchlistId, action) {
+  const { data } = await api.post(`/v9/organizations/${organizationId}/projects/${projectId}/watchlists/${watchlistId}/${action}`)
+  return data
+}
+export async function listIntelligenceAlerts(organizationId, projectId, params = {}) {
+  const { data } = await api.get(`/v9/organizations/${organizationId}/projects/${projectId}/alerts`, { params })
+  return data
+}
+export async function updateIntelligenceAlert(organizationId, projectId, alertId, action) {
+  const { data } = await api.post(`/v9/organizations/${organizationId}/projects/${projectId}/alerts/${alertId}/${action}`)
+  return data
+}
+export async function getContinuousIntelligenceSummary(organizationId, projectId) {
+  const { data } = await api.get(`/v9/organizations/${organizationId}/projects/${projectId}/intelligence/summary`)
+  return data
+}
+export async function listNotifications(params = {}) {
+  const { data } = await api.get('/v9/notifications', { params })
+  return data
+}
+export async function markNotificationRead(notificationId) {
+  const { data } = await api.post(`/v9/notifications/${notificationId}/read`)
+  return data
+}
+export async function markAllNotificationsRead() {
+  const { data } = await api.post('/v9/notifications/read-all')
+  return data
+}
+export function notificationEventStreamUrl(afterSeq = 0) {
+  const organizationId = getActiveOrganization()
+  const organizationQuery = organizationId ? `&organization_id=${encodeURIComponent(organizationId)}` : ''
+  return `/api/v9/notifications/stream?after_seq=${encodeURIComponent(afterSeq)}${organizationQuery}`
+}
+
 export async function pauseLifecycleRun(runId) {
   const { data } = await api.post(`/v2/runs/${runId}/pause`)
   return data

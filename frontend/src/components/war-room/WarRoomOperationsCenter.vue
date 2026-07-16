@@ -22,6 +22,9 @@
         <article><span>排队运行</span><strong>{{ summary.readiness.queued_runs }}</strong><small>run_jobs</small></article>
         <article><span>排队采集</span><strong>{{ summary.readiness.queued_ingestion_jobs }}</strong><small>ingestion_jobs</small></article>
         <article><span>排队抽取</span><strong>{{ summary.readiness.queued_document_jobs }}</strong><small>document_extraction_jobs</small></article>
+        <article><span>情报轮询队列</span><strong>{{ summary.readiness.queued_monitoring_polls || 0 }}</strong><small>monitoring_poll_jobs</small></article>
+        <article><span>Webhook 队列</span><strong>{{ summary.readiness.queued_webhook_deliveries || 0 }}</strong><small>delivery retry</small></article>
+        <article><span>降级情报源</span><strong>{{ summary.continuous_intelligence?.degraded_sources || 0 }}</strong><small>连续采集失败</small></article>
         <article><span>材料共享卷</span><strong>{{ summary.readiness.blob_storage_ok ? 'WRITABLE' : 'FAILED' }}</strong><small>content-addressed blobs</small></article>
       </section>
 

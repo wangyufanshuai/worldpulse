@@ -364,7 +364,9 @@ def platform_readiness() -> PlatformReadiness:
                 SELECT
                   (SELECT COUNT(*) FROM run_jobs WHERE status = 'queued') AS queued_runs,
                   (SELECT COUNT(*) FROM ingestion_jobs WHERE status = 'queued') AS queued_ingestion,
-                  (SELECT COUNT(*) FROM document_extraction_jobs WHERE status = 'queued') AS queued_documents
+                  (SELECT COUNT(*) FROM document_extraction_jobs WHERE status = 'queued') AS queued_documents,
+                  (SELECT COUNT(*) FROM monitoring_poll_jobs WHERE status = 'queued') AS queued_monitoring,
+                  (SELECT COUNT(*) FROM webhook_deliveries WHERE status IN ('queued','retrying')) AS queued_webhooks
                 """
             ).fetchone()
         schema_ok = True
@@ -373,7 +375,7 @@ def platform_readiness() -> PlatformReadiness:
             reasons.append("no_active_rule_pack")
     except Exception as exc:
         reasons.append(f"database:{type(exc).__name__}")
-        counts = {"queued_runs": 0, "queued_ingestion": 0, "queued_documents": 0}
+        counts = {"queued_runs": 0, "queued_ingestion": 0, "queued_documents": 0, "queued_monitoring": 0, "queued_webhooks": 0}
     blob_ok = True
     if os.getenv("WORLDPULSE_DOCUMENTS_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}:
         try:
@@ -405,7 +407,11 @@ def platform_readiness() -> PlatformReadiness:
         ingestion_workers_fresh=ingestion,
         queued_runs=int(counts["queued_runs"] or 0),
         queued_ingestion_jobs=int(counts["queued_ingestion"] or 0),
-        queued_document_jobs=int(counts["queued_documents"] or 0), blob_storage_ok=blob_ok,
+        queued_document_jobs=int(counts["queued_documents"] or 0),
+        queued_monitoring_polls=int(counts["queued_monitoring"] or 0),
+        queued_webhook_deliveries=int(counts["queued_webhooks"] or 0),
+        continuous_intelligence_enabled=os.getenv("WORLDPULSE_CONTINUOUS_INTELLIGENCE", "0").strip().lower() in {"1", "true", "yes", "on"},
+        blob_storage_ok=blob_ok,
         checked_at=_now(),
         reasons=reasons,
     )
@@ -413,12 +419,21 @@ def platform_readiness() -> PlatformReadiness:
 
 def organization_operations(organization_id: str, actor: UserIdentity) -> OrganizationOperationsSummary:
     require_organization_role(organization_id, actor, {"owner", "admin", "analyst", "reviewer", "viewer"})
+    with connect() as conn:
+        monitoring = conn.execute(
+            """SELECT
+            (SELECT COUNT(*) FROM monitoring_sources WHERE organization_id = ? AND status = 'degraded') AS degraded_sources,
+            (SELECT COUNT(*) FROM intelligence_alerts WHERE organization_id = ? AND status = 'open') AS open_alerts,
+            (SELECT COUNT(*) FROM webhook_deliveries d JOIN alert_subscriptions s ON s.subscription_id = d.subscription_id WHERE s.organization_id = ? AND d.status = 'failed') AS failed_webhooks""",
+            (organization_id, organization_id, organization_id),
+        ).fetchone()
     return OrganizationOperationsSummary(
         organization_id=organization_id,
         quota=get_quota(organization_id),
         usage=organization_usage(organization_id),
         workers=list_workers(),
         readiness=platform_readiness(),
+        continuous_intelligence={"degraded_sources": int(monitoring["degraded_sources"] or 0), "open_alerts": int(monitoring["open_alerts"] or 0), "failed_webhooks": int(monitoring["failed_webhooks"] or 0)},
         generated_at=_now(),
     )
 
