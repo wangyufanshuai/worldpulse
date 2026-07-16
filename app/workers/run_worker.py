@@ -19,6 +19,7 @@ def main() -> int:
     worker_id = f"worker_{uuid4().hex[:12]}"
     evaluation_service = EvaluationService()
     stop_requested = False
+    scheduling_turn = 0
 
     def request_stop(_signum=None, _frame=None):
         nonlocal stop_requested
@@ -38,7 +39,11 @@ def main() -> int:
             operations.heartbeat_worker(worker_id, status="ready")
             repository.recover_stale_jobs(recovered_by=worker_id)
             evaluation_service.reconcile(worker_id=worker_id)
-            job = process_one_queued_job(worker_id=worker_id)
+            # Three ordinary project runs receive priority for every evaluation
+            # run. Either class may still proceed when the preferred queue is empty.
+            prefer_evaluation = scheduling_turn % 4 == 3
+            job = process_one_queued_job(worker_id=worker_id, prefer_evaluation=prefer_evaluation)
+            scheduling_turn = (scheduling_turn + 1) % 4
             evaluation_service.reconcile(worker_id=worker_id)
             if stop_requested and not operations.worker_should_drain(worker_id):
                 operations.request_worker_drain(worker_id)

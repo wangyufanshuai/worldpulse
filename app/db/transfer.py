@@ -31,6 +31,9 @@ TABLE_ORDER = (
     "evaluation_suites",
     "evaluation_cases",
     "evaluation_batches",
+    "historical_benchmark_suites",
+    "historical_benchmark_cases",
+    "historical_benchmark_evidence",
     "run_jobs",
     "source_documents",
     "document_extraction_jobs",
@@ -89,6 +92,10 @@ TABLE_ORDER = (
     "evaluation_metrics",
     "evaluation_event_counters",
     "evaluation_events",
+    "historical_label_packs",
+    "historical_label_pack_reviews",
+    "evaluation_gate_manifests",
+    "evaluation_verification_results",
 )
 
 

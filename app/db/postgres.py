@@ -148,6 +148,9 @@ def apply_postgres_migrations(url: str | None = None) -> list[str]:
     connection = connect_postgres(url)
     applied: list[str] = []
     try:
+        # Multiple API/worker processes may boot together. PostgreSQL advisory
+        # locking serializes the migration ledger without introducing a service.
+        connection.execute("SELECT pg_advisory_lock(112012)")
         connection.execute("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TEXT NOT NULL)")
         connection.commit()
         for path in _migration_files():
@@ -174,6 +177,11 @@ def apply_postgres_migrations(url: str | None = None) -> list[str]:
         connection.commit()
         return applied
     finally:
+        try:
+            connection.execute("SELECT pg_advisory_unlock(112012)")
+            connection.commit()
+        except Exception:
+            pass
         connection.close()
 
 

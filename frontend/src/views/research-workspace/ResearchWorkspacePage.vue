@@ -146,13 +146,20 @@
           <WarRoomEvaluationModule
             v-else-if="activeSection === 'evaluation'"
             :suite="evaluation.suites.value[0]"
+            :benchmark-suites="evaluation.benchmarkSuites.value"
+            :label-packs="evaluation.labelPacks.value"
+            :batches-by-tab="evaluation.tabs.value"
             :latest="evaluation.latest.value"
             :report="evaluation.report.value"
+            :historical-report="evaluation.historicalReport.value"
             :members="evaluation.members.value"
+            :verification="evaluation.verification.value"
             :loading="evaluation.loading.value"
             :error="evaluation.error.value"
             @create-standard="createEvaluationStandard"
+            @create-historical="createEvaluationHistorical"
             @inspect="inspectEvaluation"
+            @control="controlEvaluationBatch"
           />
 
           <WarRoomGraphModule
@@ -1395,7 +1402,20 @@ async function createEvaluationStandard() {
   showToast(`已创建评估批次 ${batch.batch_id}`)
   await evaluation.inspect(batch.batch_id)
 }
+async function createEvaluationHistorical(labelPackId) {
+  try {
+    const batch = await evaluation.createHistorical(ingestionGovernance.organization.value?.organization_id || 'org_default', labelPackId)
+    showToast(`已创建历史盲测批次 ${batch.batch_id}`)
+    await evaluation.inspect(batch.batch_id)
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
 async function inspectEvaluation(batchId) { await evaluation.inspect(batchId) }
+async function controlEvaluationBatch(batchId, action) {
+  try {
+    const batch = await evaluation.control(batchId, action)
+    showToast(`评估批次已${{ pause: '请求暂停', resume: '恢复', cancel: '请求取消', retry: '重试' }[action] || action}：${batch.status}`)
+  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
+}
 
 async function loadEvidenceSummary() {
   if (!isWarRoom.value) return

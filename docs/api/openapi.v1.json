@@ -1853,6 +1853,28 @@
             "title": "Batch Id",
             "type": "string"
           },
+          "benchmark_suite_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Suite Hash"
+          },
+          "benchmark_suite_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Suite Id"
+          },
           "completed_at": {
             "anyOf": [
               {
@@ -1869,6 +1891,28 @@
             "title": "Completed Members",
             "type": "integer"
           },
+          "coordinator_lease_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinator Lease Expires At"
+          },
+          "coordinator_worker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coordinator Worker Id"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -1883,6 +1927,11 @@
               }
             ],
             "title": "Created By User Id"
+          },
+          "evaluation_track": {
+            "default": "engineering_standard",
+            "title": "Evaluation Track",
+            "type": "string"
           },
           "evidence_pack_hash": {
             "anyOf": [
@@ -1899,6 +1948,39 @@
             "default": 0,
             "title": "Failed Members",
             "type": "integer"
+          },
+          "gate_manifest_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate Manifest Hash"
+          },
+          "label_pack_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Pack Hash"
+          },
+          "label_pack_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Pack Id"
           },
           "metrics": {
             "additionalProperties": true,
@@ -1950,6 +2032,17 @@
               }
             ],
             "title": "Report Hash"
+          },
+          "root_batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root Batch Id"
           },
           "rule_pack_hash": {
             "anyOf": [
@@ -2158,6 +2251,28 @@
             ],
             "title": "Error Message"
           },
+          "expected_baseline_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Baseline Hash"
+          },
+          "input_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Hash"
+          },
           "member_id": {
             "title": "Member Id",
             "type": "string"
@@ -2199,6 +2314,22 @@
           },
           "updated_at": {
             "title": "Updated At",
+            "type": "string"
+          },
+          "verification_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Hash"
+          },
+          "verification_status": {
+            "default": "pending",
+            "title": "Verification Status",
             "type": "string"
           }
         },
@@ -2432,6 +2563,77 @@
           "created_at"
         ],
         "title": "EvaluationSuiteManifest",
+        "type": "object"
+      },
+      "EvaluationVerificationResult": {
+        "properties": {
+          "batch_id": {
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "check_key": {
+            "title": "Check Key",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence_artifact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Artifact Ids",
+            "type": "array"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "observed": {
+            "additionalProperties": true,
+            "title": "Observed",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "verification_hash": {
+            "title": "Verification Hash",
+            "type": "string"
+          },
+          "verification_id": {
+            "title": "Verification Id",
+            "type": "string"
+          },
+          "verifier_version": {
+            "title": "Verifier Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verification_id",
+          "batch_id",
+          "check_key",
+          "status",
+          "verifier_version",
+          "verification_hash",
+          "created_at"
+        ],
+        "title": "EvaluationVerificationResult",
         "type": "object"
       },
       "EventDigest": {
@@ -3446,6 +3648,292 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HistoricalBenchmarkCase": {
+        "properties": {
+          "case_hash": {
+            "title": "Case Hash",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/HistoricalEvidenceItem"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_manifest": {
+            "additionalProperties": true,
+            "title": "Evidence Manifest",
+            "type": "object"
+          },
+          "label_confidence": {
+            "title": "Label Confidence",
+            "type": "number"
+          },
+          "labels": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Labels"
+          },
+          "observation_window_days": {
+            "title": "Observation Window Days",
+            "type": "integer"
+          },
+          "scenario": {
+            "additionalProperties": true,
+            "title": "Scenario",
+            "type": "object"
+          },
+          "split": {
+            "enum": [
+              "development",
+              "blind"
+            ],
+            "title": "Split",
+            "type": "string"
+          },
+          "suite_id": {
+            "title": "Suite Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "suite_id",
+          "version",
+          "domain",
+          "split",
+          "title",
+          "cutoff_at",
+          "observation_window_days",
+          "scenario",
+          "label_confidence",
+          "case_hash"
+        ],
+        "title": "HistoricalBenchmarkCase",
+        "type": "object"
+      },
+      "HistoricalBenchmarkReport": {
+        "properties": {
+          "aggregate_metrics": {
+            "additionalProperties": true,
+            "title": "Aggregate Metrics",
+            "type": "object"
+          },
+          "batch": {
+            "$ref": "#/components/schemas/EvaluationBatch"
+          },
+          "blind_labels_redacted": {
+            "default": true,
+            "title": "Blind Labels Redacted",
+            "type": "boolean"
+          },
+          "report_hash": {
+            "title": "Report Hash",
+            "type": "string"
+          },
+          "suite": {
+            "$ref": "#/components/schemas/HistoricalBenchmarkSuite"
+          },
+          "verification": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationVerificationResult"
+            },
+            "title": "Verification",
+            "type": "array"
+          }
+        },
+        "required": [
+          "batch",
+          "suite",
+          "verification",
+          "report_hash"
+        ],
+        "title": "HistoricalBenchmarkReport",
+        "type": "object"
+      },
+      "HistoricalBenchmarkSuite": {
+        "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "blind_count": {
+            "title": "Blind Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "development_count": {
+            "title": "Development Count",
+            "type": "integer"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "title": "Manifest",
+            "type": "object"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "suite_id": {
+            "title": "Suite Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suite_id",
+          "version",
+          "status",
+          "manifest_hash",
+          "development_count",
+          "blind_count",
+          "created_at"
+        ],
+        "title": "HistoricalBenchmarkSuite",
+        "type": "object"
+      },
+      "HistoricalEvaluationCreateRequest": {
+        "properties": {
+          "label_pack_id": {
+            "title": "Label Pack Id",
+            "type": "string"
+          },
+          "provider": {
+            "const": "mock",
+            "default": "mock",
+            "title": "Provider",
+            "type": "string"
+          },
+          "suite_id": {
+            "default": "historical-benchmark.v1",
+            "title": "Suite Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label_pack_id"
+        ],
+        "title": "HistoricalEvaluationCreateRequest",
+        "type": "object"
+      },
+      "HistoricalEvidenceItem": {
+        "properties": {
+          "blob_sha256": {
+            "title": "Blob Sha256",
+            "type": "string"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "cutoff_at": {
+            "title": "Cutoff At",
+            "type": "string"
+          },
+          "evidence_hash": {
+            "title": "Evidence Hash",
+            "type": "string"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "evidence_role": {
+            "enum": [
+              "input",
+              "outcome"
+            ],
+            "title": "Evidence Role",
+            "type": "string"
+          },
+          "license_name": {
+            "title": "License Name",
+            "type": "string"
+          },
+          "locator": {
+            "additionalProperties": true,
+            "title": "Locator",
+            "type": "object"
+          },
+          "observed_at": {
+            "title": "Observed At",
+            "type": "string"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "case_id",
+          "evidence_role",
+          "publisher",
+          "license_name",
+          "source_url",
+          "observed_at",
+          "cutoff_at",
+          "blob_sha256",
+          "evidence_hash"
+        ],
+        "title": "HistoricalEvidenceItem",
+        "type": "object"
+      },
       "InAppNotification": {
         "properties": {
           "alert_id": {
@@ -4446,6 +4934,95 @@
           "created_at"
         ],
         "title": "IntelligenceAlertEvent",
+        "type": "object"
+      },
+      "LabelPackImportRequest": {
+        "properties": {
+          "case_count": {
+            "default": 30,
+            "maximum": 120.0,
+            "minimum": 1.0,
+            "title": "Case Count",
+            "type": "integer"
+          },
+          "ciphertext_b64": {
+            "minLength": 20,
+            "title": "Ciphertext B64",
+            "type": "string"
+          },
+          "encryption_key_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Encryption Key Id",
+            "type": "string"
+          },
+          "evidence_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Evidence Hash",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "nonce_b64": {
+            "minLength": 8,
+            "title": "Nonce B64",
+            "type": "string"
+          },
+          "signature": {
+            "minLength": 20,
+            "title": "Signature",
+            "type": "string"
+          },
+          "signer_key_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Signer Key Id",
+            "type": "string"
+          },
+          "suite_id": {
+            "title": "Suite Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suite_id",
+          "ciphertext_b64",
+          "nonce_b64",
+          "manifest_hash",
+          "signature",
+          "signer_key_id",
+          "encryption_key_id",
+          "evidence_hash"
+        ],
+        "title": "LabelPackImportRequest",
+        "type": "object"
+      },
+      "LabelPackReviewRequest": {
+        "properties": {
+          "comment": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Comment",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "LabelPackReviewRequest",
         "type": "object"
       },
       "LifecycleHealthSummary": {
@@ -8951,6 +9528,120 @@
         "title": "ScenarioSuggestion",
         "type": "object"
       },
+      "SealedLabelPack": {
+        "properties": {
+          "approvals": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Approvals",
+            "type": "array"
+          },
+          "blob_sha256": {
+            "title": "Blob Sha256",
+            "type": "string"
+          },
+          "bound_root_batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bound Root Batch Id"
+          },
+          "case_count": {
+            "title": "Case Count",
+            "type": "integer"
+          },
+          "comparison_started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Started At"
+          },
+          "consumed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumed At"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "encryption_key_id": {
+            "title": "Encryption Key Id",
+            "type": "string"
+          },
+          "evidence_hash": {
+            "title": "Evidence Hash",
+            "type": "string"
+          },
+          "imported_by_user_id": {
+            "title": "Imported By User Id",
+            "type": "string"
+          },
+          "label_pack_id": {
+            "title": "Label Pack Id",
+            "type": "string"
+          },
+          "manifest_hash": {
+            "title": "Manifest Hash",
+            "type": "string"
+          },
+          "organization_id": {
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "signature": {
+            "title": "Signature",
+            "type": "string"
+          },
+          "signer_key_id": {
+            "title": "Signer Key Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "suite_id": {
+            "title": "Suite Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label_pack_id",
+          "organization_id",
+          "suite_id",
+          "status",
+          "blob_sha256",
+          "manifest_hash",
+          "signature",
+          "signer_key_id",
+          "encryption_key_id",
+          "evidence_hash",
+          "case_count",
+          "imported_by_user_id",
+          "created_at"
+        ],
+        "title": "SealedLabelPack",
+        "type": "object"
+      },
       "SessionStatus": {
         "properties": {
           "absolute_expires_at": {
@@ -11215,7 +11906,7 @@
   "info": {
     "description": "全球多源综合风险指数与世界局势情景模拟器",
     "title": "WorldPulse",
-    "version": "1.11.0-rc1"
+    "version": "1.12.0-rc1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -13783,6 +14474,389 @@
           }
         },
         "summary": "Project Experiment"
+      }
+    },
+    "/api/v11/evaluation/benchmark-suites": {
+      "get": {
+        "operationId": "benchmark_suites_api_v11_evaluation_benchmark_suites_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HistoricalBenchmarkSuite"
+                  },
+                  "title": "Response Benchmark Suites Api V11 Evaluation Benchmark Suites Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Benchmark Suites"
+      }
+    },
+    "/api/v11/evaluation/benchmark-suites/{suite_id}": {
+      "get": {
+        "operationId": "benchmark_suite_api_v11_evaluation_benchmark_suites__suite_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suite_id",
+            "required": true,
+            "schema": {
+              "title": "Suite Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalBenchmarkSuite"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Benchmark Suite"
+      }
+    },
+    "/api/v11/evaluation/benchmark-suites/{suite_id}/cases": {
+      "get": {
+        "operationId": "benchmark_cases_api_v11_evaluation_benchmark_suites__suite_id__cases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suite_id",
+            "required": true,
+            "schema": {
+              "title": "Suite Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HistoricalBenchmarkCase"
+                  },
+                  "title": "Response Benchmark Cases Api V11 Evaluation Benchmark Suites  Suite Id  Cases Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Benchmark Cases"
+      }
+    },
+    "/api/v11/evaluations/{batch_id}/historical-report": {
+      "get": {
+        "operationId": "historical_report_api_v11_evaluations__batch_id__historical_report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalBenchmarkReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Historical Report"
+      }
+    },
+    "/api/v11/evaluations/{batch_id}/verification": {
+      "get": {
+        "operationId": "verification_api_v11_evaluations__batch_id__verification_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvaluationVerificationResult"
+                  },
+                  "title": "Response Verification Api V11 Evaluations  Batch Id  Verification Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verification"
+      }
+    },
+    "/api/v11/organizations/{organization_id}/evaluation/label-packs": {
+      "get": {
+        "operationId": "label_packs_api_v11_organizations__organization_id__evaluation_label_packs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SealedLabelPack"
+                  },
+                  "title": "Response Label Packs Api V11 Organizations  Organization Id  Evaluation Label Packs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Label Packs"
+      },
+      "post": {
+        "operationId": "import_label_pack_api_v11_organizations__organization_id__evaluation_label_packs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelPackImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/SealedLabelPack"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import Label Pack"
+      }
+    },
+    "/api/v11/organizations/{organization_id}/evaluation/label-packs/{pack_id}/approve": {
+      "post": {
+        "operationId": "approve_label_pack_api_v11_organizations__organization_id__evaluation_label_packs__pack_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pack_id",
+            "required": true,
+            "schema": {
+              "title": "Pack Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabelPackReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/SealedLabelPack"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Label Pack"
+      }
+    },
+    "/api/v11/organizations/{organization_id}/evaluations/historical": {
+      "post": {
+        "operationId": "create_historical_api_v11_organizations__organization_id__evaluations_historical_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistoricalEvaluationCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationBatch"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Historical"
       }
     },
     "/api/v2/lifecycle/health": {

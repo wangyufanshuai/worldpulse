@@ -37,8 +37,8 @@ def lifecycle_fault_hook(phase: str, moment: str) -> None:
     return None
 
 
-def process_one_queued_job(worker_id: str | None = None) -> RunJobStatus | None:
-    job = repository.claim_next_job(worker_id=worker_id)
+def process_one_queued_job(worker_id: str | None = None, *, prefer_evaluation: bool | None = None) -> RunJobStatus | None:
+    job = repository.claim_next_job(worker_id=worker_id, prefer_evaluation=prefer_evaluation)
     if job is None:
         return None
     if worker_id:
@@ -397,6 +397,7 @@ def process_job(run_id: str) -> RunJobStatus:
             "event_count": len(repository.get_events(run_id)),
             "engine_mode": job.engine_mode,
         },
+        step_id=previous_step.step_id if previous_step is not None else None,
     )
     return repository.update_job_status(
         run_id,

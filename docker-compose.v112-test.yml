@@ -1,0 +1,35 @@
+services:
+  postgres:
+    ports:
+      - "55432:5432"
+    volumes:
+      - v112-postgres:/var/lib/postgresql/data
+
+  api:
+    volumes:
+      - v112-data:/app/data
+    environment:
+      WORLDPULSE_BENCHMARK_ROOT: /app/data/benchmarks
+      WORLDPULSE_ENV: test
+      WORLDPULSE_AUTH_MODE: disabled
+
+  worker:
+    volumes:
+      - v112-data:/app/data
+    environment:
+      WORLDPULSE_BENCHMARK_ROOT: /app/data/benchmarks
+      WORLDPULSE_ENV: test
+      WORLDPULSE_AUTH_MODE: disabled
+      WORLDPULSE_EVALUATION_MAX_IN_FLIGHT: "2"
+
+  ingestion-worker:
+    volumes:
+      - v112-data:/app/data
+    environment:
+      WORLDPULSE_BENCHMARK_ROOT: /app/data/benchmarks
+      WORLDPULSE_ENV: test
+      WORLDPULSE_AUTH_MODE: disabled
+
+volumes:
+  v112-postgres:
+  v112-data:

@@ -189,6 +189,14 @@ def permission_for_request(method: str, path: str) -> str:
         if method.upper() in {"GET", "HEAD", "OPTIONS"}:
             return "read"
         return "run"
+    if path.startswith("/api/v11/"):
+        if method.upper() in {"GET", "HEAD", "OPTIONS"}:
+            return "read"
+        if "/label-packs/" in path and path.endswith("/approve"):
+            return "review"
+        if path.endswith("/label-packs"):
+            return "organization_admin"
+        return "run"
     if path.startswith("/api/v8/") and path.endswith("/review"):
         return "review"
     if path.endswith("/activate"):

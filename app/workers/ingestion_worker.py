@@ -87,7 +87,18 @@ def main() -> int:
                 operations.stop_worker(args.worker_id)
                 return 0
             operations.heartbeat_worker(args.worker_id, status="ready")
-            processed = process_once(args.worker_id)
+            try:
+                processed = process_once(args.worker_id)
+            except Exception as exc:
+                # Individual untrusted documents/feeds fail closed inside their
+                # service and are marked failed. Keep the shared worker alive so
+                # one poisoned job cannot block unrelated ingestion work.
+                processed = True
+                operations.heartbeat_worker(
+                    args.worker_id,
+                    status="ready",
+                    error_code=type(exc).__name__,
+                )
             if stop_requested and not operations.worker_should_drain(args.worker_id):
                 operations.request_worker_drain(args.worker_id)
             if operations.worker_should_drain(args.worker_id):

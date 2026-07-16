@@ -1,6 +1,6 @@
 {
   "name": "worldpulse-studio",
-  "version": "1.11.0-rc1",
+  "version": "1.12.0-rc1",
   "private": true,
   "type": "module",
   "scripts": {

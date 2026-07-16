@@ -70,6 +70,15 @@ class EvaluationBatch(BaseModel):
     created_at: str
     updated_at: str
     completed_at: str | None = None
+    evaluation_track: str = "engineering_standard"
+    benchmark_suite_id: str | None = None
+    benchmark_suite_hash: str | None = None
+    label_pack_id: str | None = None
+    label_pack_hash: str | None = None
+    gate_manifest_hash: str | None = None
+    root_batch_id: str | None = None
+    coordinator_worker_id: str | None = None
+    coordinator_lease_expires_at: str | None = None
 
 class EvaluationMember(BaseModel):
     member_id: str
@@ -88,6 +97,10 @@ class EvaluationMember(BaseModel):
     created_at: str
     updated_at: str
     completed_at: str | None = None
+    input_hash: str | None = None
+    expected_baseline_hash: str | None = None
+    verification_status: str = "pending"
+    verification_hash: str | None = None
 
 class EvaluationMetric(BaseModel):
     metric_id: str
@@ -130,3 +143,109 @@ class EvaluationBatchCreateRequest(BaseModel):
 class EvaluationControlResponse(BaseModel):
     batch: EvaluationBatch
 
+class HistoricalEvidenceItem(BaseModel):
+    evidence_id: str
+    case_id: str
+    evidence_role: Literal["input", "outcome"]
+    publisher: str
+    license_name: str
+    source_url: str
+    observed_at: str
+    cutoff_at: str
+    blob_sha256: str
+    locator: dict = Field(default_factory=dict)
+    evidence_hash: str
+
+class HistoricalBenchmarkCase(BaseModel):
+    case_id: str
+    suite_id: str
+    version: str
+    domain: str
+    split: Literal["development", "blind"]
+    title: str
+    cutoff_at: str
+    observation_window_days: int
+    scenario: dict
+    evidence_manifest: dict = Field(default_factory=dict)
+    labels: dict | None = None
+    label_confidence: float
+    case_hash: str
+    evidence: list[HistoricalEvidenceItem] = Field(default_factory=list)
+
+class HistoricalBenchmarkSuite(BaseModel):
+    suite_id: str
+    version: str
+    status: Literal["draft", "active", "retired"]
+    manifest: dict = Field(default_factory=dict)
+    manifest_hash: str
+    development_count: int
+    blind_count: int
+    created_at: str
+    activated_at: str | None = None
+
+class SealedLabelPack(BaseModel):
+    label_pack_id: str
+    organization_id: str
+    suite_id: str
+    status: str
+    blob_sha256: str
+    manifest_hash: str
+    signature: str
+    signer_key_id: str
+    encryption_key_id: str
+    evidence_hash: str
+    case_count: int
+    imported_by_user_id: str
+    bound_root_batch_id: str | None = None
+    comparison_started_at: str | None = None
+    consumed_at: str | None = None
+    created_at: str
+    approvals: list[dict] = Field(default_factory=list)
+
+class LabelPackReviewRequest(BaseModel):
+    decision: Literal["approve", "reject"]
+    comment: str = Field(default="", max_length=2000)
+
+class LabelPackImportRequest(BaseModel):
+    suite_id: str
+    ciphertext_b64: str = Field(min_length=20)
+    nonce_b64: str = Field(min_length=8)
+    manifest_hash: str = Field(min_length=64, max_length=64)
+    signature: str = Field(min_length=20)
+    signer_key_id: str = Field(min_length=1, max_length=80)
+    encryption_key_id: str = Field(min_length=1, max_length=80)
+    evidence_hash: str = Field(min_length=64, max_length=64)
+    case_count: int = Field(default=30, ge=1, le=120)
+
+class EvaluationGateManifest(BaseModel):
+    gate_manifest_id: str
+    version: str
+    status: str
+    manifest: dict
+    manifest_hash: str
+    created_at: str
+
+class EvaluationVerificationResult(BaseModel):
+    verification_id: str
+    batch_id: str
+    member_id: str | None = None
+    check_key: str
+    status: Literal["passed", "failed", "not_applicable"]
+    observed: dict = Field(default_factory=dict)
+    evidence_artifact_ids: list[str] = Field(default_factory=list)
+    verifier_version: str
+    verification_hash: str
+    created_at: str
+
+class HistoricalEvaluationCreateRequest(BaseModel):
+    suite_id: str = "historical-benchmark.v1"
+    label_pack_id: str
+    provider: Literal["mock"] = "mock"
+
+class HistoricalBenchmarkReport(BaseModel):
+    batch: EvaluationBatch
+    suite: HistoricalBenchmarkSuite
+    verification: list[EvaluationVerificationResult]
+    aggregate_metrics: dict = Field(default_factory=dict)
+    blind_labels_redacted: bool = True
+    report_hash: str

@@ -209,7 +209,7 @@ def append_event(
     )
 
 
-def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300) -> RunJobStatus | None:
+def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300, prefer_evaluation: bool | None = None) -> RunJobStatus | None:
     init_db()
     worker_id = worker_id or f"worker_{uuid4().hex[:12]}"
     now = now_iso()
@@ -218,13 +218,20 @@ def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300) ->
         if not is_postgres_url():
             conn.execute("BEGIN IMMEDIATE")
         lock_clause = " FOR UPDATE SKIP LOCKED" if is_postgres_url() else ""
+        priority = (
+            "CASE WHEN evaluation_batch_id IS NOT NULL THEN 0 ELSE 1 END,"
+            if prefer_evaluation is True
+            else "CASE WHEN evaluation_batch_id IS NULL THEN 0 ELSE 1 END,"
+            if prefer_evaluation is False
+            else ""
+        )
         row = conn.execute(
             f"""
             SELECT * FROM run_jobs
             WHERE status = ?
               AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
               AND COALESCE(attempt_count, 0) < COALESCE(max_attempts, 3)
-            ORDER BY created_at ASC LIMIT 1{lock_clause}
+            ORDER BY {priority} created_at ASC LIMIT 1{lock_clause}
             """,
             (CLAIMABLE_STATUS, now),
         ).fetchone()

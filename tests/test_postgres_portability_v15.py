@@ -18,7 +18,7 @@ def test_postgres_schema_is_generated_from_all_numbered_migrations():
     assert [item.version for item in plans] == [
         "0001_v12_baseline", "0002_v13_trust_governance",
                 "0003_v14_evidence_registry", "0004_v15_organization_ingestion",
-                "0005_v17_operations_control", "0006_v18_negotiation", "0007_v19_scenario_compiler", "0008_v110_continuous_intelligence", "0009_v111_cross_mode_evaluation",
+                "0005_v17_operations_control", "0006_v18_negotiation", "0007_v19_scenario_compiler", "0008_v110_continuous_intelligence", "0009_v111_cross_mode_evaluation", "0010_v112_evaluation_integrity",
     ]
     schema = render_postgres_schema()
     assert "CREATE TABLE ingestion_jobs" in schema
@@ -40,11 +40,11 @@ def test_runtime_portability_gate_has_no_sqlite_query_blockers():
     report = portability_report()
     assert report["status"] == "ready"
     assert report["blocker_count"] == 0
-    assert report["migration_count"] == 9
+    assert report["migration_count"] == 10
 
 
 def test_database_transfer_order_covers_all_business_tables_and_dependencies():
-    assert len(TABLE_ORDER) == 75
+    assert len(TABLE_ORDER) == 82
     assert TABLE_ORDER.index("users") < TABLE_ORDER.index("organizations")
     assert TABLE_ORDER.index("organizations") < TABLE_ORDER.index("organization_quotas")
     assert TABLE_ORDER.index("organization_quotas") < TABLE_ORDER.index("organization_quota_events")
@@ -54,6 +54,8 @@ def test_database_transfer_order_covers_all_business_tables_and_dependencies():
     assert TABLE_ORDER.index("source_documents") < TABLE_ORDER.index("document_extraction_jobs")
     assert TABLE_ORDER.index("document_extractions") < TABLE_ORDER.index("scenario_candidates")
     assert TABLE_ORDER.index("scenario_drafts") < TABLE_ORDER.index("scenario_draft_reviews")
+    assert TABLE_ORDER.index("evaluation_batches") < TABLE_ORDER.index("historical_label_packs")
+    assert TABLE_ORDER.index("evaluation_members") < TABLE_ORDER.index("evaluation_verification_results")
 
 
 def test_transfer_digest_is_order_independent_and_binary_safe():
