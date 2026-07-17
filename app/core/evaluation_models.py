@@ -278,6 +278,18 @@ class BenchmarkSourceStatus(BaseModel):
     concentration_warnings: list[str] = Field(default_factory=list)
     status_hash: str
 
+class BenchmarkRightsReview(BaseModel):
+    decision: Literal["approved"]
+    reviewed_by: str
+    reviewed_at: str
+    scope: Literal["local_archive_and_evaluation"]
+    decision_basis: str
+    publisher: str
+    source_url: str
+    license_name: str
+    license_url: str
+    review_hash: str
+
 class AgentOutcomeObservation(BaseModel):
     engine_mode: EvaluationMode
     score: float | None = None

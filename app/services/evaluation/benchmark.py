@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -20,6 +20,7 @@ from app.core.evaluation_models import (
     SealedLabelPack,
 )
 from app.services.consistency.hashing import stable_hash
+from app.services.evaluation.benchmark_rights import validate_rights_review
 from app.services.project_store import connect, dumps, loads
 
 
@@ -338,8 +339,19 @@ def _validate_evidence(item: dict[str, Any], case_id: str, case_cutoff: str) -> 
         raise HTTPException(status_code=422, detail="Benchmark evidence must use an approved official HTTPS publisher")
     if item.get("evidence_role") not in {"input", "outcome"} or len(str(item.get("blob_sha256", ""))) != 64:
         raise HTTPException(status_code=422, detail="Benchmark evidence contract is invalid")
-    if item["evidence_role"] == "input" and str(item.get("observed_at")) > str(case_cutoff):
+    observed_at = _parse_iso_utc(item.get("observed_at"), "evidence observed_at")
+    cutoff_at = _parse_iso_utc(case_cutoff, "case cutoff")
+    if item["evidence_role"] == "input" and observed_at > cutoff_at:
         raise HTTPException(status_code=409, detail="Input evidence leaks information after the case cutoff")
+    if item["evidence_role"] == "outcome" and observed_at < cutoff_at:
+        raise HTTPException(status_code=409, detail="Outcome evidence predates the case cutoff")
+    rights_review = validate_rights_review(
+        item.get("rights_review") or item.get("locator", {}).get("rights_review"),
+        publisher=publisher,
+        source_url=str(item["source_url"]),
+        license_name=str(item.get("license_name") or ""),
+        license_url=str(item.get("license_url") or ""),
+    )
     path = _blob_path(item["blob_sha256"])
     if not path.is_file() or _sha256_file(path) != item["blob_sha256"]:
         raise HTTPException(status_code=409, detail=f"Benchmark evidence blob is missing or invalid: {item['blob_sha256']}")
@@ -348,13 +360,23 @@ def _validate_evidence(item: dict[str, Any], case_id: str, case_cutoff: str) -> 
         "evidence_role": item["evidence_role"], "publisher": item["publisher"], "license_name": item.get("license_name", ""),
         "license_url": item.get("license_url", ""),
         "source_url": item["source_url"], "observed_at": item["observed_at"], "cutoff_at": item["cutoff_at"],
-        "blob_sha256": item["blob_sha256"], "locator": item.get("locator", {}),
+        "blob_sha256": item["blob_sha256"], "locator": {**item.get("locator", {}), "rights_review": rights_review},
     }
     body["locator"] = {**body["locator"], "license_url": body["license_url"]}
     result = {"evidence_id": item.get("evidence_id") or f"he_{stable_hash(body)[:20]}", **body, "evidence_hash": stable_hash(body)}
     if item.get("evidence_hash") and item["evidence_hash"] != result["evidence_hash"]:
         raise HTTPException(status_code=409, detail="Historical evidence hash mismatch")
     return result
+
+
+def _parse_iso_utc(value: Any, field: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"Benchmark {field} must be ISO-8601") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def _verify_signature(key_id: str, payload: bytes, signature: bytes) -> None:

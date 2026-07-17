@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import base64
+from copy import deepcopy
+import hashlib
 
 import pytest
 from fastapi import HTTPException
 
 from app.services.evaluation.benchmark_tools import pack_labels, preflight_manifest, source_status, validate_label_payload, validate_source_plan
+from app.services.evaluation import benchmark
 from app.services.evaluation.service import _agent_outcome_observation, _aggregate_agent_observations, _historical_case_metrics
 from app.services.war_room.data import SUPPLY_CHAINS
 
@@ -94,6 +97,57 @@ def test_source_plan_requires_evidence_backed_assumptions():
             {"suite_id": "historical-benchmark.v1", "version": "1", "cases": cases},
             "pilot",
         )
+
+
+def test_source_plan_requires_hashed_rights_review():
+    cases = [
+        _source_case(domain, index)
+        for domain in ("strait", "energy", "food", "sanctions", "trade", "finance")
+        for index in (1, 2)
+    ]
+    cases[0]["evidence"][0].pop("rights_review")
+    with pytest.raises(HTTPException, match="rights review"):
+        validate_source_plan(
+            {"suite_id": "historical-benchmark.v1", "version": "1", "cases": cases},
+            "pilot",
+        )
+
+
+def test_rights_review_hash_detects_tampering():
+    cases = [
+        _source_case(domain, index)
+        for domain in ("strait", "energy", "food", "sanctions", "trade", "finance")
+        for index in (1, 2)
+    ]
+    normalized = validate_source_plan(
+        {"suite_id": "historical-benchmark.v1", "version": "1", "cases": cases},
+        "pilot",
+    )
+    tampered = deepcopy(normalized)
+    tampered["cases"][0]["evidence"][0]["rights_review"]["license_name"] = "Public Domain"
+    with pytest.raises(HTTPException, match="rights review binding mismatch"):
+        validate_source_plan(tampered, "pilot")
+
+
+def test_manifest_evidence_persists_rights_review_in_lineage(tmp_path, monkeypatch):
+    evidence = _source_case("energy", 1)["evidence"][0]
+    content = b"official benchmark evidence"
+    digest = hashlib.sha256(content).hexdigest()
+    blob = tmp_path / digest
+    blob.write_bytes(content)
+    monkeypatch.setattr(benchmark, "_blob_path", lambda _digest: blob)
+    normalized = benchmark._validate_evidence(
+        {
+            **evidence,
+            "case_id": "pilot_energy_01",
+            "cutoff_at": "2011-01-01T00:00:00+00:00",
+            "blob_sha256": digest,
+        },
+        "pilot_energy_01",
+        "2011-01-01T00:00:00+00:00",
+    )
+    assert normalized["locator"]["rights_review"]["decision"] == "approved"
+    assert len(normalized["locator"]["rights_review"]["review_hash"]) == 64
 
 
 def test_source_status_is_incomplete_without_entries():
@@ -273,6 +327,7 @@ def _source_case(domain: str, index: int) -> dict:
                 "source_url": "https://api.worldbank.org/v2/country/USA/indicator/NY.GDP.MKTP.CD?format=json",
                 "observed_at": f"{year}-01-01T00:00:00Z",
                 "expected_mime": "application/json",
+                "rights_review": _rights_review(),
                 "locator": {
                     "coverage_countries": ["USA", "CHN", "JPN", "KOR", "TWN"],
                     "coverage_supply_chains": ["energy"],
@@ -287,10 +342,21 @@ def _source_case(domain: str, index: int) -> dict:
                 "source_url": "https://api.worldbank.org/v2/country/CHN/indicator/NY.GDP.MKTP.CD?format=json",
                 "observed_at": f"{year}-06-01T00:00:00Z",
                 "expected_mime": "application/json",
+                "rights_review": _rights_review(),
                 "locator": {
                     "coverage_countries": ["USA", "CHN", "JPN", "KOR", "TWN"],
                     "coverage_supply_chains": ["energy"],
                 },
             },
         ],
+    }
+
+
+def _rights_review() -> dict:
+    return {
+        "decision": "approved",
+        "reviewed_by": "license-reviewer",
+        "reviewed_at": "2025-01-01T00:00:00Z",
+        "scope": "local_archive_and_evaluation",
+        "decision_basis": "The official dataset policy expressly permits local archival and evaluation.",
     }

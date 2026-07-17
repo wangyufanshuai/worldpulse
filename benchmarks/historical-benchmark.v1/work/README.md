@@ -6,7 +6,7 @@ is an active Benchmark Suite.
 
 The repository intentionally does not generate historical labels or invent
 official evidence. A curator may place a reviewed `source-plan.json` here after
-confirming publisher, license, cutoff, input/outcome separation, locator
+confirming publisher, license, hashed rights review, cutoff, input/outcome separation, locator
 coverage and the fixed WorldPulse scenario contract.
 
 Before any release import:

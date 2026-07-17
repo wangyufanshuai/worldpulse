@@ -16,6 +16,7 @@ from app.services.consistency.hashing import stable_hash
 from app.services.continuous_intelligence.feed import validate_remote_url
 from app.services.war_room.data import POLICY_ACTIONS
 from . import benchmark
+from .benchmark_rights import ARCHIVABLE_LICENSES, validate_rights_review
 
 
 MAX_SOURCE_BYTES = 25 * 1024 * 1024
@@ -27,13 +28,6 @@ ALLOWED_MIME = {
     "text/markdown",
 }
 ALLOWED_DOMAINS = {"strait", "energy", "food", "sanctions", "trade", "finance"}
-ARCHIVABLE_LICENSES = {
-    "Public Domain",
-    "CC BY 4.0",
-    "CC BY 3.0 IGO",
-    "CC BY-NC-SA 3.0 IGO",
-    "Open Government Licence v3.0",
-}
 COUNTRY_CODES = {"USA", "CHN", "JPN", "KOR", "TWN", "IND", "EU", "RUS", "SAU", "BRA"}
 CHAIN_KEYS = {"energy", "food", "chips", "shipping", "settlement"}
 ACTION_TYPES = {
@@ -261,6 +255,17 @@ def source_status(lock_payload: dict[str, Any]) -> dict[str, Any]:
         if not sha256:
             missing.append(evidence_id)
             continue
+        try:
+            validate_rights_review(
+                item.get("rights_review") or item.get("locator", {}).get("rights_review"),
+                publisher=publisher,
+                source_url=str(item.get("source_url") or ""),
+                license_name=str(item.get("license_name") or ""),
+                license_url=str(item.get("license_url") or ""),
+            )
+        except HTTPException:
+            license_errors.append(evidence_id)
+            continue
         if len(sha256) != 64:
             hash_errors.append(evidence_id)
             continue
@@ -471,6 +476,13 @@ def _validate_source_case(case: dict[str, Any], seen_evidence: set[str]) -> dict
         if item["license_name"] not in ARCHIVABLE_LICENSES and item["license_name"] not in configured_licenses:
             raise HTTPException(status_code=422, detail=f"Evidence license is not approved for local archival: {evidence_id}")
         url = validate_remote_url(str(item.get("source_url") or ""), resolve_dns=False)
+        rights_review = validate_rights_review(
+            item.get("rights_review"),
+            publisher=publisher,
+            source_url=url,
+            license_name=str(item["license_name"]),
+            license_url=str(item["license_url"]),
+        )
         observed = _parse_date(item.get("observed_at"))
         if item["evidence_role"] == "input" and observed > cutoff:
             raise HTTPException(status_code=409, detail=f"Input evidence is after case cutoff: {evidence_id}")
@@ -489,6 +501,7 @@ def _validate_source_case(case: dict[str, Any], seen_evidence: set[str]) -> dict
             "cutoff_at": cutoff.isoformat(),
             "expected_mime": item.get("expected_mime", ""),
             "locator": item.get("locator", {}),
+            "rights_review": rights_review,
         })
     target_country_evidence = case["target_country_evidence"]
     if not isinstance(target_country_evidence, dict) or set(target_country_evidence) != countries:
