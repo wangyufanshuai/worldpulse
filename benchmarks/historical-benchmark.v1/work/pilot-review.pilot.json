@@ -1,0 +1,911 @@
+{
+  "version": "pilot-review-worksheet.v1",
+  "dossier_hash": "8f508e08104bf91b6c27ef918268f25e2e86e8a25adb0cf6f6636497c30bae6b",
+  "generated_at": "2026-07-23T12:49:10.513+00:00",
+  "status": "draft",
+  "evidence_reviews": [
+    {
+      "evidence_id": "ev_pilot_strait_01_input",
+      "evidence_contract_hash": "f7adc1c7c305cb20e199b811230972de2e7e05d3f2036baed12ef703bc1cf615",
+      "source_url_hash": "520afade74ebe4e4422fb2416dc4875406e870303526a09a5777ed45757a4138",
+      "title": "Country Analysis Brief: Japan",
+      "publisher": "EIA",
+      "source_url": "https://www.eia.gov/international/content/analysis/countries_long/Japan/japan.pdf",
+      "license_name": "Public Domain",
+      "license_url": "https://www.eia.gov/about/copyrights_reuse.php",
+      "locator": {
+        "location": "Overview and petroleum import-dependence discussion",
+        "coverage_countries": [
+          "JPN"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "shipping"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_strait_01_outcome",
+      "evidence_contract_hash": "8cef8faa788b8b6f831f23f2747a59394ad73e0d76e003ca891e317eb0b2fe25",
+      "source_url_hash": "ef1744d9a2be4cdce2d3eeefe541235c283d37068a73c316f48c652a01a879db",
+      "title": "Country Analysis Brief: World Oil Transit Chokepoints",
+      "publisher": "EIA",
+      "source_url": "https://www.eia.gov/international/content/analysis/special_topics/World_Oil_Transit_Chokepoints/wotc.pdf",
+      "license_name": "Public Domain",
+      "license_url": "https://www.eia.gov/about/copyrights_reuse.php",
+      "locator": {
+        "location": "Table 1 and Strait of Malacca/Hormuz sections",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "KOR",
+          "IND",
+          "SAU"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "shipping"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_strait_02_input",
+      "evidence_contract_hash": "22c7a63ff4dd0b8ac4711299366e6ba96cc98e8036ea0235973782771d63f4b4",
+      "source_url_hash": "f26397aaa1071e10ce87300f4059a157ad5390bfe275ca78e4526b856c5248a5",
+      "title": "Background Reference: Japan",
+      "publisher": "EIA",
+      "source_url": "https://www.eia.gov/international/content/analysis/countries_long/Japan/japan_background.pdf",
+      "license_name": "Public Domain",
+      "license_url": "https://www.eia.gov/about/copyrights_reuse.php",
+      "locator": {
+        "location": "Energy imports and trade balance sections",
+        "coverage_countries": [
+          "JPN"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "shipping"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_strait_02_outcome",
+      "evidence_contract_hash": "b61592465da2862a376fa2dd63eb496611a4c1843ed853adb94764c831f7b50c",
+      "source_url_hash": "11ada377a8ba6db84db1f9c0acc130e673a722cda6a89d35f2052ff263693482",
+      "title": "Commodity Markets Outlook, October 2021",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstream/handle/10986/36350/CMO-October-2021.pdf",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Energy, agriculture and global trade-flow sections",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "KOR",
+          "EU",
+          "RUS"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "food",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_energy_01_input",
+      "evidence_contract_hash": "c0b812995ce12a09b1e6ccd4b96109e44f8e2cfe6cae75ec5e411bbcad36a20c",
+      "source_url_hash": "f51c6a043546743ebbe13d5accad340adbad522bde1685b8b51dde3e035091d3",
+      "title": "Annual Energy Outlook 2020",
+      "publisher": "EIA",
+      "source_url": "https://www.eia.gov/outlooks/archive/aeo20/pdf/AEO2020.pdf",
+      "license_name": "Public Domain",
+      "license_url": "https://www.eia.gov/about/copyrights_reuse.php",
+      "locator": {
+        "location": "Reference case energy supply and price tables",
+        "coverage_countries": [
+          "USA"
+        ],
+        "coverage_supply_chains": [
+          "energy"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_energy_01_outcome",
+      "evidence_contract_hash": "9c3a543f66242ae60edf64372c2ead9a3dcb6c9f8eaa947f6ee4ac92a25ffe1f",
+      "source_url_hash": "9347d5fa820a40350972099dbadcac4dd963d166b3fd4288b9abac5bfdc2b8fa",
+      "title": "Commodity Markets Outlook, October 2020",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstream/handle/10986/34621/CMO-October-2020.pdf",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Energy chapter and commodity price tables",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "EU",
+          "RUS",
+          "SAU"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_energy_02_input",
+      "evidence_contract_hash": "d06eda9b61a156a227636329e147b4b06f87f8a64fd64cd4d6e449929bb829de",
+      "source_url_hash": "c9c1be8e865343b24bcf80e31229577b5d19c2178bdc93e7c319114e3cb412f3",
+      "title": "Annual Energy Outlook 2022",
+      "publisher": "EIA",
+      "source_url": "https://www.eia.gov/outlooks/archive/aeo22/pdf/AEO2022_Narrative.pdf",
+      "license_name": "Public Domain",
+      "license_url": "https://www.eia.gov/about/copyrights_reuse.php",
+      "locator": {
+        "location": "Reference case and oil and gas supply sections",
+        "coverage_countries": [
+          "USA"
+        ],
+        "coverage_supply_chains": [
+          "energy"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_energy_02_outcome",
+      "evidence_contract_hash": "c60640f079afeec8f3b7dab6737fb0614eb006cc6fa33f905acca2549bbef7a0",
+      "source_url_hash": "05e38ca6c69ad772355d4551897af4856bd897fa067785db52c9c37c0ad06afe",
+      "title": "Commodity Markets Outlook, April 2023",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstreams/5a0ea04c-62b7-4b38-ab7c-282710e82ed1/download",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Executive summary and energy price tables",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "EU",
+          "RUS",
+          "SAU"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "food",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_food_01_input",
+      "evidence_contract_hash": "05864b62d044b1826ac054ef4dc7ffa5f104aa8b5d1c6324764bf7df9ea40ba8",
+      "source_url_hash": "b6b2834c2f01db3f3dca27e883a4741884e79e4509caecc53ac577c4ce7f282b",
+      "title": "FAOSTAT Domain Emissions Totals: Methodological Note",
+      "publisher": "FAO",
+      "source_url": "https://files-faostat.fao.org/production/GT/GT_en.pdf",
+      "license_name": "CC BY 4.0",
+      "license_url": "https://www.fao.org/contact-us/terms/db-terms-of-use/en/",
+      "locator": {
+        "location": "Dataset Information and geographical coverage",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "IND",
+          "EU",
+          "BRA"
+        ],
+        "coverage_supply_chains": [
+          "food",
+          "energy"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_food_01_outcome",
+      "evidence_contract_hash": "dbd77d0755a43beb7d859578681f49efa39e5725b73b223448f232b65b7e781a",
+      "source_url_hash": "4fc9d8f8c8cf45068d48f923df2fa30d17cd4ef61b91b1890795c4238483ecb3",
+      "title": "Commodity Markets Outlook, April 2024: Executive Summary",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstreams/0428bcde-be1e-4baa-aea7-98c1efc5d596/download",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Executive summary food and fertilizer discussion",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "IND",
+          "BRA",
+          "EU",
+          "RUS"
+        ],
+        "coverage_supply_chains": [
+          "food",
+          "energy",
+          "shipping"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_food_02_input",
+      "evidence_contract_hash": "c9061d8c16d75dafd5278269a52be83d865ef03c66a0e63727b00175ae9aaa6f",
+      "source_url_hash": "5b9ed4317e72c65711dadfaa8d9cc080ea85fe6d9a256a92ce0d3e0957766d9c",
+      "title": "FAOSTAT Domain Emission Indicators: Methodological Note",
+      "publisher": "FAO",
+      "source_url": "https://files-faostat.fao.org/production/EM/EM_en.pdf",
+      "license_name": "CC BY 4.0",
+      "license_url": "https://www.fao.org/contact-us/terms/db-terms-of-use/en/",
+      "locator": {
+        "location": "Dataset Information and geographical coverage",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "IND",
+          "EU",
+          "BRA"
+        ],
+        "coverage_supply_chains": [
+          "food",
+          "energy"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_food_02_outcome",
+      "evidence_contract_hash": "bd710018667c52a1610b367dd61dc2aaf052218f67ea92ac5c8229083deafb51",
+      "source_url_hash": "392e611db7fce56714027650ada744d7b44441a6e31ccb90ab33b6c55ff81ce6",
+      "title": "Commodity Markets Outlook, October 2024",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/server/api/core/bitstreams/bbda9ad3-4f12-4626-ad4b-94a4d20fbd52/content",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Agriculture and fertilizer price sections",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "IND",
+          "BRA",
+          "EU",
+          "RUS"
+        ],
+        "coverage_supply_chains": [
+          "food",
+          "energy",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_sanctions_01_input",
+      "evidence_contract_hash": "09d942ad7a1ca4448d00fc0144a17b02f74aba564193d5e4e9bccecb15b52ccf",
+      "source_url_hash": "3c41eff511c3c12d682d8262128e3f82387724a8079b2a79e980518be543bd9f",
+      "title": "Changes to the SDN List in 2021",
+      "publisher": "OFAC",
+      "source_url": "https://www.treasury.gov/ofac/downloads/sdnnew21.pdf",
+      "license_name": "Public Domain",
+      "license_url": "https://home.treasury.gov/utility/copyright-and-other-notices",
+      "locator": {
+        "location": "Russia-related SDN additions and amendments",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "EU",
+          "RUS",
+          "SAU"
+        ],
+        "coverage_supply_chains": [
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_sanctions_01_outcome",
+      "evidence_contract_hash": "02107bcf77b4b66d52da3d81130d99f31ee18dfd930ac9101a6338f856a62312",
+      "source_url_hash": "3beffded3dbc7d08abb62d837b357cc5fb8cf18160d8a18a26cdd80c8a763055",
+      "title": "Commodity Markets Outlook, April 2022: Executive Summary",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstream/handle/10986/37223/CMO-April-2022-executive-summary.pdf",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Sanctions, trade redirection and commodity price discussion",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "IND",
+          "EU",
+          "RUS",
+          "SAU"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "food",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_sanctions_02_input",
+      "evidence_contract_hash": "ce7f44f41cd132fd8ce3cff76733276ffcfa2997e057d91e7bb99523464e1ecd",
+      "source_url_hash": "7a4322ec0ab36b925561d38e1d41c8e4cf5a01182616b22653d9eb196ee5a611",
+      "title": "Changes to the SDN List in 2022",
+      "publisher": "OFAC",
+      "source_url": "https://www.treasury.gov/ofac/downloads/sdnnew22.pdf",
+      "license_name": "Public Domain",
+      "license_url": "https://home.treasury.gov/utility/copyright-and-other-notices",
+      "locator": {
+        "location": "Russia-related SDN additions and amendments",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "EU",
+          "RUS",
+          "SAU"
+        ],
+        "coverage_supply_chains": [
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_sanctions_02_outcome",
+      "evidence_contract_hash": "a22e1e07f98e7d5c1a79606aa38e7657e63ee213fc54f65f4b85e0437bdb0d20",
+      "source_url_hash": "3e4a92dfd4219bc9d65d90298d8cf8b4da88f9c302913067d193ebf92487e4ca",
+      "title": "Commodity Markets Outlook, October 2023",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/server/api/core/bitstreams/27189ca2-d947-4ca2-8e3f-a36b3b5bf4ba/content",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Trade redirection, sanctions and commodity price sections",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "IND",
+          "EU",
+          "RUS",
+          "SAU"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "food",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_trade_01_input",
+      "evidence_contract_hash": "199962406188e1888bc732c91be7a7c14706e10bb3623dbdd986208d557649cb",
+      "source_url_hash": "1ead5adfc1ba0f9a5ea9e1f814c5e0fea8db9272d34db04933f925365b4409cb",
+      "title": "Commodity Markets Outlook, October 2018",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstream/handle/10986/30614/CMO-October-2018.pdf",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Tariffs and commodity trade special focus",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "KOR",
+          "EU",
+          "BRA"
+        ],
+        "coverage_supply_chains": [
+          "food",
+          "chips",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_trade_01_outcome",
+      "evidence_contract_hash": "1b402fb16cae9e0ef52abc1d942fe76cc461de1987f7b0e77c16078365ef3cda",
+      "source_url_hash": "90d2412126beb2aac3b1e1a0c16e50f2f0c97503cb8437d5ae5dd738f2fcafbb",
+      "title": "Commodity Markets Outlook, October 2019",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstream/handle/10986/32633/CMO-October-2019.pdf",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Commodity demand, substitution and trade sections",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "KOR",
+          "EU",
+          "BRA"
+        ],
+        "coverage_supply_chains": [
+          "food",
+          "chips",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_trade_02_input",
+      "evidence_contract_hash": "8d84772c3fac34c9813e8c9865f3f64866b32477407b72308001efabd027b0bf",
+      "source_url_hash": "94a39aa1f52e347bdf82bb2316d33c85aa9995cb21cdd8a871d7e6bb74edc1dc",
+      "title": "Commodity Markets Outlook, April 2020",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstream/handle/10986/33624/CMO-April-2020.pdf",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "COVID-19 transport, trade and supply-chain discussion",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "KOR",
+          "EU",
+          "BRA"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "food",
+          "chips",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_trade_02_outcome",
+      "evidence_contract_hash": "754a6e42f167bc83c985a2c7d76e1bd7ea767b305b1e5bc784c7cdebaade0a50",
+      "source_url_hash": "03541515e68c8841ff65f3e3cc8362f9d79506ff7dcb1ff708dbac1174628d66",
+      "title": "Commodity Markets Outlook, April 2021",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstream/handle/10986/35458/Commodity-Markets-Outlook.pdf",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Commodity recovery and trade-flow sections",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "KOR",
+          "EU",
+          "BRA"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "food",
+          "chips",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_finance_01_input",
+      "evidence_contract_hash": "8cf7a108b029efd1e6b485113e4ee0381547b957ee9958cc171f110b947de641",
+      "source_url_hash": "b8fcad78a992f007bf56a7cfdc386e1a71a79233173f491a9cbd510e524fdd4c",
+      "title": "Global Economic Prospects, January 2022",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstream/handle/10986/36519/9781464817601.pdf",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Global outlook, inflation and financial-stress sections",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "EU",
+          "RUS",
+          "BRA"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_finance_01_outcome",
+      "evidence_contract_hash": "68b1f2998655d69c473b8fb322bbd2ffd9d77f8256a8baf655776b8f38feaa28",
+      "source_url_hash": "cf19c7b014863ed16f2bec7a088b6c5ebddc0a264fe679997306061ce735893a",
+      "title": "Global Economic Prospects, June 2022: Global Outlook",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstream/handle/10986/37224/Global-Economic-Prospects-June-2022-Global-Outlook.pdf",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Global outlook, inflation and financial-conditions figures",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "EU",
+          "RUS",
+          "BRA"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "food",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_finance_02_input",
+      "evidence_contract_hash": "5560a6112609b31372dd9167bf2cb3a420814874ac7dcbe8d47c9f8c38cdb284",
+      "source_url_hash": "4606af176d9860b3aa78f1c6b865353c43bde7180b17b85aacafe5b5ce4f97ba",
+      "title": "International Debt Statistics 2022",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstream/handle/10986/36289/9781464818004.pdf",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Debt stocks, flows and country tables",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "EU",
+          "RUS",
+          "BRA"
+        ],
+        "coverage_supply_chains": [
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    },
+    {
+      "evidence_id": "ev_pilot_finance_02_outcome",
+      "evidence_contract_hash": "f72cfb68c1565d9de936372c86a87f7514fff82eb1425d1da04888f5b92ae5fc",
+      "source_url_hash": "76d96a399bc50fbcceaeb2098d20cc4d073713c81340518ff77789866c82587d",
+      "title": "Commodity Markets Outlook, October 2022",
+      "publisher": "World Bank",
+      "source_url": "https://openknowledge.worldbank.org/bitstream/handle/10986/38111/CMO-October-2022.pdf",
+      "license_name": "CC BY 3.0 IGO",
+      "license_url": "https://creativecommons.org/licenses/by/3.0/igo/",
+      "locator": {
+        "location": "Global slowdown, inflation and financial-stress sections",
+        "coverage_countries": [
+          "USA",
+          "CHN",
+          "JPN",
+          "EU",
+          "RUS",
+          "BRA"
+        ],
+        "coverage_supply_chains": [
+          "energy",
+          "food",
+          "shipping",
+          "settlement"
+        ]
+      },
+      "decision": null,
+      "third_party_exception": null,
+      "decision_basis": ""
+    }
+  ],
+  "case_reviews": [
+    {
+      "case_id": "pilot_strait_01",
+      "scenario_hash": "77a857f748e4752899f18c78cfef6cdd798b48c99860e826c9c9a94b7a62f8ae",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.65,
+        "propagation": 0.45
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    },
+    {
+      "case_id": "pilot_strait_02",
+      "scenario_hash": "5a2289230ec96241ab5abf2ff8c9f87c2f7fd6ce46df23d7d32cd9c63604730d",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.65,
+        "propagation": 0.45
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    },
+    {
+      "case_id": "pilot_energy_01",
+      "scenario_hash": "f9f7ca5811a86f6a0001779bc60b47e21a9ebf31563afbf43c4e236f0cecfff8",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.65,
+        "propagation": 0.45
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    },
+    {
+      "case_id": "pilot_energy_02",
+      "scenario_hash": "d23175616881c4b810161ba74e6298b04ce9a127c88eb949b18c96dd10a51bd1",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.65,
+        "propagation": 0.45
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    },
+    {
+      "case_id": "pilot_food_01",
+      "scenario_hash": "16509b9772bfc0e081747c38b7cf11bbef79c149f57f27f1e9610b459e61a6b8",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.65,
+        "propagation": 0.45
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    },
+    {
+      "case_id": "pilot_food_02",
+      "scenario_hash": "f7ed32d9b3dcfc61605786e8d8f758074ca938db85ae8cdefbfa870b03ec6bae",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.65,
+        "propagation": 0.45
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    },
+    {
+      "case_id": "pilot_sanctions_01",
+      "scenario_hash": "37a425c8d24036ca91e984831e8d0a13beb2560e546cabe4d4a7f3b2bb7bd288",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.65,
+        "propagation": 0.45
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    },
+    {
+      "case_id": "pilot_sanctions_02",
+      "scenario_hash": "69f1c1f2992b0298c03e93880f19808b641a76c0de8d15817d3a2bf82b325b48",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.65,
+        "propagation": 0.45
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    },
+    {
+      "case_id": "pilot_trade_01",
+      "scenario_hash": "304f8fd87d4658aebb550ce3d3b739106d7d1950962200a9fb13d622fad36363",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.65,
+        "propagation": 0.45
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    },
+    {
+      "case_id": "pilot_trade_02",
+      "scenario_hash": "622c147a34d9bc8c033a1b16302e1da0afb81497479f1b52439ae81e40d409fb",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.82,
+        "propagation": 0.6
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    },
+    {
+      "case_id": "pilot_finance_01",
+      "scenario_hash": "ebc22e873f3964e45d5339b0705d44ef7a56d1f009338d0d1d0d5c61e7bf3ee4",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.65,
+        "propagation": 0.45
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    },
+    {
+      "case_id": "pilot_finance_02",
+      "scenario_hash": "574fc828f4cdc1d624a895b63f1ed3176c053948b1880cf2af809ec5f494b9fb",
+      "scenario_assumptions": {
+        "duration_days": 90,
+        "intensity": 0.65,
+        "propagation": 0.45
+      },
+      "decision": null,
+      "decision_basis": "",
+      "assumption_reasons": {
+        "duration_days": "",
+        "intensity": "",
+        "propagation": ""
+      },
+      "development_labels": {},
+      "label_confidence": null
+    }
+  ],
+  "validation": {
+    "status": "draft",
+    "evidence_total": 24,
+    "evidence_approved": 0,
+    "case_total": 12,
+    "case_approved": 0,
+    "revision_requested": 0,
+    "missing_decisions": 36,
+    "worksheet_hash": "6de836a5d051f6b6648e6a2ae955c5ddcae9bf1a9f9d5be395f777c93cafb9be"
+  },
+  "worksheet_hash": "6de836a5d051f6b6648e6a2ae955c5ddcae9bf1a9f9d5be395f777c93cafb9be"
+}

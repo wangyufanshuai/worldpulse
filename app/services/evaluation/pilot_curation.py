@@ -13,17 +13,17 @@ from app.services.war_room.data import POLICY_ACTIONS
 
 from . import benchmark
 from .benchmark_rights import ARCHIVABLE_LICENSES
-from .benchmark_tools import (
+from .benchmark_contracts import (
     ALLOWED_DOMAINS,
     ALLOWED_MIME,
     CHAIN_KEYS,
     COUNTRY_CODES,
-    _evidence_coverage,
-    _parse_date,
-    _validate_domain_matrix,
-    _validate_label,
-    validate_source_plan,
+    evidence_coverage,
+    parse_date,
+    validate_domain_matrix,
+    validate_label,
 )
+from .benchmark_manifests import validate_source_plan
 
 
 DOSSIER_VERSION = "pilot-curation-dossier.v1"
@@ -55,7 +55,18 @@ def finalize_pilot_dossier(payload: dict[str, Any], reviewer: UserIdentity) -> d
     if reviewer.role != "reviewer" or reviewer.username != "benchmark-reviewer":
         raise HTTPException(status_code=403, detail="Pilot dossier requires the benchmark-reviewer account")
     dossier = validate_pilot_dossier(payload, require_review=True, verify_hash=True)
-    reviewed_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    bound_reviewer = dossier.get("reviewer")
+    if bound_reviewer and (
+        bound_reviewer.get("user_id") != reviewer.user_id
+        or bound_reviewer.get("username") != reviewer.username
+        or bound_reviewer.get("role") != reviewer.role
+    ):
+        raise HTTPException(status_code=409, detail="Pilot dossier reviewer identity mismatch")
+    reviewed_at = (
+        bound_reviewer.get("reviewed_at")
+        if bound_reviewer
+        else datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+    )
     cases: list[dict[str, Any]] = []
     for case in dossier["cases"]:
         reasons = case["label_review"]["assumption_reasons"]
@@ -113,6 +124,7 @@ def finalize_pilot_dossier(payload: dict[str, Any], reviewer: UserIdentity) -> d
         "version": "1",
         "purpose": "governed open-license 12-case historical pilot",
         "curation_dossier_hash": dossier["dossier_hash"],
+        "review_worksheet_hash": dossier.get("review_worksheet_hash"),
         "reviewer": {
             "user_id": reviewer.user_id,
             "username": reviewer.username,
@@ -134,7 +146,7 @@ def _normalize_dossier(payload: dict[str, Any], *, require_review: bool) -> dict
     cases = payload.get("cases")
     if not isinstance(cases, list):
         raise HTTPException(status_code=422, detail="Pilot curation dossier cases are required")
-    _validate_domain_matrix(cases, "pilot")
+    validate_domain_matrix(cases, "pilot")
     evidence_ids: set[str] = set()
     source_urls: set[str] = set()
     normalized_cases = [
@@ -143,7 +155,7 @@ def _normalize_dossier(payload: dict[str, Any], *, require_review: bool) -> dict
     ]
     if len(evidence_ids) != 24 or len(source_urls) != 24:
         raise HTTPException(status_code=422, detail="Pilot dossier requires 24 distinct Evidence IDs and source URLs")
-    return {
+    normalized = {
         "version": DOSSIER_VERSION,
         "suite_id": "historical-benchmark.v1",
         "profile": "pilot",
@@ -152,6 +164,27 @@ def _normalize_dossier(payload: dict[str, Any], *, require_review: bool) -> dict
         "prepared_at": str(payload.get("prepared_at") or datetime.now(timezone.utc).isoformat(timespec="milliseconds")),
         "cases": normalized_cases,
     }
+    reviewer = payload.get("reviewer")
+    worksheet_hash = payload.get("review_worksheet_hash")
+    if reviewer is not None or worksheet_hash is not None:
+        if (
+            not isinstance(reviewer, dict)
+            or reviewer.get("username") != "benchmark-reviewer"
+            or reviewer.get("role") != "reviewer"
+            or not reviewer.get("user_id")
+            or not reviewer.get("reviewed_at")
+            or not isinstance(worksheet_hash, str)
+            or len(worksheet_hash) != 64
+        ):
+            raise HTTPException(status_code=422, detail="Pilot dossier reviewer binding is invalid")
+        normalized["reviewer"] = {
+            "user_id": str(reviewer["user_id"]),
+            "username": "benchmark-reviewer",
+            "role": "reviewer",
+            "reviewed_at": str(reviewer["reviewed_at"]),
+        }
+        normalized["review_worksheet_hash"] = worksheet_hash
+    return normalized
 
 
 def _normalize_case(
@@ -168,7 +201,7 @@ def _normalize_case(
     }
     if not required.issubset(case) or case.get("split") != "development" or case.get("domain") not in ALLOWED_DOMAINS:
         raise HTTPException(status_code=422, detail="Pilot case contract is invalid")
-    cutoff = _parse_date(case["cutoff_at"])
+    cutoff = parse_date(case["cutoff_at"])
     observation_days = int(case["observation_window_days"])
     if cutoff.year < 2010 or cutoff.year > 2025 or cutoff.timestamp() + observation_days * 86400 > datetime.now(timezone.utc).timestamp():
         raise HTTPException(status_code=409, detail=f"Pilot case window is invalid: {case['case_id']}")
@@ -211,10 +244,10 @@ def _normalize_case(
         reasons = label_review.get("assumption_reasons")
         if not isinstance(reasons, dict) or any(len(str(reasons.get(key) or "").strip()) < 20 for key in ("duration_days", "intensity", "propagation")):
             raise HTTPException(status_code=422, detail="Pilot scenario assumption review is incomplete")
-        labels = _validate_label(
+        labels = validate_label(
             label_review.get("development_labels"),
             observation_window_days=observation_days,
-            evidence_coverage=_evidence_coverage(evidence),
+            evidence_coverage=evidence_coverage(evidence),
         )
         try:
             label_confidence = float(label_confidence)
@@ -267,7 +300,7 @@ def _normalize_evidence(
     if license_name not in ARCHIVABLE_LICENSES:
         raise HTTPException(status_code=422, detail="Pilot Evidence license is not approved")
     license_url = validate_remote_url(str(item.get("license_url") or ""), resolve_dns=False)
-    published = _parse_date(item.get("published_at"))
+    published = parse_date(item.get("published_at"))
     role = item.get("evidence_role")
     if role == "input" and published > cutoff:
         raise HTTPException(status_code=409, detail="Pilot input Evidence is after cutoff")

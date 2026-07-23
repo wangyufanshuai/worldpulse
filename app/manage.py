@@ -19,6 +19,17 @@ from app.db.postgres import (
 from app.db.transfer import copy_sqlite_to_postgres
 
 
+def _write_json_atomic(path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
 def _migration_command(action: str) -> int:
     if is_postgres_url():
         if action == "apply":
@@ -68,8 +79,9 @@ def main() -> int:
     notifications = sub.add_parser("notifications", help="Manage notification deliveries")
     notifications.add_argument("action", choices=("retry-failed",))
     benchmark_parser = sub.add_parser("benchmark", help="Manage historical benchmark manifests and sealed labels")
-    benchmark_parser.add_argument("action", choices=("ingest-manifest", "import-label-pack", "verify", "status", "prepare-pilot", "validate-pilot-dossier", "finalize-pilot", "validate-source-plan", "fetch-sources", "build-manifest", "pack-labels", "preflight", "source-status"))
+    benchmark_parser.add_argument("action", choices=("ingest-manifest", "import-label-pack", "verify", "status", "prepare-pilot", "validate-pilot-dossier", "finalize-pilot", "export-pilot-review", "validate-pilot-review", "apply-pilot-review", "validate-source-plan", "fetch-sources", "build-manifest", "pack-labels", "preflight", "source-status"))
     benchmark_parser.add_argument("--file", help="Manifest or sealed label pack JSON file")
+    benchmark_parser.add_argument("--dossier", help="Pilot curation dossier bound to an offline review worksheet")
     benchmark_parser.add_argument("--source-plan", help="Source plan JSON used to build a manifest or select blind cases")
     benchmark_parser.add_argument("--output", help="Write a generated lock, manifest or label pack JSON file")
     benchmark_parser.add_argument("--profile", choices=("pilot", "wave", "release"), default="release")
@@ -170,6 +182,34 @@ def main() -> int:
                     resource_id=result["curation_dossier_hash"],
                     detail={"source_plan_hash": result["source_plan_hash"]},
                 )
+        elif args.action in {"export-pilot-review", "validate-pilot-review", "apply-pilot-review"}:
+            from app.services.evaluation import pilot_review
+            default_dossier = Path("benchmarks/historical-benchmark.v1/work/pilot-curation-dossier.json")
+            dossier_path = Path(args.dossier) if args.dossier else default_dossier
+            if not dossier_path.is_file():
+                parser.error(f"Pilot dossier is missing: {dossier_path}")
+            dossier = json.loads(dossier_path.read_text(encoding="utf-8"))
+            if args.action == "export-pilot-review":
+                result = pilot_review.export_pilot_review(dossier)
+            else:
+                if not args.file:
+                    parser.error(f"{args.action} requires --file <pilot-review-worksheet>")
+                worksheet = json.loads(Path(args.file).read_text(encoding="utf-8"))
+                if args.action == "validate-pilot-review":
+                    result = pilot_review.validate_pilot_review(worksheet, dossier, verify_hash=False)
+                else:
+                    from app.services.auth import authenticate_local_user, record_security_event
+                    password = getpass(f"Password for {args.reviewer}: ")
+                    reviewer = authenticate_local_user(args.reviewer, password, required_role="reviewer")
+                    result = pilot_review.apply_pilot_review(dossier, worksheet, reviewer)
+                    record_security_event(
+                        "benchmark.pilot.review_applied",
+                        "allowed",
+                        actor_user_id=reviewer.user_id,
+                        resource_type="benchmark_pilot",
+                        resource_id=result["dossier_hash"],
+                        detail={"review_worksheet_hash": result["review_worksheet_hash"]},
+                    )
         elif args.action == "fetch-sources":
             if not args.file:
                 parser.error("--file is required")
@@ -197,7 +237,7 @@ def main() -> int:
             source_plan = benchmark_tools.validate_source_plan(json.loads(Path(args.source_plan).read_text(encoding="utf-8")), "release")
             blind_ids = {item["case_id"] for item in source_plan["cases"] if item["split"] == "blind"}
             evidence_coverage_by_case = {
-                item["case_id"]: benchmark_tools._evidence_coverage(item["evidence"])
+                item["case_id"]: benchmark_tools.evidence_coverage(item["evidence"])
                 for item in source_plan["cases"]
                 if item["split"] == "blind"
             }
@@ -226,18 +266,19 @@ def main() -> int:
             else:
                 from app.core.evaluation_models import LabelPackImportRequest
                 result = benchmark.import_label_pack(args.organization, LabelPackImportRequest.model_validate(payload), ensure_system_user()).model_dump(mode="json")
-        if args.output and args.action in {"prepare-pilot", "validate-pilot-dossier", "finalize-pilot", "validate-source-plan", "fetch-sources", "build-manifest", "pack-labels", "preflight", "source-status"}:
+        if args.output and args.action in {"prepare-pilot", "validate-pilot-dossier", "finalize-pilot", "export-pilot-review", "validate-pilot-review", "apply-pilot-review", "validate-source-plan", "fetch-sources", "build-manifest", "pack-labels", "preflight", "source-status"}:
             output_path = Path(args.output)
-            if args.action in {"prepare-pilot", "validate-pilot-dossier", "finalize-pilot"} or (args.action in {"validate-source-plan", "fetch-sources", "build-manifest", "preflight"} and args.profile != "release"):
+            if args.action in {"prepare-pilot", "validate-pilot-dossier", "finalize-pilot", "export-pilot-review", "validate-pilot-review", "apply-pilot-review"} or (args.action in {"validate-source-plan", "fetch-sources", "build-manifest", "preflight"} and args.profile != "release"):
                 work_root = Path("benchmarks/historical-benchmark.v1/work").resolve()
                 resolved_output = output_path.resolve()
                 try:
                     resolved_output.relative_to(work_root)
                 except ValueError:
                     parser.error(f"Partial benchmark manifests must be written under {work_root}")
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+            _write_json_atomic(output_path, result)
         print(json.dumps(result, ensure_ascii=False, indent=2))
+        if args.action == "validate-pilot-review" and result.get("status") != "ready":
+            return 1
         return 0 if result.get("status") not in {"failed"} else 1
     if args.command == "evaluation":
         from app.services.evaluation import EvaluationService

@@ -331,6 +331,54 @@ class PilotCurationDossier(BaseModel):
     dossier_hash: str
 
 
+class PilotEvidenceReview(BaseModel):
+    evidence_id: str
+    evidence_contract_hash: str
+    source_url_hash: str
+    title: str
+    publisher: str
+    source_url: str
+    license_name: str
+    license_url: str
+    locator: dict = Field(default_factory=dict)
+    decision: Literal["approved", "request_revision"] | None = None
+    third_party_exception: Literal["none_identified", "present", "unknown"] | None = None
+    decision_basis: str = ""
+
+
+class PilotCaseReview(BaseModel):
+    case_id: str
+    scenario_hash: str
+    scenario_assumptions: dict = Field(default_factory=dict)
+    decision: Literal["approved", "request_revision"] | None = None
+    decision_basis: str = ""
+    assumption_reasons: dict[str, str] = Field(default_factory=dict)
+    development_labels: dict = Field(default_factory=dict)
+    label_confidence: float | None = None
+
+
+class PilotReviewValidationReport(BaseModel):
+    status: Literal["draft", "ready", "blocked"]
+    evidence_total: int
+    evidence_approved: int
+    case_total: int
+    case_approved: int
+    revision_requested: int
+    missing_decisions: int
+    worksheet_hash: str
+
+
+class PilotReviewWorksheet(BaseModel):
+    version: Literal["pilot-review-worksheet.v1"]
+    dossier_hash: str
+    generated_at: str
+    status: Literal["draft", "ready", "blocked"]
+    evidence_reviews: list[PilotEvidenceReview] = Field(default_factory=list)
+    case_reviews: list[PilotCaseReview] = Field(default_factory=list)
+    validation: PilotReviewValidationReport
+    worksheet_hash: str
+
+
 class AgentOutcomeObservation(BaseModel):
     engine_mode: EvaluationMode
     score: float | None = None

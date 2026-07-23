@@ -13,6 +13,11 @@ from app.services.evaluation.pilot_curation import (
     prepare_pilot_dossier,
     validate_pilot_dossier,
 )
+from app.services.evaluation.pilot_review import (
+    apply_pilot_review,
+    export_pilot_review,
+    validate_pilot_review,
+)
 
 
 DOMAINS = ("strait", "energy", "food", "sanctions", "trade", "finance")
@@ -100,6 +105,71 @@ def test_prepare_rejects_duplicate_source_url():
         prepare_pilot_dossier(payload)
 
 
+def test_offline_review_worksheet_applies_atomically_and_binds_source_plan():
+    draft = prepare_pilot_dossier(_candidate_payload())
+    worksheet = validate_pilot_review(_complete_worksheet(export_pilot_review(draft)), draft)
+    assert worksheet["status"] == "ready"
+    assert worksheet["validation"]["evidence_approved"] == 24
+    assert worksheet["validation"]["case_approved"] == 12
+    reviewer = _reviewer()
+    reviewed = apply_pilot_review(draft, worksheet, reviewer)
+    assert reviewed["status"] == "review_ready"
+    assert reviewed["reviewer"]["user_id"] == reviewer.user_id
+    assert reviewed["review_worksheet_hash"] == worksheet["worksheet_hash"]
+    plan = finalize_pilot_dossier(reviewed, reviewer)
+    assert plan["review_worksheet_hash"] == worksheet["worksheet_hash"]
+    assert plan["reviewer"]["user_id"] == reviewer.user_id
+
+
+def test_offline_review_worksheet_rejects_stale_dossier_and_tampered_binding():
+    draft = prepare_pilot_dossier(_candidate_payload())
+    worksheet = export_pilot_review(draft)
+    changed = deepcopy(draft)
+    changed["cases"][0]["scenario"]["seed"] = 77
+    changed.pop("dossier_hash")
+    changed = prepare_pilot_dossier(changed)
+    with pytest.raises(HTTPException, match="dossier hash mismatch"):
+        validate_pilot_review(worksheet, changed)
+    tampered = deepcopy(worksheet)
+    tampered["evidence_reviews"][0]["source_url_hash"] = "0" * 64
+    with pytest.raises(HTTPException, match="URL changed"):
+        validate_pilot_review(tampered, draft)
+
+
+def test_offline_review_worksheet_blocks_revision_and_missing_decisions():
+    draft = prepare_pilot_dossier(_candidate_payload())
+    partial = export_pilot_review(draft)
+    normalized = validate_pilot_review(partial, draft)
+    assert normalized["status"] == "draft"
+    with pytest.raises(HTTPException, match="missing decisions"):
+        validate_pilot_review(normalized, draft, require_complete=True, verify_hash=True)
+    blocked = _complete_worksheet(export_pilot_review(draft))
+    blocked["evidence_reviews"][0].update({
+        "decision": "request_revision",
+        "third_party_exception": "unknown",
+        "decision_basis": "The item requires a separate human review of third-party material.",
+    })
+    blocked = validate_pilot_review(blocked, draft)
+    assert blocked["status"] == "blocked"
+    with pytest.raises(HTTPException, match="blocked by request_revision"):
+        apply_pilot_review(draft, blocked, _reviewer())
+
+
+def test_offline_review_worksheet_requires_exact_reviewer_and_hash():
+    draft = prepare_pilot_dossier(_candidate_payload())
+    worksheet = validate_pilot_review(_complete_worksheet(export_pilot_review(draft)), draft)
+    tampered = deepcopy(worksheet)
+    tampered["case_reviews"][0]["decision_basis"] += " changed"
+    with pytest.raises(HTTPException, match="worksheet hash mismatch"):
+        apply_pilot_review(draft, tampered, _reviewer())
+    with pytest.raises(HTTPException, match="benchmark-reviewer"):
+        apply_pilot_review(
+            draft,
+            worksheet,
+            UserIdentity(user_id="usr_admin", username="release-admin", display_name="Admin", role="admin"),
+        )
+
+
 def _approve(draft: dict) -> dict:
     reviewed = deepcopy(draft)
     reviewed["status"] = "review_ready"
@@ -134,6 +204,50 @@ def _approve(draft: dict) -> dict:
         }
     reviewed.pop("dossier_hash", None)
     return reviewed
+
+
+def _complete_worksheet(worksheet: dict) -> dict:
+    completed = deepcopy(worksheet)
+    for item in completed["evidence_reviews"]:
+        item.update({
+            "decision": "approved",
+            "third_party_exception": "none_identified",
+            "decision_basis": "The official item-level license permits local archival and evaluation.",
+        })
+    for item in completed["case_reviews"]:
+        item.update({
+            "decision": "approved",
+            "decision_basis": "The official evidence supports the scenario assumptions and labels recorded here.",
+            "assumption_reasons": {
+                "duration_days": "The input evidence supports a bounded thirty-day scenario window.",
+                "intensity": "The official input describes a localized single-market disruption.",
+                "propagation": "The official input identifies one primary transmission channel.",
+            },
+            "development_labels": {
+                "risk_ranking": ["USA", "CHN", "JPN", "KOR", "TWN"],
+                "top3_countries": ["USA", "CHN", "JPN"],
+                "supply_chain_directions": {"energy": "up"},
+                "turning_points": [30],
+                "agent_outcome_expectations": {
+                    "allowed_action_types": ["diplomatic_signal"],
+                    "forbidden_action_types": ["sanction_proposal"],
+                    "expected_commitment_patterns": [],
+                },
+                "coverage_countries": ["USA", "CHN", "JPN", "KOR", "TWN"],
+                "coverage_supply_chains": ["energy"],
+            },
+            "label_confidence": 0.7,
+        })
+    return completed
+
+
+def _reviewer() -> UserIdentity:
+    return UserIdentity(
+        user_id="usr_reviewer",
+        username="benchmark-reviewer",
+        display_name="Benchmark Reviewer",
+        role="reviewer",
+    )
 
 
 def _candidate_payload() -> dict:

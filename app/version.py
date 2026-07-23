@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 
-WORLDPULSE_VERSION = "1.12.0-rc1"
+WORLDPULSE_VERSION = "1.12.0-dev"
 API_CONTRACT_VERSION = "v11"
-RELEASE_CHANNEL = "release-candidate"
+RELEASE_CHANNEL = "development"
 
 
 def version_info() -> dict[str, str]:

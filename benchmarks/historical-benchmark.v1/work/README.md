@@ -9,11 +9,13 @@ official evidence. A curator may place a reviewed `source-plan.json` here after
 confirming publisher, license, hashed rights review, cutoff, input/outcome separation, locator
 coverage and the fixed WorldPulse scenario contract.
 
-The tracked `pilot-curation-dossier.json` is intentionally a draft: all rights
-decisions, labels and label confidence values are empty. Run `prepare-pilot`,
-complete the human review, run `validate-pilot-dossier`, then authenticate as
-the exact local `benchmark-reviewer` account with `finalize-pilot`. Source
-acquisition is not authorized before that finalization succeeds.
+The tracked `pilot-curation-dossier.json` and `pilot-review.pilot.json` are
+intentionally drafts: all rights decisions, labels and label confidence values
+are empty. The reviewer fills the offline Worksheet, runs
+`validate-pilot-review`, then authenticates as the exact local
+`benchmark-reviewer` account with `apply-pilot-review`. `finalize-pilot` only
+accepts the resulting reviewed Dossier. Source acquisition is not authorized
+before that finalization succeeds.
 
 Before any release import:
 
