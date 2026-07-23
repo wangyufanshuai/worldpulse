@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services import project_store
-from app.services.auth import PASSWORD_HASHER, create_user
+from app.services.auth import PASSWORD_HASHER, authenticate_local_user, create_user
 
 
 def _login(client: TestClient, username: str, password: str) -> str:
@@ -82,3 +84,18 @@ def test_production_requires_local_auth(monkeypatch):
         assert "requires" in str(exc)
     else:
         raise AssertionError("production must reject disabled authentication")
+
+
+def test_offline_benchmark_review_auth_requires_reviewer_role(monkeypatch, tmp_path):
+    monkeypatch.setattr(project_store, "DB_PATH", tmp_path / "offline-review.db")
+    create_user("benchmark-reviewer", "reviewer secure phrase", "Benchmark Reviewer", "reviewer")
+    create_user("release-admin", "administrator phrase", "Release Admin", "admin")
+    identity = authenticate_local_user(
+        "benchmark-reviewer",
+        "reviewer secure phrase",
+        required_role="reviewer",
+    )
+    assert identity.role == "reviewer"
+    with pytest.raises(HTTPException) as exc:
+        authenticate_local_user("release-admin", "administrator phrase", required_role="reviewer")
+    assert exc.value.status_code == 403

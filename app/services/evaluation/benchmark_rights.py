@@ -64,6 +64,13 @@ def validate_rights_review(
         "decision_basis": basis,
         **bindings,
     }
+    reviewed_by_user_id = str(review.get("reviewed_by_user_id") or "").strip()
+    reviewer_role = str(review.get("reviewer_role") or "").strip()
+    if reviewed_by_user_id or reviewer_role:
+        if not reviewed_by_user_id or reviewer_role not in {"reviewer", "admin"}:
+            raise HTTPException(status_code=422, detail="Evidence rights reviewer identity is invalid")
+        body["reviewed_by_user_id"] = reviewed_by_user_id
+        body["reviewer_role"] = reviewer_role
     body["review_hash"] = stable_hash(body)
     if review.get("review_hash") and review["review_hash"] != body["review_hash"]:
         raise HTTPException(status_code=409, detail="Evidence rights review hash mismatch")

@@ -289,6 +289,47 @@ class BenchmarkRightsReview(BaseModel):
     license_name: str
     license_url: str
     review_hash: str
+    reviewed_by_user_id: str | None = None
+    reviewer_role: Literal["reviewer", "admin"] | None = None
+
+
+class PilotEvidenceCandidate(BaseModel):
+    evidence_id: str
+    evidence_role: Literal["input", "outcome"]
+    publisher: str
+    title: str
+    source_kind: Literal["versioned_file", "dated_publication"]
+    version_label: str
+    source_url: str
+    published_at: str
+    expected_mime: str
+    license_name: str
+    license_url: str
+    locator: dict = Field(default_factory=dict)
+    rights_decision: dict | None = None
+
+
+class PilotRightsDecision(BaseModel):
+    decision: Literal["approved", "request_revision"]
+    third_party_exception: Literal["none_identified", "present", "unknown"]
+    decision_basis: str
+
+
+class PilotCaseLabelReview(BaseModel):
+    decision: Literal["approved", "request_revision"]
+    assumption_reasons: dict[str, str] = Field(default_factory=dict)
+    development_labels: dict = Field(default_factory=dict)
+
+
+class PilotCurationDossier(BaseModel):
+    version: Literal["pilot-curation-dossier.v1"]
+    suite_id: Literal["historical-benchmark.v1"]
+    profile: Literal["pilot"]
+    status: Literal["draft", "review_ready"]
+    cases: list[dict] = Field(default_factory=list)
+    prepared_at: str
+    dossier_hash: str
+
 
 class AgentOutcomeObservation(BaseModel):
     engine_mode: EvaluationMode

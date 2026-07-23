@@ -68,7 +68,7 @@ def main() -> int:
     notifications = sub.add_parser("notifications", help="Manage notification deliveries")
     notifications.add_argument("action", choices=("retry-failed",))
     benchmark_parser = sub.add_parser("benchmark", help="Manage historical benchmark manifests and sealed labels")
-    benchmark_parser.add_argument("action", choices=("ingest-manifest", "import-label-pack", "verify", "status", "validate-source-plan", "fetch-sources", "build-manifest", "pack-labels", "preflight", "source-status"))
+    benchmark_parser.add_argument("action", choices=("ingest-manifest", "import-label-pack", "verify", "status", "prepare-pilot", "validate-pilot-dossier", "finalize-pilot", "validate-source-plan", "fetch-sources", "build-manifest", "pack-labels", "preflight", "source-status"))
     benchmark_parser.add_argument("--file", help="Manifest or sealed label pack JSON file")
     benchmark_parser.add_argument("--source-plan", help="Source plan JSON used to build a manifest or select blind cases")
     benchmark_parser.add_argument("--output", help="Write a generated lock, manifest or label pack JSON file")
@@ -77,6 +77,7 @@ def main() -> int:
     benchmark_parser.add_argument("--encryption-key-id", default="offline-labels")
     benchmark_parser.add_argument("--evidence-hash", default="")
     benchmark_parser.add_argument("--organization", default="org_default")
+    benchmark_parser.add_argument("--reviewer", default="benchmark-reviewer")
     evaluation = sub.add_parser("evaluation", help="Manage cross-mode evaluation suites and batches")
     evaluation.add_argument("action", choices=("seed", "verify", "run-standard", "run-release", "status"))
     evaluation.add_argument("--provider", choices=("mock", "deepseek", "siliconflow"), default="mock")
@@ -141,6 +142,34 @@ def main() -> int:
             if not args.file:
                 parser.error("--file is required")
             result = benchmark_tools.validate_source_plan(json.loads(Path(args.file).read_text(encoding="utf-8")), args.profile)
+        elif args.action in {"prepare-pilot", "validate-pilot-dossier", "finalize-pilot"}:
+            from app.services.evaluation import pilot_curation
+            default_file = Path("benchmarks/historical-benchmark.v1/work/pilot-curation-dossier.json")
+            input_path = Path(args.file) if args.file else default_file
+            if not input_path.is_file():
+                parser.error(f"Pilot input file is missing: {input_path}")
+            payload = json.loads(input_path.read_text(encoding="utf-8"))
+            if args.action == "prepare-pilot":
+                result = pilot_curation.prepare_pilot_dossier(payload)
+            elif args.action == "validate-pilot-dossier":
+                result = pilot_curation.validate_pilot_dossier(
+                    payload,
+                    require_review=payload.get("status") == "review_ready",
+                    verify_hash=False,
+                )
+            else:
+                from app.services.auth import authenticate_local_user, record_security_event
+                password = getpass(f"Password for {args.reviewer}: ")
+                reviewer = authenticate_local_user(args.reviewer, password, required_role="reviewer")
+                result = pilot_curation.finalize_pilot_dossier(payload, reviewer)
+                record_security_event(
+                    "benchmark.pilot.finalized",
+                    "allowed",
+                    actor_user_id=reviewer.user_id,
+                    resource_type="benchmark_pilot",
+                    resource_id=result["curation_dossier_hash"],
+                    detail={"source_plan_hash": result["source_plan_hash"]},
+                )
         elif args.action == "fetch-sources":
             if not args.file:
                 parser.error("--file is required")
@@ -197,9 +226,9 @@ def main() -> int:
             else:
                 from app.core.evaluation_models import LabelPackImportRequest
                 result = benchmark.import_label_pack(args.organization, LabelPackImportRequest.model_validate(payload), ensure_system_user()).model_dump(mode="json")
-        if args.output and args.action in {"validate-source-plan", "fetch-sources", "build-manifest", "pack-labels", "preflight", "source-status"}:
+        if args.output and args.action in {"prepare-pilot", "validate-pilot-dossier", "finalize-pilot", "validate-source-plan", "fetch-sources", "build-manifest", "pack-labels", "preflight", "source-status"}:
             output_path = Path(args.output)
-            if args.action in {"validate-source-plan", "fetch-sources", "build-manifest", "preflight"} and args.profile != "release":
+            if args.action in {"prepare-pilot", "validate-pilot-dossier", "finalize-pilot"} or (args.action in {"validate-source-plan", "fetch-sources", "build-manifest", "preflight"} and args.profile != "release"):
                 work_root = Path("benchmarks/historical-benchmark.v1/work").resolve()
                 resolved_output = output_path.resolve()
                 try:

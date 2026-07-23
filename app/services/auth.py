@@ -77,6 +77,44 @@ def create_user(username: str, password: str, display_name: str, role: UserRole)
     return identity
 
 
+def authenticate_local_user(username: str, password: str, *, required_role: UserRole | None = None) -> UserIdentity:
+    """Authenticate a local account for an interactive offline governance command."""
+    init_db()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE LOWER(username) = LOWER(?)",
+            (username.strip(),),
+        ).fetchone()
+    valid = False
+    if row is not None and bool(row["is_active"]):
+        try:
+            valid = PASSWORD_HASHER.verify(row["password_hash"], password)
+        except (VerifyMismatchError, InvalidHashError):
+            valid = False
+    if not valid:
+        record_security_event(
+            "benchmark.review.authentication",
+            "denied",
+            detail={"username": username.strip()[:80]},
+        )
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    identity = _identity(row)
+    if required_role is not None and identity.role != required_role:
+        record_security_event(
+            "benchmark.review.authorization",
+            "denied",
+            actor_user_id=identity.user_id,
+            detail={"required_role": required_role, "actual_role": identity.role},
+        )
+        raise HTTPException(status_code=403, detail=f"Role {identity.role} cannot approve the pilot dossier")
+    record_security_event(
+        "benchmark.review.authentication",
+        "allowed",
+        actor_user_id=identity.user_id,
+    )
+    return identity
+
+
 def ensure_system_user() -> UserIdentity:
     init_db()
     with connect() as conn:
