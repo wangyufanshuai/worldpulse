@@ -6,6 +6,7 @@ import { lifecycleControlMatrix } from '../src/composables/useRunLifecycleConsol
 import { useWarRoomArtifacts } from '../src/composables/useWarRoomArtifacts'
 import { useWarRoomReplayControls } from '../src/composables/useWarRoomReplayControls'
 import { hybridSummaryMetrics } from '../src/composables/hybridSummary'
+import { shouldReuseEvaluationSubscription } from '../src/composables/useEvaluationCenter'
 
 describe('lifecycle contracts', () => {
   it('merges SSE and polling events by monotonic sequence', () => {
@@ -47,5 +48,12 @@ describe('War Room composables', () => {
     expect(artifacts.compareTargetRunId.value).toBe('run-2')
     expect(artifacts.compareBaseRunId.value).toBe('run-1')
     expect(hybridSummaryMetrics({ accepted_proposal_ids: ['p1'], baseline_diff: { country_risk: [{ country_code: 'A', delta: 3 }], supply_chain_pressure: [{ key: 'energy', delta: 2 }] } })).toMatchObject({ acceptedCount: 1 })
+  })
+
+  it('keeps one evaluation SSE or polling subscription per batch', () => {
+    expect(shouldReuseEvaluationSubscription('batch-1', true, false, 'batch-1')).toBe(true)
+    expect(shouldReuseEvaluationSubscription('batch-1', false, true, 'batch-1')).toBe(true)
+    expect(shouldReuseEvaluationSubscription('batch-1', false, false, 'batch-1')).toBe(false)
+    expect(shouldReuseEvaluationSubscription('batch-1', true, false, 'batch-2')).toBe(false)
   })
 })

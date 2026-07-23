@@ -28,6 +28,7 @@ export function useEvaluationCenter() {
   const activeOrganizationId = ref('')
   let stream = null
   let polling = null
+  let subscribedBatchId = ''
 
   const latest = computed(() => batches.value.find(item => item.batch_id === selectedBatchId.value) || batches.value[0] || null)
   const tabs = computed(() => ({
@@ -108,8 +109,9 @@ export function useEvaluationCenter() {
 
   const subscribe = batchId => {
     if (typeof window === 'undefined' || !batchId) return
-    if (stream) stream.close()
-    if (polling) window.clearInterval(polling)
+    if (shouldReuseEvaluationSubscription(subscribedBatchId, Boolean(stream), Boolean(polling), batchId)) return
+    closeSubscription()
+    subscribedBatchId = batchId
     const query = activeOrganizationId.value ? `?organization_id=${encodeURIComponent(activeOrganizationId.value)}` : ''
     stream = new EventSource(`/api/v10/evaluations/${batchId}/events/stream${query}`)
     stream.addEventListener('evaluation', refreshSelected)
@@ -120,9 +122,16 @@ export function useEvaluationCenter() {
     }
   }
 
-  onBeforeUnmount(() => {
+  const closeSubscription = () => {
     stream?.close()
+    stream = null
     if (polling) window.clearInterval(polling)
+    polling = null
+    subscribedBatchId = ''
+  }
+
+  onBeforeUnmount(() => {
+    closeSubscription()
   })
 
   return {
@@ -130,4 +139,8 @@ export function useEvaluationCenter() {
     historicalReport, latest, tabs, loading, error, selectedBatchId,
     load, createStandard, createHistorical, inspect, control
   }
+}
+
+export function shouldReuseEvaluationSubscription(currentId, hasStream, hasPolling, nextId) {
+  return currentId === nextId && (hasStream || hasPolling)
 }

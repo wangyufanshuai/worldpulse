@@ -322,106 +322,31 @@
         </section>
       </section>
 
-      <div v-if="toastMessage" class="war-room-toast">{{ toastMessage }}</div>
-
-      <aside v-if="commandSearchOpen" class="feature-drawer command-search-drawer" data-testid="war-room-command-search">
-        <button class="drawer-close" type="button" @click="commandSearchOpen = false"><X :size="16" /> 关闭</button>
-        <div class="section-kicker"><Search :size="16" /> 指挥搜索</div>
-        <h2>定位国家、链路、事件和运行</h2>
-        <label class="command-search-box">
-          搜索实体
-          <input v-model="commandQuery" type="search" placeholder="输入：中国 / chips / D+14 / run id" data-testid="war-room-command-search-input" />
-        </label>
-        <div class="command-result-list">
-          <button v-for="item in commandSearchResults" :key="item.id" type="button" :data-entity-id="item.id" @click="activateCommandResult(item)">
-            <span>{{ entityTypeLabel(item.type) }}</span>
-            <strong>{{ item.title_zh }}</strong>
-            <small>{{ item.subtitle_zh }}</small>
-          </button>
-        </div>
-        <p v-if="!commandSearchResults.length" class="sandbox-note">没有匹配结果。可以搜索国家代码、供应链、D+天数或 Agent 决策。</p>
-      </aside>
-
-      <aside v-if="entityDetailDrawer" class="feature-drawer entity-detail-drawer" data-testid="war-room-entity-detail-drawer" :data-entity-id="entityDetailDrawer.id">
-        <button class="drawer-close" type="button" @click="entityDetailDrawer = null"><X :size="16" /> 关闭</button>
-        <div class="section-kicker"><FileSearch :size="16" /> 实体详情</div>
-        <h2>{{ entityDetailDrawer.title_zh || entityDetailDrawer.title }}</h2>
-        <p>{{ entityDetailDrawer.summary_zh || entityDetailDrawer.summary }}</p>
-        <dl>
-          <div v-for="metric in entityDetailDrawer.metrics || []" :key="metric.label_zh || metric.label">
-            <dt>{{ metric.label_zh || metric.label }}</dt>
-            <dd>{{ metric.value }}</dd>
-          </div>
-        </dl>
-        <section v-if="entityDetailDrawer.related_events?.length" class="drawer-mini-section">
-          <h3>关联事件</h3>
-          <p>{{ entityDetailDrawer.related_events.join(' / ') }}</p>
-        </section>
-        <section v-if="entityDetailDrawer.decision_basis_zh" class="drawer-mini-section">
-          <h3>决策依据</h3>
-          <p>{{ entityDetailDrawer.decision_basis_zh }}</p>
-        </section>
-        <div class="drawer-action-row">
-          <button v-for="action in entityDetailDrawer.actions || []" :key="action.key" type="button" :disabled="action.enabled === false" @click="handleEntityAction(action, entityDetailDrawer)">
-            {{ action.label_zh }}
-          </button>
-        </div>
-      </aside>
-
-      <aside v-if="runDetailsDrawer" class="feature-drawer entity-detail-drawer" data-testid="run-details-drawer">
-        <button class="drawer-close" type="button" @click="runDetailsDrawer = false"><X :size="16" /> 关闭</button>
-        <div class="section-kicker">Lifecycle Run Details</div>
-        <h2>{{ lifecycleAudit?.run?.run_id || selectedRunId || '当前运行' }}</h2>
-        <p>只读检查点详情：不重新执行模型、不修改确定性结果。</p>
-        <dl v-if="lifecycleAudit?.run" class="drawer-metric-grid">
-          <div><dt>状态</dt><dd>{{ lifecycleAudit.run.status }}</dd></div>
-          <div><dt>当前阶段</dt><dd>{{ lifecycleAudit.run.current_phase }}</dd></div>
-          <div><dt>Attempt</dt><dd>{{ lifecycleAudit.run.current_attempt_id || '--' }}</dd></div>
-          <div><dt>恢复点</dt><dd>{{ lifecycleAudit.run.terminal_reason || lifecycleAudit.run.next_attempt_at || '--' }}</dd></div>
-        </dl>
-        <section v-if="lifecycleAudit?.steps?.length" class="drawer-mini-section">
-          <h3>阶段 Hash 与耗时</h3>
-          <div v-for="step in lifecycleAudit.steps" :key="step.step_id" class="drawer-step-row">
-            <strong>{{ step.step_key }} · {{ step.status }}</strong>
-            <span>{{ step.duration_ms }} ms · {{ String(step.input_hash || '').slice(0, 12) }} → {{ String(step.output_hash || '').slice(0, 12) }}</span>
-            <small v-if="step.error_code">{{ step.error_code }}</small>
-          </div>
-        </section>
-      </aside>
-
-      <aside v-if="notificationDrawerOpen" class="feature-drawer notification-drawer" data-testid="war-room-notification-drawer">
-        <button class="drawer-close" type="button" @click="notificationDrawerOpen = false"><X :size="16" /> 关闭</button>
-        <div class="section-kicker">CONTINUOUS INTELLIGENCE</div>
-        <h2>通知中心</h2>
-        <div class="drawer-action-row"><button type="button" @click="continuousIntelligence.readAllNotifications()">全部标记已读</button><button type="button" @click="navigateSection('intelligence'); notificationDrawerOpen = false">进入持续情报</button></div>
-        <div class="notification-list">
-          <button v-for="item in [...continuousIntelligence.notifications.value].reverse()" :key="item.notification_id" type="button" :class="{ unread: !item.read_at }" @click="continuousIntelligence.readNotification(item.notification_id)">
-            <span>{{ item.severity }} · {{ item.event_type }}</span><strong>{{ item.title }}</strong><small>{{ item.body }}</small>
-          </button>
-          <p v-if="!continuousIntelligence.notifications.value.length" class="sandbox-note">暂无持续情报告警通知。</p>
-        </div>
-      </aside>
-
-      <aside v-if="upcomingFeature" class="feature-drawer">
-        <button class="drawer-close" type="button" @click="upcomingFeature = null"><X :size="16" /> 关闭</button>
-        <div class="section-kicker"><Info :size="16" /> 即将推出</div>
-        <h2>{{ upcomingFeature.title }}</h2>
-        <p>{{ upcomingFeature.body }}</p>
-        <p class="sandbox-note">当前按钮已明确标记为说明入口，不再作为无反馈控件处理。</p>
-      </aside>
-
-      <aside v-if="decisionDrawer" class="feature-drawer decision-drawer">
-        <button class="drawer-close" type="button" @click="decisionDrawer = null"><X :size="16" /> 关闭</button>
-        <div class="section-kicker"><ListChecks :size="16" /> Agent 决策详情</div>
-        <h2>{{ decisionDrawer.title }}</h2>
-        <p>{{ decisionDrawer.rationale }}</p>
-        <dl>
-          <div><dt>国家 Agent</dt><dd>{{ decisionDrawer.country }}</dd></div>
-          <div><dt>置信度</dt><dd>{{ decisionDrawer.confidence }}</dd></div>
-          <div><dt>驱动因素</dt><dd>{{ decisionDrawer.drivers }}</dd></div>
-          <div><dt>预期代价</dt><dd>{{ decisionDrawer.tradeoff }}</dd></div>
-        </dl>
-      </aside>
+      <WarRoomWorkspaceOverlays
+        :toast-message="toastMessage"
+        :command-search-open="commandSearchOpen"
+        :command-query="commandQuery"
+        :command-search-results="commandSearchResults"
+        :entity-type-label="entityTypeLabel"
+        :entity-detail="entityDetailDrawer"
+        :run-details-open="runDetailsDrawer"
+        :lifecycle-audit="lifecycleAudit"
+        :selected-run-id="selectedRunId"
+        :notification-open="notificationDrawerOpen"
+        :continuous-intelligence="continuousIntelligence"
+        :upcoming-feature="upcomingFeature"
+        :decision-drawer="decisionDrawer"
+        @close-command="commandSearchOpen = false"
+        @update-query="commandQuery = $event"
+        @activate-command="activateCommandResult"
+        @close-entity="entityDetailDrawer = null"
+        @entity-action="handleEntityAction"
+        @close-run="runDetailsDrawer = false"
+        @close-notifications="notificationDrawerOpen = false"
+        @open-intelligence="navigateSection('intelligence'); notificationDrawerOpen = false"
+        @close-upcoming="upcomingFeature = null"
+        @close-decision="decisionDrawer = null"
+      />
 
       <section v-if="activeSection === 'replay' && runVersions.length > 1" ref="comparePanelEl" class="compare-panel immersive-compare">
         <div class="section-title">
@@ -577,9 +502,7 @@
 </template>
 
 <script setup>
-import * as d3 from 'd3'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
 import {
   Activity,
   BarChart3,
@@ -615,7 +538,6 @@ import {
   UsersRound,
   X
 } from 'lucide-vue-next'
-import { chatWithProject, createCalibrationRun, decideReview, getProject, getProjectRun, getTrustSummary, runProject } from '../../api'
 import worldMapCommand from '../../assets/war-room/world-map-command.png'
 import WarRoomAnalysisModule from '../../components/war-room/WarRoomAnalysisModule.vue'
 import WarRoomDataModule from '../../components/war-room/WarRoomDataModule.vue'
@@ -634,6 +556,7 @@ import WarRoomNegotiationModule from '../../components/war-room/WarRoomNegotiati
 import WarRoomEvaluationModule from '../../components/war-room/WarRoomEvaluationModule.vue'
 import WarRoomScenarioCompiler from '../../components/war-room/WarRoomScenarioCompiler.vue'
 import WarRoomTopNav from '../../components/war-room/WarRoomTopNav.vue'
+import WarRoomWorkspaceOverlays from '../../components/war-room/WarRoomWorkspaceOverlays.vue'
 import { useRunLifecycle } from '../../composables/useRunLifecycle'
 import { useRunLifecycleConsole } from '../../composables/useRunLifecycleConsole'
 import { useWarRoomArtifacts } from '../../composables/useWarRoomArtifacts'
@@ -642,27 +565,40 @@ import { useWarRoomMapProjection } from '../../composables/useWarRoomMapProjecti
 import { useWarRoomReplayControls } from '../../composables/useWarRoomReplayControls'
 import { useWarRoomScenarioDraft } from '../../composables/useWarRoomScenarioDraft'
 import { useAuthSession } from '../../composables/useAuthSession'
-import { useEvidenceRegistry } from '../../composables/useEvidenceRegistry'
-import { useIngestionGovernance } from '../../composables/useIngestionGovernance'
-import { useContinuousIntelligence } from '../../composables/useContinuousIntelligence'
-import { useOperationsCenter } from '../../composables/useOperationsCenter'
 import { useNegotiation } from '../../composables/useNegotiation'
-import { useScenarioCompiler } from '../../composables/useScenarioCompiler'
-import { useEvaluationCenter } from '../../composables/useEvaluationCenter'
+import { useWarRoomGraphRenderer } from '../../composables/useWarRoomGraphRenderer'
+import { useWarRoomInteractions } from '../../composables/useWarRoomInteractions'
+import { useWorkspaceGovernanceController } from '../../composables/useWorkspaceGovernanceController'
+import { useWorkspaceRunController } from '../../composables/useWorkspaceRunController'
+import { useWorkspaceShell } from '../../composables/useWorkspaceShell'
 import { decisionLabels, eventFilterOptions, graphTypeOptions, localizedText, prompts } from './warRoomWorkspaceConfig'
 
 const props = defineProps({ projectId: String, section: String })
-const route = useRoute()
-const router = useRouter()
+const {
+  router,
+  sectionKeys,
+  sectionMeta,
+  topSections,
+  railSections,
+  activeSection,
+  activeSectionMeta,
+  upcomingFeature,
+  toastMessage,
+  decisionDrawer,
+  entityDetailDrawer,
+  runDetailsDrawer,
+  commandSearchOpen,
+  notificationDrawerOpen,
+  commandQuery,
+  sectionPath,
+  navigateSection,
+  showToast,
+  showUpcoming,
+  disposeShell,
+} = useWorkspaceShell({ projectId: () => props.projectId, section: () => props.section })
 const warRoomData = useWarRoomData(() => props.projectId)
 const runLifecycle = useRunLifecycle(() => props.projectId)
 const auth = useAuthSession()
-const evidenceRegistry = useEvidenceRegistry(() => props.projectId)
-const ingestionGovernance = useIngestionGovernance(() => props.projectId)
-const continuousIntelligence = useContinuousIntelligence(() => props.projectId)
-const operationsCenter = useOperationsCenter()
-const scenarioCompiler = useScenarioCompiler(() => props.projectId)
-const evaluation = useEvaluationCenter()
 const detail = ref(null)
 const workspaceState = ref(null)
 const graphEl = ref(null)
@@ -680,55 +616,74 @@ const focusedEdgeKey = ref('')
 const presets = ref(null)
 const comparePanelEl = ref(null)
 const reportPanelEl = ref(null)
-const upcomingFeature = ref(null)
-const toastMessage = ref('')
-const decisionDrawer = ref(null)
-const entityDetailDrawer = ref(null)
-const runDetailsDrawer = ref(false)
-const commandSearchOpen = ref(false)
-const notificationDrawerOpen = ref(false)
-const commandQuery = ref('')
 const showDeltaOverlay = ref(false)
 const focusedEntityId = ref('')
 const focusedGraphEdgeId = ref('')
 const activeDataTab = ref('tables')
 const analysisFilter = ref('')
 const graphTypeFilters = ref([])
-const trustSummary = ref(null)
-const trustLoading = ref(false)
-const trustError = ref('')
-let toastTimer = null
 const shortRunId = (runId) => {
   const text = String(runId || '')
   return text ? text.replace(/^run_/, '#').slice(0, 13) : ''
 }
 
-const sectionKeys = ['overview', 'compiler', 'sandbox', 'analysis', 'negotiation', 'evaluation', 'graph', 'data', 'settings', 'replay', 'trust', 'evidence', 'ingestion', 'intelligence', 'operations']
-const sectionMeta = {
-  compiler: { key: 'compiler', label: '场景编译', title: '证据驱动场景编译与材料导入', desc: '安全导入材料、核验带原文定位的候选、冻结 Evidence Pack 并经异人审批创建运行。', icon: ScanText },
-  negotiation: { key: 'negotiation', label: '外交博弈', title: '受控多轮外交博弈与舆论扩散', desc: '观察 12 Agent、6 Tick 的结构化提案、反提案、承诺账本与确定性数值投影。', icon: UsersRound },
-  overview: { key: 'overview', label: '战情总览', title: '全球态势总览', desc: '地图、KPI、Agent 和时间线的指挥台总览。', icon: ShieldAlert },
-  sandbox: { key: 'sandbox', label: '推演沙盘', title: '场景构建与推演参数', desc: '集中管理目标国家、供应链、政策动作和高级假设。', icon: MapPinned },
-  analysis: { key: 'analysis', label: '智能分析', title: 'Agent 决策与风险解释', desc: '解释当前国家 Agent 的触发源、驱动因素、预期代价和关联事件。', icon: Activity },
-  graph: { key: 'graph', label: '知识图谱', title: '因果链路与机制', desc: '查看边权重、滞后天数和链路传播机制。', icon: BookOpen },
-  data: { key: 'data', label: '数据中台', title: '运行快照与展示合同', desc: '审计 ui_state、时间线、供应链和快照数据。', icon: Database },
-  settings: { key: 'settings', label: '系统设置', title: '显示设置与待上线能力', desc: '管理显示层、策略边界和未上线控件说明。', icon: Settings },
-  replay: { key: 'replay', label: '复盘包', title: 'Replay Pack 导出', desc: '生成 Markdown 与 JSON 审计清单。', icon: PackageCheck },
-  trust: { key: 'trust', label: '可信度中心', title: '规则、校准与人工复核', desc: '检查 Rule Pack、晋升门槛、证据覆盖与不可绕过的一致性准入。', icon: ShieldCheck },
-  evidence: { key: 'evidence', label: '证据中心', title: '证据注册表与时间截点治理', desc: '统一检索冻结快照、报告声明、引用链和证据包完整性。', icon: FileSearch },
-  ingestion: { key: 'ingestion', label: '接入治理', title: '组织、连接器与受控采集', desc: '管理许可元数据、不可变策略、截点校验和采集任务审计。', icon: Cable },
-  intelligence: { key: 'intelligence', label: '持续情报', title: '持续情报监测与告警闭环', desc: '从公开 RSS、Atom 和 JSON Feed 生成受治理材料与待核验场景候选。', icon: Cable },
-  operations: { key: 'operations', label: '运维中心', title: '平台就绪度、Worker 与组织配额', desc: '监控执行节点心跳、安全排空、任务积压和组织资源容量。', icon: ServerCog }
-}
-sectionMeta.evaluation = { key: 'evaluation', label: '跨模式评估', title: '跨模式基准评估与决策质量', desc: '比较 deterministic、hybrid 与 negotiation 的安全门禁、稳定性和执行成本。', icon: ShieldCheck }
-const topSections = [sectionMeta.overview, sectionMeta.compiler, sectionMeta.sandbox, sectionMeta.analysis, sectionMeta.negotiation, sectionMeta.evaluation, sectionMeta.graph, sectionMeta.data]
-const railSections = [sectionMeta.overview, sectionMeta.compiler, sectionMeta.sandbox, sectionMeta.negotiation, sectionMeta.evaluation, sectionMeta.graph, sectionMeta.analysis, sectionMeta.data, sectionMeta.ingestion, sectionMeta.intelligence, sectionMeta.evidence, sectionMeta.trust, sectionMeta.operations, sectionMeta.replay, sectionMeta.settings]
 const isWarRoom = computed(() => detail.value?.project?.mode === 'war_room')
-const activeSection = computed(() => {
-  const raw = String(route.params.section || props.section || 'overview')
-  return sectionKeys.includes(raw) ? raw : 'overview'
+const {
+  evidenceRegistry,
+  ingestionGovernance,
+  continuousIntelligence,
+  operationsCenter,
+  scenarioCompiler,
+  evaluation,
+  trustSummary,
+  trustLoading,
+  trustError,
+  loadTrustSummary,
+  loadEvaluationCenter,
+  createEvaluationStandard,
+  createEvaluationHistorical,
+  inspectEvaluation,
+  controlEvaluationBatch,
+  loadEvidenceSummary,
+  syncEvidence,
+  freezeEvidencePack,
+  searchProjectEvidence,
+  loadIngestionGovernance,
+  createGovernedConnector,
+  submitGovernedIngestion,
+  inspectIngestionEvents,
+  cancelIngestion,
+  retryIngestion,
+  loadContinuousIntelligence,
+  createContinuousSource,
+  pollContinuousSource,
+  setContinuousSourceStatus,
+  createContinuousWatchlist,
+  setContinuousWatchlistStatus,
+  setContinuousAlertStatus,
+  loadOperationsCenter,
+  saveOperationsQuota,
+  drainOperationsWorker,
+  loadScenarioCompiler,
+  uploadScenarioDocument,
+  extractScenarioDocument,
+  inspectScenarioExtractionEvents,
+  cancelScenarioExtraction,
+  retryScenarioExtraction,
+  decideScenarioCandidate,
+  createCompiledScenarioDraft,
+  submitCompiledScenarioDraft,
+  reviewCompiledScenarioDraft,
+  cloneCompiledScenarioDraft,
+  runCompiledScenarioDraft,
+  startTrustCalibration,
+  submitReviewDecision,
+} = useWorkspaceGovernanceController({
+  projectId: () => props.projectId,
+  isWarRoom,
+  selectedRunId,
+  showToast,
 })
-const activeSectionMeta = computed(() => sectionMeta[activeSection.value] || sectionMeta.overview)
 const runVersions = computed(() => detail.value?.runs || [])
 const workflowEvents = computed(() => detail.value?.latest_run?.data_snapshot?.workflow_events || [])
 const persistedWarRoom = computed(() => detail.value?.latest_run?.simulation_snapshot || detail.value?.latest_run?.data_snapshot?.war_room || null)
@@ -814,6 +769,7 @@ const entityIndex = computed(() => Array.isArray(workspaceState.value?.entity_in
 const commandActions = computed(() => Array.isArray(workspaceState.value?.command_actions) && workspaceState.value.command_actions.length ? workspaceState.value.command_actions : (Array.isArray(warRoomUi.value?.command_actions) ? warRoomUi.value.command_actions : []))
 const runControl = computed(() => workspaceState.value?.run_control || warRoomUi.value?.run_control || {})
 const lifecycleProjection = computed(() => warRoomData.buildLifecycleProjection(detail.value, workspaceState.value, runDiff.value, replayPack.value))
+let reloadWorkspace = async () => {}
 const {
   activeLifecycleRun,
   consistencyAudit,
@@ -828,7 +784,7 @@ const {
   resumeLifecycleRun,
   cancelLifecycleRun,
   retryLifecycleRun,
-} = useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runVersions, running, showToast, onCompleted: load })
+} = useRunLifecycleConsole({ runLifecycle, lifecycleProjection, runVersions, running, showToast, onCompleted: (...args) => reloadWorkspace(...args) })
 const lifecycleControlForRole = computed(() => auth.permissions.value.canRun ? lifecycleControl.value : {
   ...lifecycleControl.value,
   busy: true,
@@ -1128,17 +1084,6 @@ function localizeText(value) {
   const match = Object.entries(localizedText).find(([source]) => text.includes(source))
   return match ? text.replace(match[0], match[1]) : text
 }
-function sectionPath(section) { return `/projects/${props.projectId}/war-room/${section}` }
-function navigateSection(section) { router.push(sectionPath(section)) }
-function showToast(message) {
-  toastMessage.value = message
-  if (toastTimer) window.clearTimeout(toastTimer)
-  toastTimer = window.setTimeout(() => { toastMessage.value = '' }, 2600)
-}
-function showUpcoming(title, body) {
-  upcomingFeature.value = { title, body }
-  showToast(`${title}：已打开说明`)
-}
 function zoomMap(delta) {
   zoomMapProjection(delta)
   showToast(`地图缩放 ${Math.round(mapZoom.value * 100)}%`)
@@ -1150,148 +1095,6 @@ function resetMapView() {
   activeReplayIndex.value = 0
   replayPlaying.value = false
   showToast('地图视图已重置')
-}
-function fullEntityId(type, id) {
-  if (!id) return ''
-  const raw = String(id)
-  if (raw.includes(':')) return raw
-  if (type === 'country') return `country:${raw}`
-  if (type === 'supply_chain') return `chain:${raw}`
-  if (type === 'event') return `event:${raw}`
-  if (type === 'unit') return `unit:${raw}`
-  return raw
-}
-function detailForSelectedEntity() {
-  const entity = selectedMapEntity.value
-  if (!entity) return null
-  const id = fullEntityId(entity.type, entity.id)
-  return entityDetails.value[id] || entityDetails.value[entity.id] || null
-}
-function openEntityDetail(type, id, payload = {}) {
-  const fullId = fullEntityId(type, id)
-  const detail = entityDetails.value[fullId] || entityDetails.value[id]
-  entityDetailDrawer.value = detail || {
-    id: fullId || id,
-    type,
-    title_zh: payload.title || payload.label || payload.country_name || id,
-    summary_zh: payload.detail || payload.explanation || '该实体来自当前 War Room 沙盘图层。',
-    metrics: [{ label_zh: '当前日', value: `D+${activeReplayDay.value}` }],
-    actions: [{ key: 'focus', label_zh: '在地图中定位', action_type: 'focus', enabled: true }]
-  }
-}
-function mapTooltipFor(type, id, payload = {}) {
-  const fullId = fullEntityId(type, id)
-  const detail = entityDetails.value[fullId] || entityDetails.value[id]
-  const point = payload || {}
-  return {
-    x: Math.max(18, Math.min(860, Number(point.x || 500) * mapZoom.value / 1.2)),
-    y: Math.max(18, Math.min(470, Number(point.y || 280) * mapZoom.value / 1.25)),
-    title: detail?.title_zh || point.title || point.label || point.country_name || point.key || id,
-    detail: detail?.summary_zh || point.detail || point.mechanism || point.dominant_channel_zh || '点击查看详情'
-  }
-}
-function activateCommandResult(item) {
-  commandSearchOpen.value = false
-  commandQuery.value = ''
-  if (item.type === 'timeline' || String(item.id).startsWith('timeline:')) {
-    const index = timelineEvents.value.findIndex(event => event.key === item.ref || `timeline:${event.key}` === item.id || Number(event.day) === Number(item.day))
-    if (index >= 0) selectTimelineEvent(timelineEvents.value[index], index)
-    showToast(`已定位时间线：${item.title_zh}`)
-    return
-  }
-  const ref = item.ref || item.id
-  if (String(ref).startsWith('country:')) {
-    const code = String(ref).split(':')[1]
-    const country = mapCountries.value.find(row => row.code === code) || { code, country_name: item.title_zh }
-    selectMapCountry(country)
-  } else if (String(ref).startsWith('chain:')) {
-    const key = String(ref).split(':')[1]
-    const chain = (warRoom.value?.supply_chains || []).find(row => row.key === key) || { key, name: item.title_zh }
-    selectSupplyChain(chain)
-  } else if (String(ref).startsWith('event:')) {
-    const key = String(ref).split(':')[1]
-    const event = mapEvents.value.find(row => row.key === key) || { key, title: item.title_zh }
-    selectMapEvent(event)
-  } else if (String(ref).startsWith('edge:')) {
-    const edge = mapCausalEdges.value.find(row => row.id === ref)
-    if (edge) selectCausalEdge(edge.edge, edge.id)
-  } else if (String(ref).startsWith('decision:')) {
-    navigateSection('analysis')
-  }
-  if (item.section && item.section !== activeSection.value) navigateSection(item.section)
-  openEntityDetail(item.type, item.ref || item.id, item)
-  showToast(`已定位：${item.title_zh}`)
-}
-function handleEntityAction(action, detail) {
-  if (action.action_type === 'section' && action.section) {
-    navigateSection(action.section)
-    showToast(`已进入${sectionMeta[action.section]?.label || action.section}`)
-    return
-  }
-  if (action.action_type === 'replay') {
-    openReplayShortcut()
-    return
-  }
-  showToast(`${detail.title_zh || detail.title} 已在地图中高亮`)
-}
-function cloneFromCurrentRun() {
-  syncScenarioDraft()
-  navigateSection('sandbox')
-  showToast('已克隆当前运行参数到场景构建器')
-}
-function openCompareShortcut() {
-  if (!lifecycleControl.value.compareReady && !runControl.value.compare_ready) {
-    showToast('需要至少两次 War Room 运行才能对比')
-    return
-  }
-  loadRunDiff()
-  navigateSection('replay')
-  nextTick(() => comparePanelEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  showToast('已打开反事实对比')
-}
-async function openReplayShortcut() {
-  if (!lifecycleControl.value.replayReady && !runControl.value.replay_ready) {
-    showToast('请先运行一次 War Room 沙盘')
-    return
-  }
-  navigateSection('replay')
-  await exportReplayPack()
-  showToast('复盘包已生成')
-}
-function toggleDeltaOverlay() {
-  showDeltaOverlay.value = !showDeltaOverlay.value
-  showToast(showDeltaOverlay.value ? '已开启反事实变化图层' : '已关闭反事实变化图层')
-}
-function toggleEventFilter(key) {
-  eventFilters.value = eventFilters.value.includes(key) ? eventFilters.value.filter(item => item !== key) : [...eventFilters.value, key]
-  showToast(eventFilters.value.length ? `已应用 ${eventFilters.value.length} 个事件筛选` : '事件筛选已清除')
-}
-function eventMatchesFilters(event) {
-  if (!eventFilters.value.length) return true
-  if (eventFilters.value.includes('selected_entity') && selectedMapEntity.value) {
-    const detail = entityDetailDrawer.value || detailForSelectedEntity()
-    const relatedCountries = new Set(selectedMapEntity.value.payload?.relatedCountries || selectedMapEntity.value.payload?.related_countries || detail?.related_countries || [])
-    const relatedChains = new Set(selectedMapEntity.value.payload?.relatedChains || selectedMapEntity.value.payload?.related_chains || detail?.related_chains || [])
-    const countryMatch = (event.relatedCountries || []).some(code => relatedCountries.has(code) || relatedCountries.has(countryNameShort(code)))
-    const chainMatch = (event.relatedChains || []).some(key => relatedChains.has(key) || relatedChains.has(chainName(key)))
-    if (!countryMatch && !chainMatch) return false
-  }
-  const toneMap = { blue: 'military', green: 'diplomatic', orange: 'economic', purple: 'social', red: 'turning', neutral: 'military' }
-  const derived = toneMap[event.tone] || 'military'
-  const typeFilters = eventFilters.value.filter(item => item !== 'selected_entity')
-  if (!typeFilters.length) return true
-  return typeFilters.includes(derived) || (event.turning && typeFilters.includes('turning'))
-}
-function eventVisible(event) {
-  if (!eventFilters.value.length) return true
-  const linked = timelineEvents.value.filter(item => item.eventKeys?.includes(event.key))
-  return linked.length ? linked.some(eventMatchesFilters) : eventFilters.value.includes(event.tone === 'red' ? 'turning' : 'military')
-}
-function setAnalysisCountry(code) {
-  focusedEntityId.value = `country:${code}`
-  const country = mapCountries.value.find(item => item.code === code) || { code, risk: 0 }
-  selectMapCountry(country)
-  showToast(`已定位 Agent：${countryNameShort(code)}`)
 }
 function graphEntityType(id) {
   const raw = String(id?.id || id || '')
@@ -1319,429 +1122,27 @@ function focusGraphEdge(edge) {
   nextTick(renderSectionGraph)
   showToast(`已高亮链路：${edgeLabel(edge.edge.source)} → ${edgeLabel(edge.edge.target)}`)
 }
-function entityActive(type, id) { return selectedMapEntity.value?.type === type && selectedMapEntity.value?.id === id }
-function entityTypeLabel(type) {
-  return ({ country: '国家节点', supply_chain: '供应链', causal_edge: '因果边', event: '事件热点', unit: '军事单元', timeline: '时间线' })[type] || '地图实体'
-}
-function isCountryHot(code) { return activeCountryCodes.value.includes(code) }
-function relatedEventLabels(countryCode) {
-  const labels = timelineEvents.value
-    .filter(event => event.relatedCountries?.includes(countryCode))
-    .slice(0, 3)
-    .map(event => `${event.time} ${event.title}`)
-  return labels.length ? labels : [`D+${activeReplayDay.value} ${activeTimelineEvent.value?.title || '态势更新'}`]
-}
-function riskColor(value) {
-  const risk = Number(value || 0)
-  if (risk >= 72) return '#ff4d5f'
-  if (risk >= 52) return '#f59e32'
-  if (risk >= 35) return '#36a7ff'
-  return '#21d69b'
-}
-function riskOpacity(value) { return Math.min(0.86, Math.max(0.18, Number(value || 0) / 100)) }
-function goDeepAnalysis() {
-  navigateSection('analysis')
-  showToast(`已进入深度分析：${activeAgent.value.name}`)
-}
-function openEntityAnalysis(code) {
-  focusedEntityId.value = `country:${code}`
-  const country = mapCountries.value.find(item => item.code === code) || { code }
-  selectMapCountry(country)
-  navigateSection('analysis')
-  showToast(`已进入智能分析：${countryNameShort(code)}`)
-}
-function openDecisionDrawer(chip) {
-  const decision = warRoom.value?.agent_decisions?.find(item => item.country_code === activeAgent.value.code || item.country_name === activeAgent.value.enName) || {}
-  decisionDrawer.value = {
-    title: chip,
-    country: activeAgent.value.name,
-    confidence: decision.confidence !== undefined ? `${Math.round(Number(decision.confidence))}/100` : '规则解释',
-    drivers: decision.drivers?.map(riskChannel).join('、') || activeAgent.value.decisions.join('、'),
-    rationale: localizeText(decision.rationale) || activeAgent.value.decisionBasis,
-    tradeoff: localizeText(decision.expected_tradeoff) || activeAgent.value.expectedTradeoff
-  }
-  showToast('已打开 Agent 决策详情')
-}
+const {
+  fullEntityId, detailForSelectedEntity, openEntityDetail, mapTooltipFor,
+  activateCommandResult, handleEntityAction, cloneFromCurrentRun,
+  openCompareShortcut, openReplayShortcut, toggleDeltaOverlay, toggleEventFilter,
+  eventMatchesFilters, eventVisible, setAnalysisCountry, entityActive,
+  entityTypeLabel, isCountryHot, relatedEventLabels, riskColor, riskOpacity,
+  goDeepAnalysis, openEntityAnalysis, openDecisionDrawer, selectMapCountry,
+  selectSupplyChain, selectCausalEdge, selectMilitaryUnit, selectMapEvent,
+  selectTimelineEvent,
+} = useWarRoomInteractions({
+  selectedMapEntity, entityDetails, entityDetailDrawer, activeReplayDay, mapZoom,
+  replayPlaying, selected, countryNameShort, riskChannel, chainName,
+  focusedGraphEdgeId, focusedEdgeKey, edgeKey, edgeLabel, timelineEvents,
+  activeReplayIndex, currentGlobalRisk, commandSearchOpen, commandQuery,
+  mapCountries, warRoom, mapEvents, mapCausalEdges, navigateSection,
+  activeSection, sectionMeta, showToast, syncScenarioDraft, lifecycleControl,
+  runControl, loadRunDiff, comparePanelEl, exportReplayPack, showDeltaOverlay,
+  eventFilters, focusedEntityId, activeCountryCodes, activeTimelineEvent,
+  activeAgent, decisionDrawer, localizeText,
+})
 
-async function load(runId = selectedRunId.value) {
-  detail.value = runId ? await getProjectRun(props.projectId, runId) : await getProject(props.projectId)
-  selectedRunId.value = detail.value?.latest_run?.run_id || ''
-  await loadWorkspaceState(selectedRunId.value)
-  syncScenarioDraft()
-  await loadPresets()
-  prepareCompareDefaults()
-  await loadRunDiff()
-  await loadTrustSummary()
-  await loadEvidenceSummary()
-  await loadIngestionGovernance()
-  await loadContinuousIntelligence()
-  await loadScenarioCompiler()
-  await loadOperationsCenter()
-  if (activeSection.value === 'negotiation') await negotiation.load()
-  await loadEvaluationCenter()
-  await nextTick()
-  renderGraph()
-}
-
-async function loadTrustSummary() {
-  if (!isWarRoom.value) return
-  trustLoading.value = true
-  trustError.value = ''
-  try { trustSummary.value = await getTrustSummary(props.projectId) }
-  catch (error) { trustError.value = error?.response?.data?.detail || error.message }
-  finally { trustLoading.value = false }
-}
-
-async function loadEvaluationCenter() {
-  if (!isWarRoom.value) return
-  await evaluation.load(ingestionGovernance.organization.value?.organization_id || 'org_default')
-  if (evaluation.latest.value) await evaluation.inspect(evaluation.latest.value.batch_id)
-}
-async function createEvaluationStandard() {
-  const batch = await evaluation.createStandard(ingestionGovernance.organization.value?.organization_id || 'org_default')
-  showToast(`已创建评估批次 ${batch.batch_id}`)
-  await evaluation.inspect(batch.batch_id)
-}
-async function createEvaluationHistorical(labelPackId) {
-  try {
-    const batch = await evaluation.createHistorical(ingestionGovernance.organization.value?.organization_id || 'org_default', labelPackId)
-    showToast(`已创建历史盲测批次 ${batch.batch_id}`)
-    await evaluation.inspect(batch.batch_id)
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-async function inspectEvaluation(batchId) { await evaluation.inspect(batchId) }
-async function controlEvaluationBatch(batchId, action) {
-  try {
-    const batch = await evaluation.control(batchId, action)
-    showToast(`评估批次已${{ pause: '请求暂停', resume: '恢复', cancel: '请求取消', retry: '重试' }[action] || action}：${batch.status}`)
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function loadEvidenceSummary() {
-  if (!isWarRoom.value) return
-  try { await evidenceRegistry.load() }
-  catch { /* component renders the registry error without breaking the workspace */ }
-}
-
-async function syncEvidence() {
-  try {
-    const result = await evidenceRegistry.sync(selectedRunId.value || null)
-    showToast(`证据链已同步：${result.snapshots_created} 个新快照，${result.claims_created} 条新声明`)
-    await loadTrustSummary()
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function freezeEvidencePack() {
-  try {
-    const pack = await evidenceRegistry.createPack(selectedRunId.value || null)
-    showToast(`证据包已冻结：${pack.manifest_hash.slice(0, 12)}`)
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function searchProjectEvidence(query, cutoffAt) {
-  try { await evidenceRegistry.search(query, cutoffAt || null) }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function loadIngestionGovernance() {
-  if (!isWarRoom.value) return
-  try { await ingestionGovernance.load() }
-  catch { /* section renders the organization-scoped error */ }
-}
-
-async function loadContinuousIntelligence() {
-  if (!isWarRoom.value) return
-  const organizationId = ingestionGovernance.organization.value?.organization_id
-  try {
-    await continuousIntelligence.load(organizationId)
-    await continuousIntelligence.loadNotifications()
-    continuousIntelligence.subscribeNotifications()
-  } catch { /* the module renders the scoped error without breaking the workspace */ }
-}
-
-async function createContinuousSource(payload) {
-  try {
-    const result = await continuousIntelligence.createSource(payload, ingestionGovernance.organization.value?.organization_id)
-    showToast(`持续情报 Source 已创建：${result.name}，请激活后开始轮询`)
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-async function pollContinuousSource(sourceId) {
-  try {
-    const result = await continuousIntelligence.poll(sourceId, ingestionGovernance.organization.value?.organization_id)
-    showToast(`Feed 轮询已排队：${result.poll_id}`)
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-async function setContinuousSourceStatus(sourceId, status) {
-  try {
-    await continuousIntelligence.setSourceStatus(sourceId, status, ingestionGovernance.organization.value?.organization_id)
-    showToast(`Source 已${status === 'active' ? '启用' : '暂停'}`)
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-async function createContinuousWatchlist(payload) {
-  try {
-    const result = await continuousIntelligence.createWatchlist(payload, ingestionGovernance.organization.value?.organization_id)
-    showToast(`监测清单已创建：${result.name}，请激活后生效`)
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-async function setContinuousWatchlistStatus(id, action) {
-  try {
-    await continuousIntelligence.setWatchlistStatus(id, action, ingestionGovernance.organization.value?.organization_id)
-    showToast(`监测清单已${action === 'activate' ? '激活' : '暂停'}`)
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-async function setContinuousAlertStatus(id, action) {
-  try {
-    await continuousIntelligence.setAlertStatus(id, action, ingestionGovernance.organization.value?.organization_id)
-    showToast('告警状态已更新')
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function loadOperationsCenter() {
-  if (!isWarRoom.value) return
-  try { await operationsCenter.load() }
-  catch { /* section renders the platform-scoped error */ }
-}
-
-async function loadScenarioCompiler() {
-  if (!isWarRoom.value) return
-  try { await scenarioCompiler.load() }
-  catch { /* component renders the organization-scoped error */ }
-}
-
-async function uploadScenarioDocument(file, metadata) {
-  try {
-    const result = await scenarioCompiler.upload(file, metadata)
-    showToast(result.deduplicated ? '相同材料已存在，已复用版本化文档' : `材料已安全保存：${result.document.title}`)
-    await loadOperationsCenter()
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function extractScenarioDocument(documentId) {
-  try { const job = await scenarioCompiler.extract(documentId); showToast(`抽取任务已排队：${job.job_id}`) }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function inspectScenarioExtractionEvents(jobId) {
-  try { await scenarioCompiler.events(jobId) }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function cancelScenarioExtraction(jobId) {
-  try { await scenarioCompiler.cancel(jobId); showToast('抽取任务将在安全阶段边界取消') }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function retryScenarioExtraction(jobId) {
-  try { const job = await scenarioCompiler.retry(jobId); showToast(`抽取重试已创建：${job.job_id}`) }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function decideScenarioCandidate(candidateId, payload) {
-  try { await scenarioCompiler.decide(candidateId, payload); showToast(payload.decision === 'accepted' ? '候选已接受并追加审计' : '候选已拒绝并追加审计') }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function createCompiledScenarioDraft(payload) {
-  try { const draft = await scenarioCompiler.createDraft(payload); showToast(`场景草稿已编译：v${draft.version}`) }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function submitCompiledScenarioDraft(draftId) {
-  try { const draft = await scenarioCompiler.submit(draftId); showToast(`Evidence Pack 已冻结：${String(draft.evidence_pack_hash).slice(0, 12)}`); await loadTrustSummary() }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function reviewCompiledScenarioDraft(draftId, payload) {
-  try { await scenarioCompiler.review(draftId, payload); showToast('草稿复核决定已追加写入'); await loadTrustSummary() }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function cloneCompiledScenarioDraft(draftId) {
-  try { const draft = await scenarioCompiler.clone(draftId); showToast(`已克隆为修订草稿 v${draft.version}`) }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function runCompiledScenarioDraft(draftId, payload) {
-  try { const job = await scenarioCompiler.run(draftId, payload); showToast(`受控运行已排队：${job.run_id}`) }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function saveOperationsQuota(payload) {
-  try { await operationsCenter.saveQuota(payload); showToast('组织配额已更新，变更已追加审计记录') }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function drainOperationsWorker(workerId) {
-  try { await operationsCenter.drain(workerId); showToast(`Worker ${workerId} 已进入安全排空状态`) }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function createGovernedConnector(payload) {
-  try {
-    const connector = await ingestionGovernance.createConnector(payload)
-    showToast(`受控连接器已创建：${connector.name}`)
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function submitGovernedIngestion({ record, connectorId }) {
-  try {
-    const job = await ingestionGovernance.ingest(record, connectorId)
-    showToast(`采集完成：${job.accepted_count} 条记录，Manifest ${job.manifest_hash.slice(0, 12)}`)
-    await loadEvidenceSummary()
-    await loadTrustSummary()
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function inspectIngestionEvents(jobId) {
-  try { await ingestionGovernance.inspectEvents(jobId) }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function cancelIngestion(jobId) {
-  try { await ingestionGovernance.cancel(jobId); showToast('采集任务已在写入快照前取消') }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function retryIngestion(jobId) {
-  try { const job = await ingestionGovernance.retry(jobId); showToast(`重试完成：${job.job_id}`); await loadEvidenceSummary() }
-  catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function startTrustCalibration(rulePackId) {
-  try {
-    const calibration = await createCalibrationRun(rulePackId)
-    showToast(`校准任务已排队：${calibration.lifecycle_run_id}`)
-    await loadTrustSummary()
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-
-async function submitReviewDecision(reviewId, decision) {
-  try {
-    await decideReview(reviewId, decision, '通过可信度中心提交')
-    showToast('复核决定已追加写入审计链')
-    await loadTrustSummary()
-  } catch (error) { showToast(error?.response?.data?.detail || error.message) }
-}
-async function loadWorkspaceState(runId = selectedRunId.value) {
-  if (!isWarRoom.value) {
-    workspaceState.value = null
-    return
-  }
-  try {
-    workspaceState.value = await warRoomData.loadWorkspace(runId)
-  } catch {
-    workspaceState.value = null
-  }
-}
-async function loadPresets() {
-  if (!isWarRoom.value || presets.value) return
-  try {
-    presets.value = await warRoomData.loadPresets()
-    if (!scenarioDraft.target_countries.length || !scenarioDraft.target_chains.length) {
-      const scenario = presets.value.scenarios?.find(item => item.key === scenarioDraft.scenario_key)
-      if (scenario) {
-        scenarioDraft.target_countries = [...(scenario.target_countries || [])]
-        scenarioDraft.target_chains = [...(scenario.target_chains || [])]
-      }
-    }
-  } catch {
-    presets.value = null
-  }
-}
-async function run() {
-  if (!auth.permissions.value.canRun) {
-    showToast('当前角色无运行权限')
-    return
-  }
-  running.value = true
-  try {
-    if (isWarRoom.value) {
-      await runLifecycle.create({ engine_mode: lifecycleEngineMode.value, scenario: scenarioPayload(), seed: scenarioDraft.seed || 42 })
-      showToast('生命周期任务已排队；请启动或保持 worker 运行')
-      return
-    }
-    detail.value = await runProject(props.projectId, runMode.value)
-    selectedRunId.value = detail.value?.latest_run?.run_id || ''
-    await loadWorkspaceState(selectedRunId.value)
-    resetReplayArtifacts()
-    syncScenarioDraft()
-    prepareCompareDefaults(true)
-    await loadRunDiff()
-    await nextTick()
-    renderGraph()
-  } finally {
-    running.value = false
-  }
-}
-
-async function send() {
-  chatting.value = true
-  try {
-    await chatWithProject(props.projectId, message.value)
-    message.value = ''
-    await load(selectedRunId.value)
-  } finally {
-    chatting.value = false
-  }
-}
-function selectMapCountry(country) {
-  replayPlaying.value = false
-  selectedMapEntity.value = { type: 'country', id: country.code, day: activeReplayDay.value, payload: country }
-  selected.value = {
-    ...country,
-    kind: '国家风险',
-    label: country.country_name || countryNameShort(country.code),
-    country_code: country.code,
-    explanation: `${country.country_name || countryNameShort(country.code)} 风险为 ${Math.round(country.risk)}/100，主导通道为 ${riskChannel(country.dominant_channel)}。`
-  }
-  openEntityDetail('country', country.code, country)
-}
-function selectSupplyChain(chain) {
-  replayPlaying.value = false
-  selectedMapEntity.value = { type: 'supply_chain', id: chain.key, day: activeReplayDay.value, payload: chain }
-  selected.value = { ...chain, kind: '供应链瓶颈', label: chainName(chain.key, chain.name), explanation: `当前压力 ${Math.round(Number(chain.pressure || chain.disruption || 0))}/100。` }
-  openEntityDetail('supply_chain', chain.key, chain)
-}
-function selectCausalEdge(edge, edgeId = edgeKey(edge)) {
-  replayPlaying.value = false
-  focusedGraphEdgeId.value = edgeId
-  focusedEdgeKey.value = edgeKey(edge)
-  selectedMapEntity.value = { type: 'causal_edge', id: edgeId, day: activeReplayDay.value, payload: edge }
-  selected.value = { ...edge, kind: '因果边', label: `${edgeLabel(edge.source)} → ${edgeLabel(edge.target)}`, explanation: edge.explanation || edge.mechanism || edge.relation || '因果机制来自当前沙盘运行快照。' }
-  openEntityDetail('causal_edge', edgeId, edge)
-}
-function selectMilitaryUnit(unit) {
-  replayPlaying.value = false
-  selectedMapEntity.value = { type: 'unit', id: unit.key, day: activeReplayDay.value, payload: unit }
-  selected.value = { ...unit, kind: '军事单元', label: unit.label, explanation: `${unit.label} 用于表达当前态势中的军事部署信号。` }
-  openEntityDetail('unit', unit.key, unit)
-}
-function selectMapEvent(event) {
-  replayPlaying.value = false
-  const index = timelineEvents.value.findIndex(item => item.eventKeys?.includes(event.key) || item.day === event.day)
-  if (index >= 0) activeReplayIndex.value = index
-  selectedMapEntity.value = { type: 'event', id: event.key, day: event.day ?? activeReplayDay.value, payload: event }
-  selected.value = { ...event, kind: '事件热点', label: event.title, country_code: event.country_code || (event.key === 'china' ? 'CHN' : event.key === 'us' ? 'USA' : event.key === 'japan' ? 'JPN' : 'TWN'), explanation: event.detail || event.title }
-  openEntityDetail('event', event.key, event)
-}
-function selectTimelineEvent(event, index = timelineEvents.value.findIndex(item => item.key === event.key)) {
-  replayPlaying.value = false
-  if (index >= 0) activeReplayIndex.value = index
-  selectedMapEntity.value = null
-  selected.value = { ...event, kind: '时间线事件', label: event.title, explanation: event.detail }
-  entityDetailDrawer.value = entityDetails.value[`timeline:${event.key}`] || {
-    id: `timeline:${event.key}`,
-    type: 'timeline',
-    title_zh: event.title,
-    summary_zh: event.detail,
-    metrics: [
-      { label_zh: '发生日', value: event.time },
-      { label_zh: '全局风险', value: `${Math.round(event.globalRisk || currentGlobalRisk.value)}/100` }
-    ],
-    related_events: [],
-    actions: [{ key: 'focus', label_zh: '在时间线中定位', action_type: 'focus', enabled: true }]
-  }
-}
 function scrollToReport() { reportPanelEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 function countryDelta(code) {
   const item = warRoomDiff.value?.country_risk_delta?.find(row => row.country_code === code)
@@ -1785,124 +1186,30 @@ function edgeKey(edge) {
   const target = edge.target?.id || edge.target
   return `${source}->${target}:${edge.relation || ''}`
 }
-function renderGraph() {
-  const graph = detail.value?.graph
-  const el = graphEl.value
-  if (!graph || !el) return
-  el.innerHTML = ''
-  const width = el.clientWidth || 760
-  const height = 520
-  const svg = d3.select(el).append('svg').attr('viewBox', `0 0 ${width} ${height}`)
-  const nodes = graph.nodes.map(node => ({ ...node }))
-  const edges = graph.edges.map(edge => ({ ...edge }))
-  const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(edges).id(d => d.id).distance(130).strength(0.55))
-    .force('charge', d3.forceManyBody().strength(-560))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collide', d3.forceCollide(56))
-  const link = svg.append('g').selectAll('line').data(edges).enter().append('line')
-    .attr('class', d => edgeKey(d) === focusedEdgeKey.value ? 'edge-line edge-focused' : 'edge-line')
-    .attr('stroke-width', d => 1 + Number(d.weight || 0.5) * 2)
-    .on('click', (_, d) => { selected.value = { ...d, source: d.source.id || d.source, target: d.target.id || d.target } })
-  const node = svg.append('g').selectAll('g').data(nodes).enter().append('g')
-    .attr('class', d => `node node-${d.kind}`)
-    .call(d3.drag()
-      .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y })
-      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y })
-      .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null }))
-    .on('click', (_, d) => { selected.value = d })
-  node.append('circle').attr('r', d => 18 + Number(d.score || 50) / 8)
-  node.append('text').text(d => d.label).attr('dy', 44).attr('text-anchor', 'middle')
-  simulation.on('tick', () => {
-    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y)
-    node.attr('transform', d => `translate(${d.x},${d.y})`)
-  })
-}
-
-function renderSectionGraph() {
-  const el = sectionGraphEl.value
-  if (!el) return
-  el.innerHTML = ''
-  const edgeItems = filteredGraphEdges.value
-  if (!edgeItems.length) {
-    const empty = document.createElement('div')
-    empty.className = 'graph-empty-state'
-    empty.textContent = '当前筛选条件下没有因果链路'
-    el.appendChild(empty)
-    return
-  }
-
-  const width = el.clientWidth || 720
-  const height = Math.max(420, Math.min(560, Math.round(width * 0.66)))
-  const graphNodes = new Map()
-  const links = edgeItems.map(item => {
-    const sourceId = item.edge.source?.id || item.edge.source
-    const targetId = item.edge.target?.id || item.edge.target
-    if (!graphNodes.has(sourceId)) graphNodes.set(sourceId, { id: sourceId, label: edgeLabel(sourceId), kind: graphEntityType(sourceId) })
-    if (!graphNodes.has(targetId)) graphNodes.set(targetId, { id: targetId, label: edgeLabel(targetId), kind: graphEntityType(targetId) })
-    return { ...item.edge, source: sourceId, target: targetId, itemId: item.id }
-  })
-  const nodes = [...graphNodes.values()]
-  const svg = d3.select(el)
-    .append('svg')
-    .attr('viewBox', `0 0 ${width} ${height}`)
-    .attr('role', 'img')
-    .attr('aria-label', 'War Room 因果链路图')
-  const simulation = d3.forceSimulation(nodes)
-    .force('link', d3.forceLink(links).id(node => node.id).distance(120).strength(0.62))
-    .force('charge', d3.forceManyBody().strength(-430))
-    .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collide', d3.forceCollide(48))
-
-  const link = svg.append('g')
-    .attr('class', 'section-graph-links')
-    .selectAll('line')
-    .data(links)
-    .enter()
-    .append('line')
-    .attr('class', item => item.itemId === focusedGraphEdgeId.value ? 'edge-line edge-focused' : 'edge-line')
-    .attr('stroke-width', item => 1.4 + Number(item.weight || 0.5) * 2.6)
-    .attr('data-entity-type', 'causal_edge')
-    .attr('data-entity-id', item => item.itemId)
-    .on('click', (_, item) => {
-      const edgeItem = edgeItems.find(candidate => candidate.id === item.itemId)
-      if (edgeItem) focusGraphEdge(edgeItem)
-    })
-  const node = svg.append('g')
-    .attr('class', 'section-graph-nodes')
-    .selectAll('g')
-    .data(nodes)
-    .enter()
-    .append('g')
-    .attr('class', item => `node node-${item.kind}`)
-    .attr('data-entity-type', item => item.kind)
-    .attr('data-entity-id', item => item.id)
-    .call(d3.drag()
-      .on('start', (event, item) => {
-        if (!event.active) simulation.alphaTarget(0.3).restart()
-        item.fx = item.x
-        item.fy = item.y
-      })
-      .on('drag', (event, item) => {
-        item.fx = event.x
-        item.fy = event.y
-      })
-      .on('end', (event, item) => {
-        if (!event.active) simulation.alphaTarget(0)
-        item.fx = null
-        item.fy = null
-      }))
-  node.append('circle').attr('r', 21)
-  node.append('text').text(item => item.label).attr('dy', 38).attr('text-anchor', 'middle')
-  simulation.on('tick', () => {
-    link
-      .attr('x1', item => item.source.x)
-      .attr('y1', item => item.source.y)
-      .attr('x2', item => item.target.x)
-      .attr('y2', item => item.target.y)
-    node.attr('transform', item => `translate(${item.x},${item.y})`)
-  })
-}
+const { renderGraph, renderSectionGraph, stopGraphs } = useWarRoomGraphRenderer({
+  detail,
+  graphEl,
+  sectionGraphEl,
+  selected,
+  focusedEdgeKey,
+  filteredGraphEdges,
+  focusedGraphEdgeId,
+  edgeKey,
+  edgeLabel,
+  graphEntityType,
+  focusGraphEdge,
+})
+const { load, loadWorkspaceState, loadPresets, run, send } = useWorkspaceRunController({
+  projectId: () => props.projectId,
+  detail, selectedRunId, workspaceState, isWarRoom, warRoomData, presets,
+  scenarioDraft, syncScenarioDraft, prepareCompareDefaults, loadRunDiff,
+  loadTrustSummary, loadEvidenceSummary, loadIngestionGovernance,
+  loadContinuousIntelligence, loadScenarioCompiler, loadOperationsCenter,
+  activeSection, negotiation, loadEvaluationCenter, renderGraph, auth, running,
+  runLifecycle, lifecycleEngineMode, scenarioPayload, runMode,
+  resetReplayArtifacts, showToast, chatting, message,
+})
+reloadWorkspace = load
 
 watch(() => detail.value?.graph?.graph_id, () => nextTick(renderGraph))
 watch(activeSection, section => {
@@ -1925,6 +1232,7 @@ watch(() => scenarioDraft.scenario_key, applySelectedScenarioDefaults)
 onMounted(load)
 onUnmounted(() => {
   runLifecycle.stop()
-  if (toastTimer) window.clearTimeout(toastTimer)
+  stopGraphs()
+  disposeShell()
 })
 </script>
