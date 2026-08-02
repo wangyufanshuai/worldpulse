@@ -110,6 +110,14 @@
     {
       "import_prefix": "app.services.project_app.replay_pack",
       "allowed_callers": ["app.services.project_app.replay_application"]
+    },
+    {
+      "import_prefix": "app.services.project_app.report_application",
+      "allowed_callers": ["app.services.project_app.service", "app.services.project_app.war_room_persistence"]
+    },
+    {
+      "import_prefix": "app.services.project_app.reports",
+      "allowed_callers": ["app.services.project_app.report_application", "app.services.project_app.war_room_persistence"]
     }
   ]
 }

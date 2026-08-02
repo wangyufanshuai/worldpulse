@@ -15,7 +15,8 @@ from app.core.models import (
     RiskPoint,
     WarRoomRun,
 )
-from app.services.project_app.reports import build_war_room_project_report, chain_pressure
+from app.services.project_app.report_application import report_service
+from app.services.project_app.reports import chain_pressure
 from app.services.project_store import connect, dumps
 from app.services.rule_packs import trust_manifest_for_job
 from app.services.war_room_engine import WAR_ROOM_DISCLAIMER
@@ -69,7 +70,7 @@ def persist_war_room_result(
         backtest_snapshot={"event_type": result.scenario.key, "sample_count": 0, "hit_rate": 0, "max_error": 0, "error_attribution": [WAR_ROOM_DISCLAIMER]},
     )
     graph = build_war_room_graph_snapshot(project.project_id, run_id, result, now_factory)
-    report = build_war_room_project_report(project, run, graph, result)
+    report = report_service.build_war_room(project, run, graph, result)
 
     with connect() as conn:
         conn.execute(

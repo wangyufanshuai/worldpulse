@@ -9,6 +9,7 @@ from app.services.project_app import (
 from app.services.project_app.read_models import ResearchWorkspaceReadService
 from app.services.project_app import service as legacy_workspace_service
 from app.services.project_app.replay_application import replay_pack_service
+from app.services.project_app.report_application import report_service
 
 
 def test_project_routes_use_research_workspace_application_port():
@@ -58,3 +59,8 @@ def test_legacy_workspace_facade_forwards_replay_pack_to_adapter(monkeypatch):
     assert captured["project_id"] == "project_1"
     assert captured["run_id"] == "run_1"
     assert callable(captured["now_factory"])
+
+
+def test_workspace_report_adapter_exposes_research_and_war_room_builders():
+    assert callable(report_service.build_research)
+    assert callable(report_service.build_war_room)

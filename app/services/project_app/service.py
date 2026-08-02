@@ -55,9 +55,7 @@ from app.services.project_app.diffing import (
     risk_score as diff_risk_score,
 )
 from app.services.project_app.replay_application import replay_pack_service
-from app.services.project_app.reports import (
-    build_project_report,
-)
+from app.services.project_app.report_application import report_service
 from app.services.project_app.project_queries import (
     get_project_detail as query_project_detail,
     list_projects as query_projects,
@@ -603,7 +601,7 @@ def _graph_snapshot(project_id: str, run_id: str, chain, backtest) -> CausalGrap
 
 
 def _project_report(project: ResearchProject, run: ResearchRun, graph: CausalGraphSnapshot, causal) -> ProjectAIReport:
-    return build_project_report(project, run, graph, causal, analyze_current_risk)
+    return report_service.build_research(project, run, graph, causal, analyze_fn=analyze_current_risk)
 
 
 def _run_summary(title: str, event_name: str, risk_score: float, confidence: float) -> str:
