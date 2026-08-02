@@ -7,6 +7,7 @@ from typing import Protocol
 
 from .branching import branch_world_state
 from .contracts import Checkpoint, EventEnvelope, ExperimentBranch, ReplayRequest, StateDelta, WorldState
+from .event_log import KernelEventLog, replay_event_log
 from .replay import replay_state
 from .transitions import CompiledTransition, compile_deterministic_transition
 
@@ -24,6 +25,13 @@ class SimulationKernelApplicationPort(Protocol):
     ) -> CompiledTransition: ...
 
     def apply_delta(self, state: WorldState, delta: StateDelta) -> WorldState: ...
+
+    def replay_event_log(
+        self,
+        initial_state: WorldState,
+        event_log: KernelEventLog,
+        request: ReplayRequest,
+    ) -> WorldState: ...
 
     def replay(
         self,
@@ -57,6 +65,14 @@ class SimulationKernelApplicationService:
 
     def apply_delta(self, state: WorldState, delta: StateDelta) -> WorldState:
         return state.apply_delta(delta)
+
+    def replay_event_log(
+        self,
+        initial_state: WorldState,
+        event_log: KernelEventLog,
+        request: ReplayRequest,
+    ) -> WorldState:
+        return replay_event_log(initial_state, event_log, request)
 
     def replay(
         self,

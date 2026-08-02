@@ -11,6 +11,7 @@ from .contracts import (
     StateDelta,
     WorldState,
 )
+from .event_log import KernelEventLog, replay_event_log
 from .replay import ReplayIntegrityError, replay_state
 from .transitions import (
     CompiledTransition,
@@ -22,8 +23,10 @@ from .war_room_projection import (
     PROJECTION_SCHEMA_VERSION,
     WarRoomProjection,
     build_war_room_projection,
+    project_war_room_initial_state,
     project_war_room_run,
 )
+from .war_room_trace import WarRoomShadowRun, build_war_room_shadow_run
 
 __all__ = [
     "Checkpoint",
@@ -32,6 +35,7 @@ __all__ = [
     "Entity",
     "EventEnvelope",
     "ExperimentBranch",
+    "KernelEventLog",
     "ReplayIntegrityError",
     "ReplayRequest",
     "StateChange",
@@ -39,14 +43,18 @@ __all__ = [
     "SimulationKernelApplicationPort",
     "SimulationKernelApplicationService",
     "WorldState",
+    "WarRoomShadowRun",
     "branch_world_state",
     "compile_deterministic_transition",
+    "build_war_room_shadow_run",
     "replay_state",
     "DETERMINISTIC_AUTHORITY_OWNER",
     "PROJECTION_SCHEMA_VERSION",
     "WarRoomProjection",
     "build_war_room_projection",
     "project_war_room_run",
+    "project_war_room_initial_state",
+    "replay_event_log",
     "simulation_kernel_service",
     "TransitionIntegrityError",
 ]

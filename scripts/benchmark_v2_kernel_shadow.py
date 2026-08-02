@@ -21,11 +21,15 @@ from app.services.consistency.hashing import stable_hash  # noqa: E402
 from app.services.simulation_kernel import (  # noqa: E402
     Checkpoint,
     ExperimentBranch,
+    ReplayRequest,
     branch_world_state,
+    build_war_room_shadow_run,
     compile_deterministic_transition,
     project_war_room_run,
+    simulation_kernel_service,
 )
 from app.services.war_room_engine import run_war_room  # noqa: E402
+from app.services.world_model import world_model_service  # noqa: E402
 
 
 RULE_PACK_HASH = stable_hash(
@@ -84,6 +88,7 @@ def run_benchmark(*, iterations: int, repeats: int) -> dict[str, Any]:
         )
 
     target_state = project_treatment()
+    presets = world_model_service.war_room_presets()
 
     def compile_transition():
         return compile_deterministic_transition(
@@ -110,11 +115,35 @@ def run_benchmark(*, iterations: int, repeats: int) -> dict[str, Any]:
             reducer_version="war-room-shadow-transition.v1",
         )
 
+    def build_multi_tick_shadow(result=treatment_result):
+        return build_war_room_shadow_run(
+            result,
+            presets,
+            run_id="benchmark_multi_tick",
+            seed=7,
+            rule_pack_hash=RULE_PACK_HASH,
+        )
+
+    multi_tick_shadow = build_multi_tick_shadow()
+
+    def replay_multi_tick_shadow():
+        return simulation_kernel_service.replay_event_log(
+            multi_tick_shadow.initial_state,
+            multi_tick_shadow.event_log,
+            ReplayRequest(checkpoint_id=multi_tick_shadow.checkpoints[0].checkpoint_id),
+        )
+
+    def legacy_plus_multi_tick_shadow():
+        return build_multi_tick_shadow(run_war_room(treatment_request))
+
     operations: dict[str, Callable[[], object]] = {
         "legacy_run": lambda: run_war_room(treatment_request),
         "world_state_projection": project_treatment,
         "transition_compile": compile_transition,
         "legacy_plus_kernel_shadow": shadow_pipeline,
+        "multi_tick_shadow_build": build_multi_tick_shadow,
+        "multi_tick_shadow_replay": replay_multi_tick_shadow,
+        "legacy_plus_multi_tick_shadow": legacy_plus_multi_tick_shadow,
     }
     measurements = {
         name: _measure(operation, iterations=iterations, repeats=repeats)
@@ -122,6 +151,7 @@ def run_benchmark(*, iterations: int, repeats: int) -> dict[str, Any]:
     }
     legacy_median = measurements["legacy_run"]["median_ms"]
     shadow_median = measurements["legacy_plus_kernel_shadow"]["median_ms"]
+    multi_tick_median = measurements["legacy_plus_multi_tick_shadow"]["median_ms"]
     transition = compile_transition()
     return {
         "schema_version": "kernel-shadow-performance.v1",
@@ -129,9 +159,14 @@ def run_benchmark(*, iterations: int, repeats: int) -> dict[str, Any]:
         "repeats": repeats,
         "measurements": measurements,
         "shadow_to_legacy_median_ratio": round(shadow_median / legacy_median, 4),
+        "multi_tick_to_legacy_median_ratio": round(multi_tick_median / legacy_median, 4),
         "source_run_hash": stable_hash(treatment_result.model_dump(mode="json")),
         "target_world_state_hash": target_state.content_hash(),
         "compiled_transition_hash": transition.content_hash(),
+        "multi_tick_event_log_hash": multi_tick_shadow.event_log.content_hash(),
+        "multi_tick_shadow_run_hash": multi_tick_shadow.content_hash(),
+        "multi_tick_event_count": len(multi_tick_shadow.event_log.transitions),
+        "multi_tick_checkpoint_count": len(multi_tick_shadow.checkpoints),
         "production_path_changed": False,
     }
 

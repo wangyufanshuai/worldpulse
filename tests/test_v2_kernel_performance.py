@@ -14,6 +14,11 @@ def test_kernel_shadow_benchmark_measures_real_hash_linked_operations():
     assert report["target_world_state_hash"] == "64f037a297a81dda526808cbdd182e2b3d640426c84eb94eab7ce434a31751c5"
     assert report["compiled_transition_hash"] == "42431a1dfad849e3fc50002e3bf446a674495ea71ed3a83e27d5378f19c9c61c"
     assert report["shadow_to_legacy_median_ratio"] > 0
+    assert report["multi_tick_to_legacy_median_ratio"] > 0
+    assert report["multi_tick_event_log_hash"] == "1063169908c1ae2f5121e13cafa67be29121f238250d3e26b54dc5494388b14a"
+    assert report["multi_tick_shadow_run_hash"] == "3c0708702d3fa956b2c1cf5cbfba23bb26ac06096c22c40a75d275d8d03219fa"
+    assert report["multi_tick_event_count"] == 5
+    assert report["multi_tick_checkpoint_count"] == 5
     assert all(
         metrics["min_ms"] > 0
         and metrics["median_ms"] > 0

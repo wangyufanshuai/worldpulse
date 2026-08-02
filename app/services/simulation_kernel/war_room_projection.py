@@ -13,7 +13,14 @@ from typing import Any
 
 from pydantic import Field, model_validator
 
-from app.core.models import WarRoomCountryAgent, WarRoomRun, SupplyChainLink
+from app.core.models import (
+    SupplyChainLink,
+    WarRoomCountryAgent,
+    WarRoomPresetBundle,
+    WarRoomRun,
+    WarRoomScenario,
+    WarRoomTimelinePoint,
+)
 from app.services.consistency.hashing import stable_hash
 
 from .contracts import Entity, KernelContract, WorldState
@@ -21,6 +28,7 @@ from .contracts import Entity, KernelContract, WorldState
 
 PROJECTION_SCHEMA_VERSION = "war-room-world-state.v1"
 DETERMINISTIC_AUTHORITY_OWNER = "war_room.deterministic_rule_engine"
+WORLD_MODEL_PRESET_AUTHORITY_OWNER = "world_model.war_room_preset"
 
 
 class WarRoomProjection(KernelContract):
@@ -78,19 +86,81 @@ def project_war_room_run(
     outside numeric-authority state and are therefore not silently promoted.
     """
 
-    if not run_id.strip() or run_id != run_id.strip():
-        raise ValueError("WarRoom projection requires a non-empty run_id")
-    normalized_rule_pack_hash = rule_pack_hash.strip().lower()
-    is_sha256 = len(normalized_rule_pack_hash) == 64 and all(
-        character in "0123456789abcdef" for character in normalized_rule_pack_hash
-    )
-    if not is_sha256:
-        raise ValueError("WarRoom projection requires a pinned SHA-256 rule_pack_hash")
+    normalized_rule_pack_hash = _validate_projection_metadata(run_id, rule_pack_hash)
     _validate_source_collections(result)
 
     entities: dict[str, Entity] = {}
     scenario = result.scenario
-    entities[f"scenario:{scenario.key}"] = Entity(
+    entities[f"scenario:{scenario.key}"] = _scenario_entity(scenario)
+
+    for agent in sorted(result.country_agents, key=lambda item: item.code):
+        entities[f"country:{agent.code}"] = _country_entity(agent)
+
+    for chain in sorted(result.supply_chains, key=lambda item: item.key):
+        entities[f"supply_chain:{chain.key}"] = _supply_chain_entity(chain)
+
+    entities["run:deterministic_trace"] = _trace_entity(
+        result.timeline,
+        result.assumptions,
+    )
+
+    final_tick = max((point.day for point in result.timeline), default=0)
+    return WorldState(
+        run_id=run_id,
+        tick=final_tick,
+        seed=seed,
+        rule_pack_hash=normalized_rule_pack_hash,
+        entities={entity_id: entities[entity_id] for entity_id in sorted(entities)},
+    )
+
+
+def project_war_room_initial_state(
+    result: WarRoomRun,
+    presets: WarRoomPresetBundle,
+    *,
+    run_id: str,
+    seed: int,
+    rule_pack_hash: str,
+) -> WorldState:
+    """Project the public World Model catalog and day-zero trace into Kernel state."""
+
+    normalized_rule_pack_hash = _validate_projection_metadata(run_id, rule_pack_hash)
+    _validate_source_collections(result)
+    _validate_preset_topology(result, presets)
+    if result.timeline[0].day != 0:
+        raise ValueError("WarRoom initial projection requires a day-zero timeline point")
+
+    scenario = result.scenario
+    entities: dict[str, Entity] = {
+        f"scenario:{scenario.key}": _scenario_entity(scenario),
+        "run:deterministic_trace": _trace_entity(
+            [result.timeline[0]],
+            result.assumptions,
+        ),
+    }
+    for agent in sorted(presets.countries, key=lambda item: item.code):
+        entities[f"country:{agent.code}"] = _country_entity(
+            agent,
+            authority_owner=WORLD_MODEL_PRESET_AUTHORITY_OWNER,
+            source_field="WarRoomPresetBundle.countries[].risk_score",
+        )
+    for chain in sorted(presets.supply_chains, key=lambda item: item.key):
+        entities[f"supply_chain:{chain.key}"] = _supply_chain_entity(
+            chain,
+            authority_owner=WORLD_MODEL_PRESET_AUTHORITY_OWNER,
+            source_field="WarRoomPresetBundle.supply_chains[].pressure_score",
+        )
+    return WorldState(
+        run_id=run_id,
+        tick=0,
+        seed=seed,
+        rule_pack_hash=normalized_rule_pack_hash,
+        entities={entity_id: entities[entity_id] for entity_id in sorted(entities)},
+    )
+
+
+def _scenario_entity(scenario: WarRoomScenario) -> Entity:
+    return Entity(
         entity_id=f"scenario:{scenario.key}",
         entity_type="scenario",
         components={
@@ -108,34 +178,28 @@ def project_war_room_run(
         },
     )
 
-    for agent in sorted(result.country_agents, key=lambda item: item.code):
-        entities[f"country:{agent.code}"] = _country_entity(agent)
 
-    for chain in sorted(result.supply_chains, key=lambda item: item.key):
-        entities[f"supply_chain:{chain.key}"] = _supply_chain_entity(chain)
-
-    timeline = [item.model_dump(mode="json") for item in result.timeline]
-    entities["run:deterministic_trace"] = Entity(
+def _trace_entity(
+    timeline: list[WarRoomTimelinePoint],
+    assumptions: list[str],
+) -> Entity:
+    return Entity(
         entity_id="run:deterministic_trace",
         entity_type="deterministic_trace",
         components={
-            "timeline": timeline,
-            "assumptions": list(result.assumptions),
+            "timeline": [item.model_dump(mode="json") for item in timeline],
+            "assumptions": list(assumptions),
             "trace_source": DETERMINISTIC_AUTHORITY_OWNER,
         },
     )
 
-    final_tick = max((point.day for point in result.timeline), default=0)
-    return WorldState(
-        run_id=run_id,
-        tick=final_tick,
-        seed=seed,
-        rule_pack_hash=normalized_rule_pack_hash,
-        entities={entity_id: entities[entity_id] for entity_id in sorted(entities)},
-    )
 
-
-def _country_entity(agent: WarRoomCountryAgent) -> Entity:
+def _country_entity(
+    agent: WarRoomCountryAgent,
+    *,
+    authority_owner: str = DETERMINISTIC_AUTHORITY_OWNER,
+    source_field: str = "WarRoomCountryAgent.risk_score",
+) -> Entity:
     identity = {
         "code": agent.code,
         "name": agent.name,
@@ -163,13 +227,19 @@ def _country_entity(agent: WarRoomCountryAgent) -> Entity:
             **numeric,
             "authority_provenance": _authority_provenance(
                 ("risk_score",),
-                source_field="WarRoomCountryAgent.risk_score",
+                authority_owner=authority_owner,
+                source_field=source_field,
             ),
         },
     )
 
 
-def _supply_chain_entity(chain: SupplyChainLink) -> Entity:
+def _supply_chain_entity(
+    chain: SupplyChainLink,
+    *,
+    authority_owner: str = DETERMINISTIC_AUTHORITY_OWNER,
+    source_field: str = "SupplyChainLink.pressure_score",
+) -> Entity:
     return Entity(
         entity_id=f"supply_chain:{chain.key}",
         entity_type="supply_chain",
@@ -185,15 +255,21 @@ def _supply_chain_entity(chain: SupplyChainLink) -> Entity:
             "supply_chain_pressure": chain.pressure_score,
             "authority_provenance": _authority_provenance(
                 ("supply_chain_pressure",),
-                source_field="SupplyChainLink.pressure_score",
+                authority_owner=authority_owner,
+                source_field=source_field,
             ),
         },
     )
 
 
-def _authority_provenance(components: tuple[str, ...], *, source_field: str) -> dict[str, Any]:
+def _authority_provenance(
+    components: tuple[str, ...],
+    *,
+    authority_owner: str,
+    source_field: str,
+) -> dict[str, Any]:
     return {
-        "owner": DETERMINISTIC_AUTHORITY_OWNER,
+        "owner": authority_owner,
         "source_field": source_field,
         "components": list(components),
     }
@@ -228,3 +304,28 @@ def _validate_source_collections(result: WarRoomRun) -> None:
     timeline_pairs = zip(timeline_days, timeline_days[1:], strict=False)
     if not timeline_days or any(current <= previous for previous, current in timeline_pairs):
         raise ValueError("WarRoom projection requires a strictly increasing deterministic timeline")
+
+
+def _validate_projection_metadata(run_id: str, rule_pack_hash: str) -> str:
+    if not run_id.strip() or run_id != run_id.strip():
+        raise ValueError("WarRoom projection requires a non-empty run_id")
+    normalized_rule_pack_hash = rule_pack_hash.strip().lower()
+    is_sha256 = len(normalized_rule_pack_hash) == 64 and all(
+        character in "0123456789abcdef" for character in normalized_rule_pack_hash
+    )
+    if not is_sha256:
+        raise ValueError("WarRoom projection requires a pinned SHA-256 rule_pack_hash")
+    return normalized_rule_pack_hash
+
+
+def _validate_preset_topology(result: WarRoomRun, presets: WarRoomPresetBundle) -> None:
+    preset_country_codes = [item.code for item in presets.countries]
+    preset_chain_keys = [item.key for item in presets.supply_chains]
+    if len(preset_country_codes) != len(set(preset_country_codes)):
+        raise ValueError("WarRoom initial projection requires unique preset country codes")
+    if len(preset_chain_keys) != len(set(preset_chain_keys)):
+        raise ValueError("WarRoom initial projection requires unique preset supply-chain keys")
+    if set(preset_country_codes) != {item.code for item in result.country_agents}:
+        raise ValueError("WarRoom initial projection country topology mismatch")
+    if set(preset_chain_keys) != {item.key for item in result.supply_chains}:
+        raise ValueError("WarRoom initial projection supply-chain topology mismatch")
