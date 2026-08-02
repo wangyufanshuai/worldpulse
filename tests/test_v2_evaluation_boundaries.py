@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.services.evaluation.metrics import historical_case_metrics
 from app.services.evaluation.observation import agent_outcome_observation
+from app.services.evaluation import EvaluationApplicationPort, EvaluationService
 from app.services.evaluation.service import _agent_outcome_observation, _historical_case_metrics
 
 
@@ -61,3 +62,8 @@ def test_observation_reads_only_projected_artifacts():
     assert observation["allowed_action_recall"] == 1.0
     assert observation["forbidden_action_pass"] == 1.0
     assert _agent_outcome_observation is agent_outcome_observation
+
+
+def test_evaluation_application_port_exposes_verification_read_contract():
+    port: EvaluationApplicationPort = EvaluationService()
+    assert callable(port.list_verification_results)

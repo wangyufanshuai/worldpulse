@@ -1,5 +1,28 @@
-from .engine import run_negotiation
-from .repository import NegotiationRepository
-from .replay import replay_negotiation_from_storage
+from typing import Any
 
-__all__ = ["NegotiationRepository", "replay_negotiation_from_storage", "run_negotiation"]
+from .application import NegotiationReadApplicationService, negotiation_read_service
+from .ports import NegotiationReadApplicationPort
+from .repository import NegotiationRepository
+
+
+def run_negotiation(*args: Any, **kwargs: Any):
+    """Lazy compatibility export that avoids package import cycles."""
+    from .engine import run_negotiation as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def replay_negotiation_from_storage(*args: Any, **kwargs: Any):
+    """Lazy compatibility export for provider-free negotiation replay."""
+    from .replay import replay_negotiation_from_storage as implementation
+
+    return implementation(*args, **kwargs)
+
+__all__ = [
+    "NegotiationReadApplicationPort",
+    "NegotiationReadApplicationService",
+    "NegotiationRepository",
+    "negotiation_read_service",
+    "replay_negotiation_from_storage",
+    "run_negotiation",
+]

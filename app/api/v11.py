@@ -16,7 +16,6 @@ from app.core.evaluation_models import (
 )
 from app.services.evaluation import EvaluationApplicationPort, EvaluationService
 from app.services.evaluation import benchmark
-from app.services.evaluation.gates import list_verification_results
 
 
 router = APIRouter()
@@ -81,7 +80,7 @@ def create_historical(organization_id: str, payload: HistoricalEvaluationCreateR
 @router.get("/evaluations/{batch_id}/verification", response_model=list[EvaluationVerificationResult])
 def verification(batch_id: str, request: Request):
     service.get_batch(batch_id, organization(request))
-    return list_verification_results(batch_id)
+    return service.list_verification_results(batch_id)
 
 
 @router.get("/evaluations/{batch_id}/historical-report", response_model=HistoricalBenchmarkReport)

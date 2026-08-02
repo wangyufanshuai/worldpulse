@@ -23,17 +23,16 @@
     "frontend",
     "tests"
   ],
-  "legacy_internal_imports": [
+  "legacy_internal_imports": [],
+  "restricted_internal_imports": [
     {
       "import_prefix": "app.services.negotiation.repository",
-      "allowed_callers": ["app.api.v7"]
+      "allowed_callers": []
     },
     {
       "import_prefix": "app.services.evaluation.gates",
-      "allowed_callers": ["app.api.v11"]
-    }
-  ],
-  "restricted_internal_imports": [
+      "allowed_callers": ["app.services.evaluation.coordinator"]
+    },
     {
       "import_prefix": "app.services.simulation_engine",
       "allowed_callers": ["app.services.simulation_runtime.application"]

@@ -17,6 +17,7 @@ from app.core.evaluation_models import (
     EvaluationMetric,
     EvaluationReport,
     EvaluationSuiteManifest,
+    EvaluationVerificationResult,
     HistoricalBenchmarkReport,
     HistoricalEvaluationCreateRequest,
 )
@@ -83,5 +84,7 @@ class EvaluationApplicationPort(Protocol):
     def report(self, batch_id: str, organization_id: str | None = None) -> EvaluationReport: ...
 
     def historical_report(self, batch_id: str, organization_id: str) -> HistoricalBenchmarkReport: ...
+
+    def list_verification_results(self, batch_id: str) -> list[EvaluationVerificationResult]: ...
 
     def reconcile(self, *, worker_id: str | None = None) -> int: ...

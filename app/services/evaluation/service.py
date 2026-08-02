@@ -6,6 +6,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 
 from app.core.evaluation_models import EvaluationBatchCreateRequest, EvaluationBatch, EvaluationCase, EvaluationMember, EvaluationMetric, EvaluationReport, EvaluationRuntimeProfile, EvaluationSuiteManifest, HistoricalBenchmarkReport, HistoricalEvaluationCreateRequest
+from app.core.evaluation_models import EvaluationVerificationResult
 from app.core.models import RunJobCreateRequest, WarRoomScenarioRequest
 from app.services.consistency.hashing import stable_hash
 from app.services.project_store import connect, dumps, init_db, loads
@@ -308,6 +309,9 @@ class EvaluationService:
             blind_labels_redacted=True,
             report_hash=report_hash,
         )
+
+    def list_verification_results(self, batch_id: str) -> list[EvaluationVerificationResult]:
+        return list_verification_results(batch_id)
 
     def reconcile(self, *, worker_id: str | None = None) -> int:
         return reconcile_evaluation(self, worker_id=worker_id)

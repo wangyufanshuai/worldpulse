@@ -8,11 +8,14 @@ from app.services.consistency.hashing import stable_hash
 from app.services.consistency.actions import evaluate_action_proposals
 from app.services.agent_contract.models import AgentActionProposal, AgentConstraintContext
 from app.services.hybrid_simulation.runner import replay_hybrid_from_artifacts
+from app.services.negotiation import NegotiationReadApplicationPort, negotiation_read_service
 from app.services.negotiation.replay import replay_negotiation_from_storage
-from app.services.negotiation.repository import NegotiationRepository
 from app.services.project_store import connect, dumps, loads
 from app.services.reviews import create_review_case
 from app.services.run_lifecycle import repository as lifecycle_repository
+
+
+negotiation_read: NegotiationReadApplicationPort = negotiation_read_service
 
 
 VERIFIER_VERSION = "evaluation-artifact-verifier.v2"
@@ -164,7 +167,6 @@ def verify_member(
     # Engineering cases declare safety probes. Re-run the probe through the same
     # versioned consistency evaluator against persisted runtime context; it is not
     # an inferred pass based on completion.
-    probe_evidence = [by_type.get("agent_action_proposals")] if by_type.get("agent_action_proposals") else []
     with connect() as conn:
         case_row = conn.execute("SELECT safety_probes_json FROM evaluation_cases WHERE case_id = ?", (member.case_id,)).fetchone()
     probes = loads(case_row["safety_probes_json"], {}) if case_row else {}
@@ -308,10 +310,9 @@ def _action_records(run_id: str, mode: str, audit: dict[str, Any]) -> tuple[list
         projections = (audit.get("action_projection_audit") or {}).get("records", [])
         return proposals, decisions, projections
     if mode == "negotiation":
-        repo = NegotiationRepository()
-        session = repo.get_session(run_id)
-        messages = repo.list_messages(session.session_id)
-        rounds = repo.list_rounds(session.session_id)
+        session = negotiation_read.get_session(run_id)
+        messages = negotiation_read.list_messages(session.session_id)
+        rounds = negotiation_read.list_rounds(session.session_id)
         proposals = [item.payload["proposal"] for item in messages if item.payload.get("proposal")]
         decisions = [decision for item in rounds for decision in item.output.get("proposal_decisions", [])]
         applied = {proposal_id for item in rounds for proposal_id in item.output.get("applied_proposal_ids", [])}

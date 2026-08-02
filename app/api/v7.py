@@ -2,15 +2,21 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.core.negotiation_models import AgentPackManifest, NegotiationCommitment, NegotiationMessage, NegotiationRound
-from app.services.negotiation.repository import NegotiationRepository
+from app.core.negotiation_models import (
+    AgentPackManifest,
+    NegotiationCommitment,
+    NegotiationMessage,
+    NegotiationRound,
+    NegotiationSession,
+)
+from app.services.negotiation import NegotiationReadApplicationPort, negotiation_read_service
 
 
 router = APIRouter()
-repository = NegotiationRepository()
+repository: NegotiationReadApplicationPort = negotiation_read_service
 
 
-def _session(run_id: str):
+def _session(run_id: str) -> NegotiationSession:
     try:
         return repository.get_session(run_id)
     except KeyError as exc:
