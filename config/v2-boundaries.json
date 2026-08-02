@@ -2,7 +2,7 @@
   "schema_version": "worldpulse-v2-boundaries.v1",
   "contexts": {
     "identity": ["app.services.auth", "app.services.organizations"],
-    "evidence": ["app.services.evidence_registry", "app.services.ingestion"],
+    "evidence": ["app.services.evidence", "app.services.evidence_registry", "app.services.ingestion"],
     "scenario": ["app.services.scenario_compiler"],
     "world_model": ["app.services.simulation_data", "app.services.war_room.data"],
     "simulation": [
@@ -40,6 +40,18 @@
     {
       "import_prefix": "app.services.evidence_registry",
       "allowed_callers": ["app.services.evidence.application"]
+    },
+    {
+      "import_prefix": "app.services.evidence.repository",
+      "allowed_callers": ["app.services.evidence_registry"]
+    },
+    {
+      "import_prefix": "app.services.evidence.mappers",
+      "allowed_callers": ["app.services.evidence.repository", "app.services.evidence_registry"]
+    },
+    {
+      "import_prefix": "app.services.evidence.hashing",
+      "allowed_callers": ["app.services.evidence.mappers", "app.services.evidence_registry"]
     }
   ]
 }

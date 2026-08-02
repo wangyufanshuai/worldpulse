@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-import hashlib
-import json
-from typing import Iterable
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -16,15 +13,24 @@ from app.core.evidence_models import (
     EvidenceSearchResult,
     EvidenceSnapshot,
     EvidenceSnapshotCreate,
-    EvidenceSnapshotSummary,
     EvidenceSource,
     EvidenceSourceCreate,
     EvidenceSyncResult,
     ProjectEvidenceSummary,
 )
 from app.core.trust_models import UserIdentity
+from app.services.evidence.hashing import (
+    canonical_json as _canonical,
+    sha256_text as _sha256,
+    snapshot_digest as _snapshot_digest,
+)
+from app.services.evidence.mappers import snapshot_from_row
+from app.services.evidence.repository import EvidenceRepository
 from app.services.project_store import connect, dumps, init_db, loads
 from app.services.organizations import require_resource_scope, scope_resource, scoped_resource_ids
+
+
+_repository = EvidenceRepository()
 
 
 def create_source(payload: EvidenceSourceCreate, actor: UserIdentity, *, organization_id: str | None = None) -> EvidenceSource:
@@ -45,13 +51,8 @@ def create_source(payload: EvidenceSourceCreate, actor: UserIdentity, *, organiz
             )
     except Exception as exc:
         if "UNIQUE" in str(exc).upper():
-            with connect() as conn:
-                row = conn.execute(
-                    "SELECT * FROM evidence_sources WHERE source_type = ? AND locator = ?",
-                    (payload.source_type, payload.locator),
-                ).fetchone()
-            if row:
-                source = _source(row)
+            source = _repository.find_source(payload.source_type, payload.locator)
+            if source:
                 if organization_id:
                     scope_resource(organization_id, "evidence_source", source.source_id)
                 return source
@@ -62,35 +63,17 @@ def create_source(payload: EvidenceSourceCreate, actor: UserIdentity, *, organiz
 
 
 def list_sources(*, status: str | None = None, source_type: str | None = None, organization_id: str | None = None) -> list[EvidenceSource]:
-    init_db()
-    clauses, params = [], []
-    if status:
-        clauses.append("status = ?")
-        params.append(status)
-    if source_type:
-        clauses.append("source_type = ?")
-        params.append(source_type)
-    if organization_id:
-        identifiers = sorted(scoped_resource_ids(organization_id, "evidence_source"))
-        if not identifiers:
-            return []
-        clauses.append(f"source_id IN ({', '.join('?' for _ in identifiers)})")
-        params.extend(identifiers)
-    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
-    with connect() as conn:
-        rows = conn.execute(f"SELECT * FROM evidence_sources{where} ORDER BY created_at DESC", params).fetchall()
-    return [_source(row) for row in rows]
+    identifiers = sorted(scoped_resource_ids(organization_id, "evidence_source")) if organization_id else None
+    return _repository.list_sources(status=status, source_type=source_type, source_ids=identifiers)
 
 
 def get_source(source_id: str, *, organization_id: str | None = None) -> EvidenceSource:
-    init_db()
     if organization_id:
         require_resource_scope(organization_id, "evidence_source", source_id)
-    with connect() as conn:
-        row = conn.execute("SELECT * FROM evidence_sources WHERE source_id = ?", (source_id,)).fetchone()
-    if row is None:
+    source = _repository.get_source(source_id)
+    if source is None:
         raise HTTPException(status_code=404, detail=f"Unknown evidence source: {source_id}")
-    return _source(row)
+    return source
 
 
 def create_snapshot(
@@ -132,7 +115,7 @@ def create_snapshot(
                 (payload.source_id, payload.external_ref, content_hash),
             ).fetchone()
             if existing:
-                existing_snapshot = _snapshot(existing)
+                existing_snapshot = snapshot_from_row(existing)
             else:
                 if organization_id and not quota_reserved:
                     enforce_quota(organization_id, "evidence_snapshot", connection=conn)
@@ -149,13 +132,8 @@ def create_snapshot(
                 )
     except Exception as exc:
         if "UNIQUE" in str(exc).upper():
-            with connect() as conn:
-                row = conn.execute(
-                    "SELECT * FROM evidence_snapshots WHERE source_id = ? AND external_ref = ? AND content_hash = ?",
-                    (payload.source_id, payload.external_ref, content_hash),
-                ).fetchone()
-            if row:
-                snapshot = _snapshot(row)
+            snapshot = _repository.find_snapshot(payload.source_id, payload.external_ref, content_hash)
+            if snapshot:
                 if organization_id:
                     scope_resource(organization_id, "evidence_snapshot", snapshot.snapshot_id)
                 return snapshot
@@ -170,14 +148,12 @@ def create_snapshot(
 
 
 def get_snapshot(snapshot_id: str, *, organization_id: str | None = None) -> EvidenceSnapshot:
-    init_db()
     if organization_id:
         require_resource_scope(organization_id, "evidence_snapshot", snapshot_id)
-    with connect() as conn:
-        row = conn.execute("SELECT * FROM evidence_snapshots WHERE snapshot_id = ?", (snapshot_id,)).fetchone()
-    if row is None:
+    snapshot = _repository.get_snapshot(snapshot_id)
+    if snapshot is None:
         raise HTTPException(status_code=404, detail=f"Unknown evidence snapshot: {snapshot_id}")
-    return _snapshot(row)
+    return snapshot
 
 
 def create_claim(payload: EvidenceClaimCreate, actor: UserIdentity, *, organization_id: str | None = None) -> EvidenceClaim:
@@ -203,7 +179,6 @@ def create_claim(payload: EvidenceClaimCreate, actor: UserIdentity, *, organizat
     claim_hash = _sha256(_canonical(claim_material))
     claim_id = f"clm_{uuid4().hex[:20]}"
     now = _now()
-    created = True
     try:
         with connect() as conn:
             conn.execute(
@@ -219,12 +194,10 @@ def create_claim(payload: EvidenceClaimCreate, actor: UserIdentity, *, organizat
     except Exception as exc:
         if "UNIQUE" not in str(exc).upper():
             raise
-        created = False
-        with connect() as conn:
-            row = conn.execute("SELECT claim_id FROM evidence_claims WHERE claim_hash = ?", (claim_hash,)).fetchone()
-        if row is None:
+        existing_claim_id = _repository.find_claim_id(claim_hash)
+        if existing_claim_id is None:
             raise
-        claim_id = row["claim_id"]
+        claim_id = existing_claim_id
     for snapshot in snapshots:
         _link_claim(claim_id, snapshot.snapshot_id, payload.relation, "", "", {})
     if organization_id:
@@ -233,68 +206,37 @@ def create_claim(payload: EvidenceClaimCreate, actor: UserIdentity, *, organizat
 
 
 def get_claim(claim_id: str, *, organization_id: str | None = None) -> EvidenceClaim:
-    init_db()
     if organization_id:
         require_resource_scope(organization_id, "evidence_claim", claim_id)
-    with connect() as conn:
-        row = conn.execute("SELECT * FROM evidence_claims WHERE claim_id = ?", (claim_id,)).fetchone()
-        links = conn.execute(
-            "SELECT snapshot_id, relation, citation_label, excerpt, locator_json FROM evidence_links WHERE claim_id = ? ORDER BY created_at",
-            (claim_id,),
-        ).fetchall()
-    if row is None:
+    claim = _repository.get_claim(claim_id)
+    if claim is None:
         raise HTTPException(status_code=404, detail=f"Unknown evidence claim: {claim_id}")
-    return _claim(row, links)
+    return claim
 
 
 def search_evidence(
     *, query: str = "", project_id: str | None = None, category: str | None = None,
     cutoff_at: str | None = None, limit: int = 50, organization_id: str | None = None,
 ) -> EvidenceSearchResult:
-    init_db()
     limit = max(1, min(limit, 200))
     normalized_cutoff = _normalize_time(cutoff_at) if cutoff_at else None
-    snapshot_clauses, snapshot_params = [], []
-    claim_clauses, claim_params = [], []
-    if organization_id:
-        snapshot_ids = sorted(scoped_resource_ids(organization_id, "evidence_snapshot"))
-        claim_ids = sorted(scoped_resource_ids(organization_id, "evidence_claim"))
-        snapshot_clauses.append(f"snapshot_id IN ({', '.join('?' for _ in snapshot_ids)})" if snapshot_ids else "1 = 0")
-        claim_clauses.append(f"claim_id IN ({', '.join('?' for _ in claim_ids)})" if claim_ids else "1 = 0")
-        snapshot_params.extend(snapshot_ids)
-        claim_params.extend(claim_ids)
-    if project_id:
-        snapshot_clauses.append("project_id = ?")
-        claim_clauses.append("project_id = ?")
-        snapshot_params.append(project_id)
-        claim_params.append(project_id)
-    if category:
-        snapshot_clauses.append("category = ?")
-        snapshot_params.append(category)
-    if normalized_cutoff:
-        snapshot_clauses.extend(["observed_at <= ?", "cutoff_at <= ?"])
-        snapshot_params.extend([normalized_cutoff, normalized_cutoff])
-        claim_clauses.append("cutoff_at <= ?")
-        claim_params.append(normalized_cutoff)
-    if query.strip():
-        token = f"%{query.strip()}%"
-        snapshot_clauses.append("(title LIKE ? OR content_text LIKE ? OR external_ref LIKE ?)")
-        snapshot_params.extend([token, token, token])
-        claim_clauses.append("statement LIKE ?")
-        claim_params.append(token)
-    snapshot_where = f" WHERE {' AND '.join(snapshot_clauses)}" if snapshot_clauses else ""
-    claim_where = f" WHERE {' AND '.join(claim_clauses)}" if claim_clauses else ""
-    with connect() as conn:
-        snapshot_rows = conn.execute(
-            f"SELECT * FROM evidence_snapshots{snapshot_where} ORDER BY cutoff_at DESC, captured_at DESC LIMIT ?",
-            [*snapshot_params, limit],
-        ).fetchall()
-        claim_rows = conn.execute(
-            f"SELECT * FROM evidence_claims{claim_where} ORDER BY cutoff_at DESC, created_at DESC LIMIT ?",
-            [*claim_params, limit],
-        ).fetchall()
-    snapshots = [_snapshot_summary(row) for row in snapshot_rows]
-    claims = [get_claim(row["claim_id"], organization_id=organization_id) for row in claim_rows]
+    snapshot_ids = sorted(scoped_resource_ids(organization_id, "evidence_snapshot")) if organization_id else None
+    claim_ids = sorted(scoped_resource_ids(organization_id, "evidence_claim")) if organization_id else None
+    snapshots = _repository.search_snapshots(
+        query=query,
+        project_id=project_id,
+        category=category,
+        cutoff_at=normalized_cutoff,
+        limit=limit,
+        snapshot_ids=snapshot_ids,
+    )
+    claims = _repository.search_claims(
+        query=query,
+        project_id=project_id,
+        cutoff_at=normalized_cutoff,
+        limit=limit,
+        claim_ids=claim_ids,
+    )
     return EvidenceSearchResult(query=query, cutoff_at=normalized_cutoff, total=len(snapshots) + len(claims), snapshots=snapshots, claims=claims)
 
 
@@ -353,12 +295,11 @@ def create_pack(payload: EvidencePackCreate, actor: UserIdentity, *, organizatio
                 )
     except Exception as exc:
         if "UNIQUE" in str(exc).upper():
-            with connect() as conn:
-                row = conn.execute("SELECT pack_id FROM evidence_packs WHERE manifest_hash = ?", (manifest_hash,)).fetchone()
-            if row:
+            existing_pack_id = _repository.find_pack_id(manifest_hash)
+            if existing_pack_id:
                 if organization_id:
-                    scope_resource(organization_id, "evidence_pack", row["pack_id"])
-                return get_pack(row["pack_id"], organization_id=organization_id)
+                    scope_resource(organization_id, "evidence_pack", existing_pack_id)
+                return get_pack(existing_pack_id, organization_id=organization_id)
         raise
     if organization_id:
         scope_resource(organization_id, "evidence_pack", pack_id)
@@ -366,14 +307,11 @@ def create_pack(payload: EvidencePackCreate, actor: UserIdentity, *, organizatio
 
 
 def get_pack(pack_id: str, *, organization_id: str | None = None) -> EvidencePack:
-    init_db()
     if organization_id:
         require_resource_scope(organization_id, "evidence_pack", pack_id)
-    with connect() as conn:
-        row = conn.execute("SELECT * FROM evidence_packs WHERE pack_id = ?", (pack_id,)).fetchone()
-    if row is None:
+    pack = _repository.get_pack(pack_id)
+    if pack is None:
         raise HTTPException(status_code=404, detail=f"Unknown evidence pack: {pack_id}")
-    pack = _pack(row)
     if _sha256(_canonical(pack.manifest)) != pack.manifest_hash:
         raise HTTPException(status_code=409, detail="Evidence pack integrity verification failed")
     return pack
@@ -495,93 +433,42 @@ def sync_calibration_evidence(actor: UserIdentity, *, organization_id: str | Non
 
 
 def project_evidence_summary(project_id: str) -> ProjectEvidenceSummary:
-    init_db()
     _require_project(project_id)
-    with connect() as conn:
-        counts = conn.execute(
-            """
-            SELECT
-              (SELECT COUNT(*) FROM evidence_snapshots WHERE project_id = ?) AS snapshots,
-              (SELECT COUNT(*) FROM evidence_claims WHERE project_id = ?) AS claims,
-              (SELECT COUNT(DISTINCT c.claim_id) FROM evidence_claims c JOIN evidence_links l ON l.claim_id = c.claim_id WHERE c.project_id = ?) AS linked_claims,
-              (SELECT COUNT(*) FROM evidence_packs WHERE project_id = ?) AS packs,
-              (SELECT MAX(cutoff_at) FROM evidence_snapshots WHERE project_id = ?) AS latest_cutoff
-            """, (project_id, project_id, project_id, project_id, project_id),
-        ).fetchone()
-        source_rows = conn.execute(
-            "SELECT DISTINCT s.* FROM evidence_sources s JOIN evidence_snapshots e ON e.source_id = s.source_id WHERE e.project_id = ? ORDER BY s.name",
-            (project_id,),
-        ).fetchall()
-        snapshot_rows = conn.execute("SELECT * FROM evidence_snapshots WHERE project_id = ? ORDER BY cutoff_at DESC, captured_at DESC LIMIT 20", (project_id,)).fetchall()
-        claim_rows = conn.execute("SELECT claim_id FROM evidence_claims WHERE project_id = ? ORDER BY cutoff_at DESC, created_at DESC LIMIT 20", (project_id,)).fetchall()
-        pack_row = conn.execute("SELECT * FROM evidence_packs WHERE project_id = ? ORDER BY created_at DESC LIMIT 1", (project_id,)).fetchone()
-    snapshots = [_snapshot_summary(row) for row in snapshot_rows]
+    read_model = _repository.project_read_model(project_id)
+    snapshots = read_model.recent_snapshots
     failed = [item for item in snapshots if item.integrity_status == "failed"]
-    claims = int(counts["claims"] or 0)
-    linked = int(counts["linked_claims"] or 0)
+    claims = read_model.claim_count
+    linked = read_model.linked_claim_count
     return ProjectEvidenceSummary(
-        project_id=project_id, source_count=len(source_rows), snapshot_count=int(counts["snapshots"] or 0),
-        claim_count=claims, linked_claim_count=linked, pack_count=int(counts["packs"] or 0),
+        project_id=project_id, source_count=len(read_model.sources), snapshot_count=read_model.snapshot_count,
+        claim_count=claims, linked_claim_count=linked, pack_count=read_model.pack_count,
         coverage=round(linked / claims, 4) if claims else 0.0,
         integrity_status="failed" if failed else "verified" if snapshots else "empty",
         cutoff_safe=not any(_as_datetime(item.observed_at) > _as_datetime(item.cutoff_at) for item in snapshots),
-        latest_cutoff_at=counts["latest_cutoff"], latest_pack=_pack(pack_row) if pack_row else None,
-        sources=[_source(row) for row in source_rows], recent_snapshots=snapshots,
-        recent_claims=[get_claim(row["claim_id"]) for row in claim_rows], generated_at=_now(),
+        latest_cutoff_at=read_model.latest_cutoff_at, latest_pack=read_model.latest_pack,
+        sources=read_model.sources, recent_snapshots=snapshots,
+        recent_claims=read_model.recent_claims, generated_at=_now(),
     )
 
 
 def evidence_manifest_for_run(project_id: str, run_id: str) -> dict | None:
-    init_db()
-    with connect() as conn:
-        pack = conn.execute("SELECT * FROM evidence_packs WHERE project_id = ? AND (run_id = ? OR run_id IS NULL) ORDER BY created_at DESC LIMIT 1", (project_id, run_id)).fetchone()
-        snapshots = conn.execute(
-            """
-            SELECT e.snapshot_id, e.content_hash, e.cutoff_at
-            FROM evidence_snapshots e JOIN evidence_sources s ON s.source_id = e.source_id
-            WHERE e.project_id = ? AND (e.external_ref = ? OR s.metadata_json LIKE ?)
-            ORDER BY e.captured_at
-            """,
-            (project_id, run_id, f'%"run_id": "{run_id}"%'),
-        ).fetchall()
-    if not pack and not snapshots:
+    read_model = _repository.manifest_read_model(project_id, run_id)
+    if read_model is None:
         return None
     return {
         "schema_version": "evidence-manifest.v1",
-        "pack_id": pack["pack_id"] if pack else None,
-        "pack_hash": pack["manifest_hash"] if pack else None,
-        "snapshot_hashes": {row["snapshot_id"]: row["content_hash"] for row in snapshots},
-        "cutoff_at": max((row["cutoff_at"] for row in snapshots), default=pack["cutoff_at"] if pack else None),
+        "pack_id": read_model.pack_id,
+        "pack_hash": read_model.pack_hash,
+        "snapshot_hashes": read_model.snapshot_hashes,
+        "cutoff_at": max(read_model.snapshot_cutoffs, default=read_model.pack_cutoff_at),
         "integrity": "verified",
     }
 
 
 def _scope_project_evidence(organization_id: str, project_id: str) -> None:
-    with connect() as conn:
-        source_rows = conn.execute(
-            "SELECT DISTINCT source_id FROM evidence_snapshots WHERE project_id = ?",
-            (project_id,),
-        ).fetchall()
-        snapshot_rows = conn.execute(
-            "SELECT snapshot_id FROM evidence_snapshots WHERE project_id = ?",
-            (project_id,),
-        ).fetchall()
-        claim_rows = conn.execute(
-            "SELECT claim_id FROM evidence_claims WHERE project_id = ?",
-            (project_id,),
-        ).fetchall()
-        pack_rows = conn.execute(
-            "SELECT pack_id FROM evidence_packs WHERE project_id = ?",
-            (project_id,),
-        ).fetchall()
-    for resource_type, rows, key in (
-        ("evidence_source", source_rows, "source_id"),
-        ("evidence_snapshot", snapshot_rows, "snapshot_id"),
-        ("evidence_claim", claim_rows, "claim_id"),
-        ("evidence_pack", pack_rows, "pack_id"),
-    ):
-        for row in rows:
-            scope_resource(organization_id, resource_type, row[key])
+    for resource_type, identifiers in _repository.project_resource_ids(project_id).items():
+        for identifier in identifiers:
+            scope_resource(organization_id, resource_type, identifier)
 
 
 def _link_claim(claim_id: str, snapshot_id: str, relation: str, citation_label: str, excerpt: str, locator: dict) -> bool:
@@ -599,55 +486,6 @@ def _link_claim(claim_id: str, snapshot_id: str, relation: str, citation_label: 
         raise
 
 
-def _source(row) -> EvidenceSource:
-    return EvidenceSource(
-        source_id=row["source_id"], source_type=row["source_type"], name=row["name"], locator=row["locator"],
-        publisher=row["publisher"], status=row["status"], trust_tier=row["trust_tier"],
-        metadata=loads(row["metadata_json"], {}), created_by_user_id=row["created_by_user_id"],
-        created_at=row["created_at"], retired_at=row["retired_at"],
-    )
-
-
-def _snapshot(row) -> EvidenceSnapshot:
-    content = loads(row["content_json"], {})
-    integrity = "verified" if _snapshot_digest(
-        row["source_id"], row["project_id"], row["external_ref"], row["title"], row["category"],
-        _canonical(content), row["observed_at"], row["cutoff_at"],
-    ) == row["content_hash"] else "failed"
-    return EvidenceSnapshot(
-        snapshot_id=row["snapshot_id"], source_id=row["source_id"], project_id=row["project_id"],
-        external_ref=row["external_ref"], title=row["title"], category=row["category"], content=content,
-        content_text=row["content_text"], observed_at=row["observed_at"], cutoff_at=row["cutoff_at"],
-        captured_at=row["captured_at"], content_hash=row["content_hash"], created_by_user_id=row["created_by_user_id"],
-        integrity_status=integrity,
-    )
-
-
-def _snapshot_summary(row) -> EvidenceSnapshotSummary:
-    full = _snapshot(row)
-    return EvidenceSnapshotSummary(**full.model_dump(exclude={"content", "content_text"}))
-
-
-def _claim(row, links: Iterable | None = None) -> EvidenceClaim:
-    return EvidenceClaim(
-        claim_id=row["claim_id"], project_id=row["project_id"], run_id=row["run_id"], statement=row["statement"],
-        claim_type=row["claim_type"], confidence=float(row["confidence"]), valid_from=row["valid_from"], valid_to=row["valid_to"],
-        cutoff_at=row["cutoff_at"], claim_hash=row["claim_hash"], created_by_user_id=row["created_by_user_id"],
-        created_at=row["created_at"], links=[{
-            "snapshot_id": item["snapshot_id"], "relation": item["relation"], "citation_label": item["citation_label"],
-            "excerpt": item["excerpt"], "locator": loads(item["locator_json"], {}),
-        } for item in (links or [])],
-    )
-
-
-def _pack(row) -> EvidencePack:
-    return EvidencePack(
-        pack_id=row["pack_id"], project_id=row["project_id"], run_id=row["run_id"], name=row["name"],
-        cutoff_at=row["cutoff_at"], manifest=loads(row["manifest_json"], {}), manifest_hash=row["manifest_hash"],
-        created_by_user_id=row["created_by_user_id"], created_at=row["created_at"],
-    )
-
-
 def _require_project(project_id: str) -> None:
     with connect() as conn:
         row = conn.execute("SELECT 1 FROM research_projects WHERE project_id = ?", (project_id,)).fetchone()
@@ -656,41 +494,11 @@ def _require_project(project_id: str) -> None:
 
 
 def _counts(project_id: str) -> dict[str, int]:
-    with connect() as conn:
-        row = conn.execute(
-            """SELECT
-            (SELECT COUNT(DISTINCT source_id) FROM evidence_snapshots WHERE project_id = ?) sources,
-            (SELECT COUNT(*) FROM evidence_snapshots WHERE project_id = ?) snapshots,
-            (SELECT COUNT(*) FROM evidence_claims WHERE project_id = ?) claims,
-            (SELECT COUNT(*) FROM evidence_links l JOIN evidence_claims c ON c.claim_id = l.claim_id WHERE c.project_id = ?) links""",
-            (project_id, project_id, project_id, project_id),
-        ).fetchone()
-    return {key: int(row[key] or 0) for key in ("sources", "snapshots", "claims", "links")}
+    return _repository.project_counts(project_id)
 
 
 def _global_counts() -> dict[str, int]:
-    with connect() as conn:
-        row = conn.execute("SELECT (SELECT COUNT(*) FROM evidence_sources) sources, (SELECT COUNT(*) FROM evidence_snapshots) snapshots").fetchone()
-    return {"sources": int(row["sources"]), "snapshots": int(row["snapshots"])}
-
-
-def _canonical(value: dict) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
-def _sha256(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def _snapshot_digest(
-    source_id: str, project_id: str | None, external_ref: str, title: str, category: str,
-    canonical_content: str, observed_at: str, cutoff_at: str,
-) -> str:
-    return _sha256(_canonical({
-        "schema_version": "evidence-snapshot.v1", "source_id": source_id, "project_id": project_id,
-        "external_ref": external_ref, "title": title, "category": category,
-        "content": json.loads(canonical_content), "observed_at": observed_at, "cutoff_at": cutoff_at,
-    }))
+    return _repository.global_counts()
 
 
 def _normalize_time(value: str | None) -> str:
