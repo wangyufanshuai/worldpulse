@@ -85,6 +85,18 @@
     {
       "import_prefix": "app.services.run_lifecycle.read_models",
       "allowed_callers": ["app.services.run_lifecycle.repository"]
+    },
+    {
+      "import_prefix": "app.services.project_app.service",
+      "allowed_callers": ["app.services.projects", "app.services.project_app.application"]
+    },
+    {
+      "import_prefix": "app.services.project_app.repository",
+      "allowed_callers": [
+        "app.services.project_app.service",
+        "app.services.project_app.project_queries",
+        "app.services.project_app.run_queries"
+      ]
     }
   ]
 }

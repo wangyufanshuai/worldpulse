@@ -28,7 +28,8 @@ def test_project_repository_owns_row_mapping_helpers():
 def test_routes_and_worker_depend_only_on_public_project_facade():
     route_source = inspect.getsource(routes)
     worker_source = inspect.getsource(executor)
-    assert "from app.services.projects import" in route_source
+    assert "ResearchWorkspaceApplicationPort" in route_source
+    assert "research_workspace_service" in route_source
     assert "from app.services.projects import" in worker_source
     assert "app.services.project_app.service" not in route_source
     assert "app.services.project_app.service" not in worker_source

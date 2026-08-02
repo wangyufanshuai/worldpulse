@@ -19,10 +19,11 @@ from app.core.organization_models import (
 from app.core.models import ResearchProject, ResearchProjectCreate
 from app.services.auth import ensure_system_user
 from app.services import ingestion, organizations
-from app.services.projects import create_project, list_projects
+from app.services.project_app import ResearchWorkspaceApplicationPort, research_workspace_service
 
 
 router = APIRouter()
+project_service: ResearchWorkspaceApplicationPort = research_workspace_service
 
 
 def _actor(request: Request):
@@ -57,13 +58,13 @@ def organization_member_add(organization_id: str, payload: OrganizationMemberAdd
 @router.get("/organizations/{organization_id}/projects", response_model=list[ResearchProject])
 def organization_project_list(organization_id: str, request: Request, limit: int = Query(default=50, ge=1, le=100)) -> list[ResearchProject]:
     organizations.require_organization_role(organization_id, _actor(request), {"owner", "admin", "analyst", "reviewer", "viewer"})
-    return list_projects(limit=limit, organization_id=organization_id)
+    return project_service.list_projects(limit=limit, organization_id=organization_id)
 
 
 @router.post("/organizations/{organization_id}/projects", response_model=ResearchProject)
 def organization_project_create(organization_id: str, payload: ResearchProjectCreate, request: Request) -> ResearchProject:
     organizations.require_organization_role(organization_id, _actor(request), organizations.ORG_WRITE_ROLES)
-    return create_project(payload, organization_id=organization_id)
+    return project_service.create_project(payload, organization_id=organization_id)
 
 
 @router.get("/organizations/{organization_id}/ingestion/policies", response_model=list[IngestionPolicy])

@@ -63,23 +63,7 @@ from app.services.causal_data import build_causal_events, select_event
 from app.services.causal_graph import build_causal_chain
 from app.services.event_digest import build_agent_event_digest, build_event_digest
 from app.services.exports import alerts_csv, indicators_csv, replay_csv, risk_history_csv, species_occurrences_csv
-from app.services.projects import (
-    chat_with_project,
-    compare_project_runs,
-    create_project,
-    edit_project_graph,
-    get_project_detail,
-    latest_project_graph,
-    latest_project_report,
-    list_projects,
-    project_run_detail,
-    project_run_citations,
-    project_runs,
-    run_project_war_room,
-    war_room_replay_pack,
-    war_room_workspace,
-    run_project,
-)
+from app.services.project_app import ResearchWorkspaceApplicationPort, research_workspace_service
 from app.services.operations import platform_readiness
 from app.services.report import export_report, render_report
 from app.services.run_lifecycle import RunControlApplicationPort, run_control_service
@@ -94,6 +78,7 @@ from app.services.reviews import review_run_diff_if_material
 from app.version import version_info
 
 router = APIRouter()
+project_service: ResearchWorkspaceApplicationPort = research_workspace_service
 run_lifecycle: RunControlApplicationPort = run_control_service
 
 
@@ -118,27 +103,27 @@ def version() -> dict[str, str]:
 
 @router.post("/projects", response_model=ResearchProject)
 def research_project_create(payload: ResearchProjectCreate, request: Request) -> ResearchProject:
-    return create_project(payload, organization_id=getattr(request.state, "organization_id", "org_default"))
+    return project_service.create_project(payload, organization_id=getattr(request.state, "organization_id", "org_default"))
 
 
 @router.get("/projects", response_model=list[ResearchProject])
 def research_project_list(request: Request, limit: int = 50) -> list[ResearchProject]:
-    return list_projects(limit=limit, organization_id=getattr(request.state, "organization_id", None))
+    return project_service.list_projects(limit=limit, organization_id=getattr(request.state, "organization_id", None))
 
 
 @router.get("/projects/{project_id}", response_model=ProjectDetail)
 def research_project_detail(project_id: str) -> ProjectDetail:
-    return get_project_detail(project_id)
+    return project_service.get_project_detail(project_id)
 
 
 @router.post("/projects/{project_id}/run", response_model=ProjectDetail)
 def research_project_run(project_id: str, mode: str = "fast") -> ProjectDetail:
-    return run_project(project_id, mode=mode)
+    return project_service.run_project(project_id, mode=mode)
 
 
 @router.post("/projects/{project_id}/war-room/run", response_model=ProjectDetail)
 def research_project_war_room_run(project_id: str, request: WarRoomScenarioRequest) -> ProjectDetail:
-    return run_project_war_room(project_id, request)
+    return project_service.run_project_war_room(project_id, request)
 
 
 @router.post("/v2/projects/{project_id}/runs", response_model=RunJobStatus)
@@ -214,54 +199,54 @@ def lifecycle_health_summary() -> LifecycleHealthSummary:
 
 @router.get("/projects/{project_id}/war-room/replay-pack", response_model=WarRoomReplayPack)
 def research_project_war_room_replay_pack(project_id: str, run_id: str | None = None, base_run_id: str | None = None, target_run_id: str | None = None) -> WarRoomReplayPack:
-    return war_room_replay_pack(project_id, run_id=run_id, base_run_id=base_run_id, target_run_id=target_run_id)
+    return project_service.war_room_replay_pack(project_id, run_id=run_id, base_run_id=base_run_id, target_run_id=target_run_id)
 
 
 @router.get("/projects/{project_id}/war-room/workspace", response_model=WarRoomWorkspaceState)
 def research_project_war_room_workspace(project_id: str, run_id: str | None = None) -> WarRoomWorkspaceState:
-    return war_room_workspace(project_id, run_id=run_id)
+    return project_service.war_room_workspace(project_id, run_id=run_id)
 
 
 @router.get("/projects/{project_id}/runs", response_model=list[ResearchRun])
 def research_project_runs(project_id: str) -> list[ResearchRun]:
-    return project_runs(project_id)
+    return project_service.project_runs(project_id)
 
 
 @router.get("/projects/{project_id}/runs/compare", response_model=ResearchRunDiff)
 def research_project_run_compare(project_id: str, base_run_id: str, target_run_id: str) -> ResearchRunDiff:
-    result = compare_project_runs(project_id, base_run_id=base_run_id, target_run_id=target_run_id)
+    result = project_service.compare_project_runs(project_id, base_run_id=base_run_id, target_run_id=target_run_id)
     review_run_diff_if_material(project_id, result.model_dump(mode="json"))
     return result
 
 
 @router.get("/projects/{project_id}/runs/{run_id}", response_model=ProjectDetail)
 def research_project_run_detail(project_id: str, run_id: str) -> ProjectDetail:
-    return project_run_detail(project_id, run_id)
+    return project_service.project_run_detail(project_id, run_id)
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/citations", response_model=list[ReportCitation])
 def research_project_run_citations(project_id: str, run_id: str) -> list[ReportCitation]:
-    return project_run_citations(project_id, run_id)
+    return project_service.project_run_citations(project_id, run_id)
 
 
 @router.get("/projects/{project_id}/graph", response_model=CausalGraphSnapshot)
 def research_project_graph(project_id: str) -> CausalGraphSnapshot:
-    return latest_project_graph(project_id)
+    return project_service.latest_project_graph(project_id)
 
 
 @router.patch("/projects/{project_id}/graph", response_model=ProjectDetail)
 def research_project_graph_edit(project_id: str, request: GraphEditRequest) -> ProjectDetail:
-    return edit_project_graph(project_id, request)
+    return project_service.edit_project_graph(project_id, request)
 
 
 @router.get("/projects/{project_id}/report", response_model=ProjectAIReport)
 def research_project_report(project_id: str) -> ProjectAIReport:
-    return latest_project_report(project_id)
+    return project_service.latest_project_report(project_id)
 
 
 @router.post("/projects/{project_id}/chat", response_model=ProjectChatMessage)
 def research_project_chat(project_id: str, request: ProjectChatRequest) -> ProjectChatMessage:
-    return chat_with_project(project_id, request)
+    return project_service.chat_with_project(project_id, request)
 
 
 @router.get("/risk/latest", response_model=CompositeRisk)
