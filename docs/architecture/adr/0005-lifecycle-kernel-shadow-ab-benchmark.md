@@ -19,8 +19,9 @@ boundaries:
   Rule Pack hash;
 - `RunControlApplicationPort.process_one_queued_job()` executes the existing
   deterministic lifecycle and SQLite Artifact writes;
-- `RunArtifactStorePort.get_latest_artifact_content()` exposes the stored
-  `war_room_result` through the Run Control boundary;
+- the Run Control compatibility repository's verified
+  `get_latest_artifact_content()` read exposes the stored `war_room_result`
+  without direct SQL in the benchmark;
 - `WorldModelApplicationPort.war_room_presets()` supplies the public day-zero
   World Model input required by the shadow adapter.
 
