@@ -7,6 +7,7 @@
     "world_model": ["app.services.world_model", "app.services.simulation_data", "app.services.war_room.data"],
     "simulation": [
       "app.services.simulation_runtime",
+      "app.services.simulation_kernel",
       "app.services.simulation_engine",
       "app.services.agent_runtime",
       "app.services.consistency",
