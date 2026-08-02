@@ -7,6 +7,7 @@ import pytest
 
 from app.services.simulation_kernel import (
     Checkpoint,
+    CompiledTransition,
     DeterministicClock,
     Entity,
     EventEnvelope,
@@ -15,13 +16,16 @@ from app.services.simulation_kernel import (
     ReplayRequest,
     StateChange,
     StateDelta,
+    TransitionIntegrityError,
     WorldState,
     branch_world_state,
+    compile_deterministic_transition,
     replay_state,
     SimulationKernelApplicationPort,
     simulation_kernel_service,
 )
 from app.services.simulation_kernel import contracts as kernel_contracts
+from app.services.simulation_kernel import transitions as kernel_transitions
 
 
 def _initial_state() -> WorldState:
@@ -94,6 +98,13 @@ def test_agent_and_action_adapter_numeric_writes_fail_closed():
         )
 
 
+def test_world_state_rejects_cross_run_delta_even_with_valid_parent_hash():
+    state = _initial_state()
+    foreign_delta = _delta(state).model_copy(update={"run_id": "run_kernel_foreign"})
+    with pytest.raises(ValueError, match="run id does not match"):
+        state.apply_delta(foreign_delta)
+
+
 def test_provider_free_replay_verifies_event_and_state_hashes():
     initial = _initial_state()
     delta = _delta(initial)
@@ -115,6 +126,93 @@ def test_provider_free_replay_verifies_event_and_state_hashes():
         replay_state(initial, [(tampered, delta)], ReplayRequest(checkpoint_id="cp_1"))
     with pytest.raises(ValueError, match="stored_only"):
         ReplayRequest(checkpoint_id="cp_1", provider_policy="provider_allowed")
+
+
+def test_transition_compiler_builds_canonical_delta_event_and_replay():
+    initial = _initial_state()
+    target_entity = initial.entities["country:USA"].model_copy(
+        update={"components": {"sentiment_pressure": 37, "risk_score": 45}}
+    )
+    target = initial.model_copy(update={"tick": 1, "entities": {"country:USA": target_entity}})
+
+    compiled: CompiledTransition = compile_deterministic_transition(
+        initial,
+        target,
+        event_id="evt_compiled_1",
+        sequence=1,
+        reducer_version="deterministic-compiler-test.v1",
+    )
+    assert [(change.entity_id, change.component) for change in compiled.delta.changes] == [
+        ("country:USA", "risk_score"),
+        ("country:USA", "sentiment_pressure"),
+    ]
+    assert compiled.event.delta_hash == compiled.delta.content_hash()
+    assert compiled.event.output_state_hash == target.content_hash()
+    replayed = replay_state(
+        initial,
+        [(compiled.event, compiled.delta)],
+        ReplayRequest(checkpoint_id="cp_compiled_1"),
+    )
+    assert replayed.content_hash() == target.content_hash()
+
+
+def test_transition_compiler_supports_hash_verified_no_op_ticks():
+    initial = _initial_state()
+    advanced = initial.model_copy(update={"tick": 1})
+    compiled = compile_deterministic_transition(
+        initial,
+        advanced,
+        event_id="evt_no_op",
+        sequence=1,
+        reducer_version="deterministic-compiler-test.v1",
+    )
+    assert compiled.delta.changes == ()
+    assert initial.apply_delta(compiled.delta).content_hash() == advanced.content_hash()
+
+
+def test_transition_compiler_fails_closed_on_metadata_and_topology_ambiguity():
+    initial = _initial_state()
+    advanced = initial.model_copy(update={"tick": 1})
+
+    with pytest.raises(TransitionIntegrityError, match="seed mismatch"):
+        compile_deterministic_transition(
+            initial,
+            advanced.model_copy(update={"seed": 18}),
+            event_id="evt_seed",
+            sequence=1,
+            reducer_version="deterministic-compiler-test.v1",
+        )
+
+    removed_component = initial.entities["country:USA"].model_copy(
+        update={"components": {"risk_score": 41}}
+    )
+    with pytest.raises(TransitionIntegrityError, match="cannot remove components"):
+        compile_deterministic_transition(
+            initial,
+            advanced.model_copy(update={"entities": {"country:USA": removed_component}}),
+            event_id="evt_removed",
+            sequence=1,
+            reducer_version="deterministic-compiler-test.v1",
+        )
+
+    with pytest.raises(TransitionIntegrityError, match="entity topology mismatch"):
+        compile_deterministic_transition(
+            initial,
+            advanced.model_copy(update={"entities": {}}),
+            event_id="evt_topology",
+            sequence=1,
+            reducer_version="deterministic-compiler-test.v1",
+        )
+
+    changed_type = initial.entities["country:USA"].model_copy(update={"entity_type": "organization"})
+    with pytest.raises(TransitionIntegrityError, match="entity type mismatch"):
+        compile_deterministic_transition(
+            initial,
+            advanced.model_copy(update={"entities": {"country:USA": changed_type}}),
+            event_id="evt_entity_type",
+            sequence=1,
+            reducer_version="deterministic-compiler-test.v1",
+        )
 
 
 def test_checkpoint_branch_does_not_mutate_parent():
@@ -145,6 +243,11 @@ def test_kernel_contracts_are_provider_and_storage_free():
     assert "project_store" not in source
     assert "requests" not in source
 
+    transition_source = inspect.getsource(kernel_transitions)
+    assert "agent_runtime" not in transition_source
+    assert "project_store" not in transition_source
+    assert "requests" not in transition_source
+
 
 def test_kernel_application_port_is_pure_and_public():
     port: SimulationKernelApplicationPort = simulation_kernel_service
@@ -153,6 +256,7 @@ def test_kernel_application_port_is_pure_and_public():
     assert port.apply_delta(state, delta).tick == 1
     assert callable(port.replay)
     assert callable(port.branch)
+    assert callable(port.compile_transition)
 
 
 def test_kernel_hash_contract_has_a_small_local_budget():

@@ -12,6 +12,11 @@ from .contracts import (
     WorldState,
 )
 from .replay import ReplayIntegrityError, replay_state
+from .transitions import (
+    CompiledTransition,
+    TransitionIntegrityError,
+    compile_deterministic_transition,
+)
 from .war_room_projection import (
     DETERMINISTIC_AUTHORITY_OWNER,
     PROJECTION_SCHEMA_VERSION,
@@ -22,6 +27,7 @@ from .war_room_projection import (
 
 __all__ = [
     "Checkpoint",
+    "CompiledTransition",
     "DeterministicClock",
     "Entity",
     "EventEnvelope",
@@ -34,6 +40,7 @@ __all__ = [
     "SimulationKernelApplicationService",
     "WorldState",
     "branch_world_state",
+    "compile_deterministic_transition",
     "replay_state",
     "DETERMINISTIC_AUTHORITY_OWNER",
     "PROJECTION_SCHEMA_VERSION",
@@ -41,4 +48,5 @@ __all__ = [
     "build_war_room_projection",
     "project_war_room_run",
     "simulation_kernel_service",
+    "TransitionIntegrityError",
 ]

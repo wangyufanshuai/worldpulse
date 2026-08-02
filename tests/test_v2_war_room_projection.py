@@ -12,18 +12,22 @@ from app.services.consistency.hashing import stable_hash
 from app.services.simulation_kernel import (
     Checkpoint,
     EventEnvelope,
+    ExperimentBranch,
     ReplayRequest,
     StateChange,
     StateDelta,
     build_war_room_projection,
+    branch_world_state,
     project_war_room_run,
     replay_state,
+    simulation_kernel_service,
 )
 from app.services.simulation_kernel import war_room_projection
 from app.services.war_room_engine import run_war_room
 
 
 RULE_PACK_HASH = "a" * 64
+GOLDEN_FIXTURES = sorted(Path("tests/golden_scenarios").glob("*.json"))
 
 
 def _result() -> WarRoomRun:
@@ -102,7 +106,7 @@ def test_projection_fails_closed_on_ambiguous_v1_entities():
         )
 
 
-@pytest.mark.parametrize("fixture_path", [Path("tests/golden_scenarios/01_strait_baseline.json")])
+@pytest.mark.parametrize("fixture_path", GOLDEN_FIXTURES, ids=lambda path: path.stem)
 def test_projection_keeps_golden_scenario_output_unchanged(fixture_path: Path):
     record = json.loads(fixture_path.read_text(encoding="utf-8"))
     result = run_war_room(WarRoomScenarioRequest(**record["scenario"]))
@@ -110,7 +114,7 @@ def test_projection_keeps_golden_scenario_output_unchanged(fixture_path: Path):
 
     projection = build_war_room_projection(
         result,
-        run_id="golden_projection_01",
+        run_id=f"golden_projection:{fixture_path.stem}",
         seed=record["scenario"]["seed"],
         rule_pack_hash=RULE_PACK_HASH,
     )
@@ -118,11 +122,14 @@ def test_projection_keeps_golden_scenario_output_unchanged(fixture_path: Path):
     assert projection.source_run_hash == record["baseline_hash"]
     assert projection.world_state_hash == state.content_hash()
     assert len(projection.deterministic_source_hash) == 64
-    taiwan = state.entities["country:TWN"]
-    chips = state.entities["supply_chain:chips"]
-    assert taiwan.components["risk_score"] == 96.0
-    assert chips.components["supply_chain_pressure"] == 69.6
-    assert state.entities["scenario:strait_blockade_30d"].components["scenario_config"] == result.scenario.model_dump(mode="json")
+    for expected in record["top_risk_countries"]:
+        country = state.entities[f"country:{expected['country_code']}"]
+        assert country.components["risk_score"] == expected["risk"]
+    for expected in record["top_supply_chains"]:
+        chain = state.entities[f"supply_chain:{expected['key']}"]
+        assert chain.components["supply_chain_pressure"] == expected["pressure"]
+    scenario = state.entities[f"scenario:{result.scenario.key}"]
+    assert scenario.components["scenario_config"] == result.scenario.model_dump(mode="json")
 
 
 def test_numeric_authority_components_are_explicitly_deterministic():
@@ -175,3 +182,65 @@ def test_projected_world_state_round_trips_through_checkpoint_and_provider_free_
     assert checkpoint.world_state.content_hash() == initial.content_hash()
     assert replayed.content_hash() == final.content_hash()
     assert replayed.entities["scenario:strait_blockade_30d"].components["replay_marker"] is True
+
+
+def test_control_treatment_branch_compiles_and_replays_to_real_war_room_projection():
+    control_result = run_war_room(
+        WarRoomScenarioRequest(
+            scenario_key="strait_blockade_30d",
+            intensity=0.65,
+            propagation=0.42,
+            seed=42,
+        )
+    )
+    control_state = project_war_room_run(
+        control_result,
+        run_id="run_counterfactual",
+        seed=42,
+        rule_pack_hash=RULE_PACK_HASH,
+    )
+    checkpoint = Checkpoint(
+        checkpoint_id="cp_counterfactual",
+        branch_id="main",
+        event_cursor=0,
+        world_state=control_state,
+    )
+    treatment_request = WarRoomScenarioRequest(
+        scenario_key="strait_blockade_30d",
+        intensity=0.8,
+        propagation=0.55,
+        policy_actions=["sanctions"],
+        seed=7,
+    )
+    branch = ExperimentBranch(
+        branch_id="sanctions-treatment",
+        parent_checkpoint_hash=checkpoint.content_hash(),
+        treatment="treated",
+        seed=7,
+        scenario_diff=treatment_request.model_dump(mode="json"),
+    )
+    branch_state = branch_world_state(checkpoint, branch)
+    target_state = project_war_room_run(
+        run_war_room(treatment_request),
+        run_id=branch_state.run_id,
+        seed=branch_state.seed,
+        rule_pack_hash=branch_state.rule_pack_hash,
+    )
+    compiled = simulation_kernel_service.compile_transition(
+        branch_state,
+        target_state,
+        event_id="evt_sanctions_treatment",
+        sequence=1,
+        reducer_version="war-room-shadow-transition.v1",
+    )
+    replayed = replay_state(
+        branch_state,
+        [(compiled.event, compiled.delta)],
+        ReplayRequest(checkpoint_id=checkpoint.checkpoint_id),
+    )
+
+    changed_components = {change.component for change in compiled.delta.changes}
+    assert {"risk_score", "supply_chain_pressure"} <= changed_components
+    assert compiled.delta.source == "deterministic_reducer"
+    assert replayed.content_hash() == target_state.content_hash()
+    assert checkpoint.world_state.content_hash() == control_state.content_hash()

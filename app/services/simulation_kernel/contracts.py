@@ -71,6 +71,8 @@ class WorldState(KernelContract):
         return stable_hash(self.content_payload())
 
     def apply_delta(self, delta: StateDelta) -> WorldState:
+        if delta.run_id != self.run_id:
+            raise ValueError("StateDelta run id does not match WorldState")
         if delta.parent_state_hash != self.content_hash():
             raise ValueError("StateDelta parent hash does not match WorldState")
         if delta.tick <= self.tick:
@@ -98,7 +100,7 @@ class StateDelta(KernelContract):
     parent_state_hash: str = Field(min_length=64, max_length=128)
     reducer_version: str = Field(min_length=1, max_length=120)
     source: DeltaSource
-    changes: tuple[StateChange, ...] = Field(min_length=1)
+    changes: tuple[StateChange, ...] = ()
 
     @model_validator(mode="after")
     def reject_agent_numeric_writes(self) -> StateDelta:

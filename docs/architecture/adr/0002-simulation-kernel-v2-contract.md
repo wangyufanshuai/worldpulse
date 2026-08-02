@@ -73,6 +73,14 @@ The existing Run Control lifecycle remains the orchestration boundary while
 the Kernel contracts are introduced. Hybrid and negotiation continue to use
 the mandatory Consistency, Commitment Ledger and Projection Audit paths.
 
+The additive shadow adapter compiles two same-run snapshots into a canonical
+`StateDelta` and `EventEnvelope`. Schema, run id, seed, Rule Pack hash, entity
+topology and entity types must match; component removal fails closed. Changes
+are ordered by entity id and component key, applied locally, and accepted only
+when the reconstructed state hash equals the target hash. A zero-change Delta
+is valid only when its deterministic tick advances, allowing replayable no-op
+ticks without inventing state changes.
+
 ### Branching and experiments
 
 - A branch references an immutable parent Checkpoint and records the treatment

@@ -8,9 +8,21 @@ from typing import Protocol
 from .branching import branch_world_state
 from .contracts import Checkpoint, EventEnvelope, ExperimentBranch, ReplayRequest, StateDelta, WorldState
 from .replay import replay_state
+from .transitions import CompiledTransition, compile_deterministic_transition
 
 
 class SimulationKernelApplicationPort(Protocol):
+    def compile_transition(
+        self,
+        source_state: WorldState,
+        target_state: WorldState,
+        *,
+        event_id: str,
+        sequence: int,
+        reducer_version: str,
+        event_type: str = "deterministic_state_transition",
+    ) -> CompiledTransition: ...
+
     def apply_delta(self, state: WorldState, delta: StateDelta) -> WorldState: ...
 
     def replay(
@@ -24,6 +36,25 @@ class SimulationKernelApplicationPort(Protocol):
 
 
 class SimulationKernelApplicationService:
+    def compile_transition(
+        self,
+        source_state: WorldState,
+        target_state: WorldState,
+        *,
+        event_id: str,
+        sequence: int,
+        reducer_version: str,
+        event_type: str = "deterministic_state_transition",
+    ) -> CompiledTransition:
+        return compile_deterministic_transition(
+            source_state,
+            target_state,
+            event_id=event_id,
+            sequence=sequence,
+            reducer_version=reducer_version,
+            event_type=event_type,
+        )
+
     def apply_delta(self, state: WorldState, delta: StateDelta) -> WorldState:
         return state.apply_delta(delta)
 
