@@ -68,10 +68,9 @@ from app.services.operations import platform_readiness
 from app.services.report import export_report, render_report
 from app.services.run_lifecycle import RunControlApplicationPort, run_control_service
 from app.services.risk_engine import build_latest_risk, build_replay, build_risk_analysis, build_risk_history, build_risk_overview
-from app.services.simulation_engine import run_simulation
+from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
 from app.services.species_service import build_species_profile, list_species_presets
 from app.services.workbench import build_workbench_status, render_analysis_report, render_system_report, report_templates
-from app.services.war_room_engine import run_war_room
 from app.services.world_model import WorldModelApplicationPort, world_model_service
 from app.services.reviews import review_run_diff_if_material
 from app.version import version_info
@@ -80,6 +79,7 @@ router = APIRouter()
 project_service: ResearchWorkspaceApplicationPort = research_workspace_service
 run_lifecycle: RunControlApplicationPort = run_control_service
 world_model: WorldModelApplicationPort = world_model_service
+simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
 
 
 @router.get("/health")
@@ -384,7 +384,7 @@ def simulation_agent_detail(code: str) -> SimulationAgentDetail:
 
 @router.post("/simulation/run", response_model=SimulationResult)
 def simulation_run(request: SimulationRequest) -> SimulationResult:
-    return run_simulation(request)
+    return simulation_runtime.run_simulation(request)
 
 
 @router.get("/war-room/presets", response_model=WarRoomPresetBundle)
@@ -394,7 +394,7 @@ def war_room_preset_bundle() -> WarRoomPresetBundle:
 
 @router.post("/war-room/run", response_model=WarRoomRun)
 def war_room_sandbox_run(request: WarRoomScenarioRequest) -> WarRoomRun:
-    return run_war_room(request)
+    return simulation_runtime.run_war_room(request)
 
 
 @router.get("/exports/risk-history.csv")

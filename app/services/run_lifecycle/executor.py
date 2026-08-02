@@ -4,7 +4,7 @@ from time import perf_counter
 
 from fastapi import HTTPException
 
-from app.core.models import RunJobStatus, WarRoomScenarioRequest
+from app.core.models import RunJobStatus, WarRoomRun, WarRoomScenarioRequest
 from app.services.agent_contract import build_mock_agent_batch
 from app.services.agent_runtime import run_agent_runtime, runtime_config_from_env
 from app.services.consistency import evaluate_war_room_result
@@ -14,11 +14,19 @@ from app.services.consistency.projection import build_action_projection_audit
 from app.services.hybrid_simulation import run_hybrid_simulation
 from app.services.projects import persist_war_room_result
 from app.services.security import redact_secrets
-from app.services.war_room_engine import run_war_room
+from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
 from app.services.reviews import create_review_case
 from app.services.negotiation import run_negotiation
 
 from . import checkpoints, repository, steps
+
+
+simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
+
+
+def run_war_room(request: WarRoomScenarioRequest) -> WarRoomRun:
+    """Compatibility patch seam delegating to the Simulation Runtime port."""
+    return simulation_runtime.run_war_room(request)
 
 
 PHASES = [

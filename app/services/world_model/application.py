@@ -42,5 +42,8 @@ class WorldModelApplicationService:
     def war_room_presets(self) -> WarRoomPresetBundle:
         return legacy_war_room_data.war_room_presets()
 
+    def war_room_disclaimer(self) -> str:
+        return legacy_war_room_data.WAR_ROOM_DISCLAIMER
+
 
 world_model_service: WorldModelApplicationPort = WorldModelApplicationService()

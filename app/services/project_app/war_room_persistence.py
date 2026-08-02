@@ -19,7 +19,7 @@ from app.services.project_app.report_application import report_service
 from app.services.project_app.reports import chain_pressure
 from app.services.project_store import connect, dumps
 from app.services.rule_packs import trust_manifest_for_job
-from app.services.war_room_engine import WAR_ROOM_DISCLAIMER
+from app.services.world_model import WORLD_MODEL_DISCLAIMER as WAR_ROOM_DISCLAIMER
 
 
 def persist_war_room_result(

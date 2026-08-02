@@ -6,6 +6,7 @@
     "scenario": ["app.services.scenario_compiler"],
     "world_model": ["app.services.world_model", "app.services.simulation_data", "app.services.war_room.data"],
     "simulation": [
+      "app.services.simulation_runtime",
       "app.services.simulation_engine",
       "app.services.agent_runtime",
       "app.services.consistency",
@@ -33,6 +34,14 @@
     }
   ],
   "restricted_internal_imports": [
+    {
+      "import_prefix": "app.services.simulation_engine",
+      "allowed_callers": ["app.services.simulation_runtime.application"]
+    },
+    {
+      "import_prefix": "app.services.war_room_engine",
+      "allowed_callers": ["app.services.simulation_runtime.application"]
+    },
     {
       "import_prefix": "app.services.simulation_data",
       "allowed_callers": [

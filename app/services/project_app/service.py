@@ -47,8 +47,7 @@ from app.services.causal_data import build_causal_events, select_event
 from app.services.causal_graph import build_causal_chain  # noqa: F401 - compatibility façade patch seam
 from app.services.project_store import connect, dumps, init_db
 from app.services.risk_engine import build_risk_overview
-from app.services.simulation_engine import run_simulation
-from app.services.war_room_engine import run_war_room
+from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
 from app.services.project_app.diffing import (
     build_war_room_run_diff,
     event_names as diff_event_names,
@@ -77,6 +76,19 @@ from app.services.project_app.repository import (
     latest_run as _latest_run,
     run_by_id as _run_by_id,
 )
+
+
+simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
+
+
+def run_simulation(request: SimulationRequest) -> SimulationResult:
+    """Compatibility patch seam delegating to the Simulation Runtime port."""
+    return simulation_runtime.run_simulation(request)
+
+
+def run_war_room(request: WarRoomScenarioRequest) -> WarRoomRun:
+    """Compatibility patch seam delegating to the Simulation Runtime port."""
+    return simulation_runtime.run_war_room(request)
 
 
 def create_project(payload: ResearchProjectCreate, organization_id: str = "org_default") -> ResearchProject:

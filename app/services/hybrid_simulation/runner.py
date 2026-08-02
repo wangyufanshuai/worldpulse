@@ -3,14 +3,17 @@ from __future__ import annotations
 from app.core.models import WarRoomRun, WarRoomScenarioRequest
 from app.services.agent_contract.models import AgentActionProposal
 from app.services.consistency.hashing import stable_hash
-from app.services.consistency.models import AgentActionDecision, ConsistencyAuditReport
+from app.services.consistency.models import ConsistencyAuditReport
 from app.services.consistency.projection import build_action_projection_audit, verify_action_projection_audit
 from app.services.consistency.models import AgentActionProjectionAudit
-from app.services.war_room_engine import run_war_room
+from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
 
 from .adapter import build_modifier_bundle, verify_modifier_bundle
 from .diffing import build_hybrid_snapshot_diff
 from .models import HybridModifierBundle, HybridReplayRecord, HybridSimulationOutcome
+
+
+simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
 
 
 def run_hybrid_simulation(
@@ -22,7 +25,7 @@ def run_hybrid_simulation(
 ) -> HybridSimulationOutcome:
     bundle = build_modifier_bundle(baseline, proposals, audit.proposal_decisions, seed=seed)
     verify_modifier_bundle(bundle)
-    final_without_trace = run_war_room(WarRoomScenarioRequest(**bundle.scenario_patch))
+    final_without_trace = simulation_runtime.run_war_room(WarRoomScenarioRequest(**bundle.scenario_patch))
     baseline_hash = stable_hash(baseline.model_dump(mode="json"))
     final_hash = stable_hash(final_without_trace.model_dump(mode="json"))
     baseline_diff = build_hybrid_snapshot_diff(baseline, final_without_trace)
@@ -104,7 +107,7 @@ def replay_hybrid_from_artifacts(
         if projection_audit.final_result_hash != record.final_result_hash:
             raise ValueError("Stored action projection audit final hash mismatch")
 
-    replayed = run_war_room(WarRoomScenarioRequest(**bundle.scenario_patch))
+    replayed = simulation_runtime.run_war_room(WarRoomScenarioRequest(**bundle.scenario_patch))
     if stable_hash(replayed.model_dump(mode="json")) != record.final_result_hash:
         raise ValueError("Offline hybrid replay did not reproduce the final result hash")
     return replayed

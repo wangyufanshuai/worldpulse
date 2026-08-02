@@ -5,7 +5,7 @@ import hashlib
 
 from app.core.models import CausalGraphSnapshot, ResearchRun
 from app.services.project_store import connect, loads
-from app.services.war_room_engine import WAR_ROOM_DISCLAIMER
+from app.services.world_model import WORLD_MODEL_DISCLAIMER as WAR_ROOM_DISCLAIMER
 from app.services.consistency.models import AgentActionProjectionAudit
 from app.services.consistency.projection import verify_action_projection_audit
 
@@ -167,8 +167,8 @@ def _replay_pack_summary(target: ResearchRun, diff: dict | None, lifecycle_artif
     heatmap = sim.get("risk_heatmap", [])
     chains = sim.get("supply_chains", [])
     timeline = sim.get("timeline", [])
-    top_country = max(heatmap, key=lambda item: float(item.get("risk") or 0), default={})
-    top_chain = max(chains, key=lambda item: float(item.get("pressure_score") or 0), default={})
+    top_country: dict = max(heatmap, key=lambda item: float(item.get("risk") or 0), default={})
+    top_chain: dict = max(chains, key=lambda item: float(item.get("pressure_score") or 0), default={})
     peak = max((float(item.get("global_risk") or 0) for item in timeline), default=None)
     hybrid_record = ((lifecycle_artifacts or {}).get("artifacts", {}).get("hybrid_replay_record", {}).get("content", {}))
     return {

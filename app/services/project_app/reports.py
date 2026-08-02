@@ -17,7 +17,7 @@ from app.core.models import (
     WatchSignal,
 )
 from app.services.ai_analysis import analyze_current_risk, render_ai_markdown
-from app.services.war_room_engine import WAR_ROOM_DISCLAIMER
+from app.services.world_model import WORLD_MODEL_DISCLAIMER as WAR_ROOM_DISCLAIMER
 
 
 def build_project_report(project: ResearchProject, run: ResearchRun, graph: CausalGraphSnapshot, causal, analyze_fn=analyze_current_risk) -> ProjectAIReport:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import json
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -16,7 +17,10 @@ from app.services.project_store import connect, dumps, init_db, loads
 from app.services.rule_packs import get_rule_pack
 from app.services.run_lifecycle import repository, steps
 from app.services.war_room.data import SUPPLY_CHAINS
-from app.services.war_room_engine import run_war_room
+from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
+
+
+simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
 
 
 CALIBRATION_PHASES = (
@@ -184,7 +188,7 @@ def process_calibration_job(run_id: str) -> RunJobStatus:
 
 
 def _evaluate_case(case: CalibrationCase) -> dict:
-    result = run_war_room(WarRoomScenarioRequest(**case.input_snapshot))
+    result = simulation_runtime.run_war_room(WarRoomScenarioRequest(**case.input_snapshot))
     ranking = [item.code for item in sorted(result.country_agents, key=lambda item: item.risk_score, reverse=True)]
     top3 = ranking[:3]
     expected = case.labels
@@ -212,9 +216,12 @@ def _evaluate_case(case: CalibrationCase) -> dict:
 def _aggregate_metrics(pack: dict, outputs: dict[str, dict]) -> dict:
     rows = list(outputs.values())
     count = max(1, len(rows))
-    avg = lambda key: sum(float(row[key]) for row in rows) / count
+
+    def avg(key: str) -> float:
+        return sum(float(row[key]) for row in rows) / count
+
     implementation_available = all(pack.get(key) == value for key, value in SUPPORTED.items())
-    metrics = {
+    metrics: dict[str, Any] = {
         "case_count": len(rows),
         "deterministic_regression": sum(bool(row["result_hash_match"]) for row in rows) / count,
         "risk_spearman": avg("risk_spearman"),

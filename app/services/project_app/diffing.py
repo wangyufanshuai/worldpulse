@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.core.models import CausalGraphSnapshot, ResearchRun
-from app.services.war_room_engine import WAR_ROOM_DISCLAIMER
+from app.services.world_model import WORLD_MODEL_DISCLAIMER as WAR_ROOM_DISCLAIMER
 
 
 def risk_score(run: ResearchRun) -> float | None:

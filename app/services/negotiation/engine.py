@@ -17,12 +17,15 @@ from app.services.consistency.hashing import stable_hash
 from app.services.hybrid_simulation.adapter import build_modifier_bundle, verify_modifier_bundle
 from app.services.reviews import create_review_case
 from app.services.run_lifecycle import repository as lifecycle_repository
-from app.services.war_room_engine import run_war_room
+from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
 
 from .agent_pack import build_agent_pack, scheduled_profiles
 from .diffusion import apply_narrative_diffusion
 from .repository import NegotiationRepository
 from .semantics import alliance_commitment_conflicts, proposal_semantic_key, response_is_authorized
+
+
+simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
 
 
 TICK_PROGRESS = (0.0, 0.10, 0.23, 0.47, 0.70, 1.0)
@@ -120,11 +123,11 @@ def run_negotiation(
             verify_modifier_bundle(bundle)
             modifier_hash = bundle.bundle_hash
             modifier_payload = bundle.model_dump(mode="json")
-            projected = run_war_room(WarRoomScenarioRequest(**bundle.scenario_patch))
+            projected = simulation_runtime.run_war_room(WarRoomScenarioRequest(**bundle.scenario_patch))
             narrative = [item for item in eligible if item.action_type == "public_narrative"]
             if narrative:
                 diffusion_request, diffusion_audit, cumulative_deltas = apply_narrative_diffusion(projected, narrative, cumulative_deltas, seed=seed)
-                projected = run_war_room(diffusion_request)
+                projected = simulation_runtime.run_war_room(diffusion_request)
                 diffusion_payload = diffusion_audit.model_dump(mode="json")
             state = projected
             applied_ids.update(item.proposal_id for item in eligible)

@@ -5,7 +5,7 @@ from copy import deepcopy
 from fastapi import HTTPException
 
 from app.core.models import ResearchProject, ResearchRun, WarRoomWorkspaceState
-from app.services.war_room_engine import WAR_ROOM_DISCLAIMER
+from app.services.world_model import WORLD_MODEL_DISCLAIMER as WAR_ROOM_DISCLAIMER
 
 
 def is_war_room_run(run: ResearchRun) -> bool:
@@ -177,8 +177,8 @@ def workspace_entity_details(ui_state: dict, sim: dict, entity_index: list[dict]
 def workspace_insight_cards(ui_state: dict, sim: dict) -> list[dict]:
     heatmap = sim.get("risk_heatmap") or []
     chains = sim.get("supply_chains") or []
-    top_country = max(heatmap, key=lambda item: float(item.get("risk") or 0), default={})
-    top_chain = max(chains, key=lambda item: float(item.get("pressure_score") or item.get("pressure") or item.get("disruption") or 0), default={})
+    top_country: dict = max(heatmap, key=lambda item: float(item.get("risk") or 0), default={})
+    top_chain: dict = max(chains, key=lambda item: float(item.get("pressure_score") or item.get("pressure") or item.get("disruption") or 0), default={})
     turning = [event for event in ui_state.get("timeline_events") or [] if event.get("turning_point")]
     return [
         {"key": "top_country", "label_zh": "最高风险国家", "value_zh": f"{workspace_country_label(top_country.get('country_code'))} {round(float(top_country.get('risk') or 0))}/100", "tone": "red", "detail_zh": "点击国家节点查看 Agent 决策。"},

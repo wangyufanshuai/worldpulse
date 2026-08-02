@@ -8,11 +8,12 @@ from app.services.ai_client import request_structured_analysis
 from app.services.ai_client import ai_status
 from app.services.event_digest import build_agent_event_digest, build_event_digest
 from app.services.risk_engine import build_risk_overview
-from app.services.simulation_engine import run_simulation
+from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
 from app.services.world_model import WorldModelApplicationPort, world_model_service
 
 
 world_model: WorldModelApplicationPort = world_model_service
+simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
 
 
 def analyze_current_risk(request: AIAnalysisRequest) -> AIAnalysisResult:
@@ -28,7 +29,7 @@ def analyze_simulation(request: AIAnalysisRequest) -> AIAnalysisResult:
     context["simulation"] = _simulation_summary(
         request.simulation.model_dump()
         if request.simulation is not None
-        else run_simulation(
+        else simulation_runtime.run_simulation(
             SimulationRequest(
                 shocks=[
                     PolicyShock(

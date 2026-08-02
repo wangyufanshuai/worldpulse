@@ -7,9 +7,12 @@ from app.services.consistency.hashing import stable_hash
 from app.services.hybrid_simulation.adapter import verify_modifier_bundle
 from app.services.hybrid_simulation.models import HybridModifierBundle
 from app.services.run_lifecycle import repository as lifecycle_repository
-from app.services.war_room_engine import run_war_room
+from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
 
 from .repository import NegotiationRepository
+
+
+simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
 
 
 def replay_negotiation_from_storage(run_id: str, repository: NegotiationRepository | None = None) -> WarRoomRun:
@@ -60,7 +63,7 @@ def replay_negotiation_from_storage(run_id: str, repository: NegotiationReposito
             verify_modifier_bundle(bundle)
             if bundle.bundle_hash != round_record.modifier_bundle_hash:
                 raise ValueError(f"Negotiation modifier hash mismatch at tick {round_record.tick}")
-            state = run_war_room(WarRoomScenarioRequest(**bundle.scenario_patch))
+            state = simulation_runtime.run_war_room(WarRoomScenarioRequest(**bundle.scenario_patch))
             applications = round_record.output.get("narrative_diffusion", {}).get("applications", [])
             if applications:
                 deltas: dict[str, float] = {}
@@ -75,7 +78,7 @@ def replay_negotiation_from_storage(run_id: str, repository: NegotiationReposito
                     override = dict(overrides.get(code, {}))
                     override["public_opinion_pressure"] = round(max(0.0, min(100.0, countries[code].public_opinion_pressure + delta)), 4)
                     overrides[code] = override
-                state = run_war_room(WarRoomScenarioRequest(
+                state = simulation_runtime.run_war_room(WarRoomScenarioRequest(
                     scenario_key=state.scenario.key, duration_days=state.scenario.duration_days,
                     intensity=state.scenario.intensity, propagation=state.scenario.propagation,
                     target_countries=list(state.scenario.target_countries), target_chains=list(state.scenario.target_chains),

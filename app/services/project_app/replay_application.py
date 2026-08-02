@@ -8,7 +8,7 @@ import json
 from fastapi import HTTPException
 
 from app.core.models import WarRoomReplayPack
-from app.services.war_room_engine import WAR_ROOM_DISCLAIMER
+from app.services.world_model import WORLD_MODEL_DISCLAIMER as WAR_ROOM_DISCLAIMER
 
 from .diffing import build_war_room_run_diff
 from .replay_pack import (
