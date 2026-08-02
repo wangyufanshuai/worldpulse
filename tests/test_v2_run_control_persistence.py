@@ -5,6 +5,7 @@ import json
 from app.services.run_lifecycle import artifacts, repository
 from app.services.run_lifecycle.integrity import artifact_digest
 from app.services.run_lifecycle.mappers import artifact_from_row, attempt_from_row, event_from_row, job_from_row
+from app.services.run_lifecycle import read_models
 
 
 def test_run_control_job_and_event_mappers_preserve_lineage_fields():
@@ -106,3 +107,8 @@ def test_legacy_lifecycle_repository_reexports_artifact_store_contract():
     assert repository.get_artifacts is artifacts.get_artifacts
     assert repository.get_latest_artifact_content is artifacts.get_latest_artifact_content
     assert repository.verify_artifacts is artifacts.verify_artifacts
+
+
+def test_legacy_lifecycle_repository_reexports_projection_and_audit_read_models():
+    assert repository.get_audit is read_models.audit_view
+    assert repository.get_projected_result_run_id is read_models.projected_result_run_id

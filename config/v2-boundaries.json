@@ -81,6 +81,10 @@
         "app.services.run_lifecycle.mappers",
         "app.services.run_lifecycle.repository"
       ]
+    },
+    {
+      "import_prefix": "app.services.run_lifecycle.read_models",
+      "allowed_callers": ["app.services.run_lifecycle.repository"]
     }
   ]
 }

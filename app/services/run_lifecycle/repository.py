@@ -20,6 +20,7 @@ from app.services.security import redact_secrets, redact_structure
 from app.services.rule_packs import active_rule_pack, get_rule_pack
 
 from . import artifacts as artifact_store
+from . import read_models
 from .integrity import artifact_digest as _artifact_digest
 from .mappers import attempt_from_row, event_from_row as _event_from_row, job_from_row as _job_from_row
 
@@ -30,6 +31,8 @@ get_artifact_record_by_id = artifact_store.get_artifact_record_by_id
 get_artifacts = artifact_store.get_artifacts
 get_latest_artifact_content = artifact_store.get_latest_artifact_content
 verify_artifacts = artifact_store.verify_artifacts
+get_audit = read_models.audit_view
+get_projected_result_run_id = read_models.projected_result_run_id
 
 
 TERMINAL_STATUSES = {"completed", "cancelled", "failed"}
@@ -574,43 +577,6 @@ def set_attempt_resume_step(attempt_id: str, step_key: str | None) -> None:
             "UPDATE run_attempts SET resume_from_step = ? WHERE attempt_id = ?",
             (step_key, attempt_id),
         )
-
-
-def get_projected_result_run_id(run_id: str) -> str | None:
-    job = get_job(run_id)
-    with connect() as conn:
-        rows = conn.execute(
-            "SELECT run_id, data_snapshot FROM research_runs WHERE project_id = ? ORDER BY completed_at DESC",
-            (job.project_id,),
-        ).fetchall()
-    for row in rows:
-        if loads(row["data_snapshot"], {}).get("lifecycle_job_id") == run_id:
-            return str(row["run_id"])
-    return None
-
-
-def get_audit(run_id: str) -> dict:
-    hybrid_record = get_latest_artifact_content(run_id, "hybrid_replay_record")
-    negotiation_summary = get_latest_artifact_content(run_id, "negotiation_summary")
-    return {
-        "run": get_job(run_id).model_dump(),
-        "events": [event.model_dump() for event in get_events(run_id)],
-        "artifacts": [artifact.model_dump() for artifact in get_artifacts(run_id)],
-        "steps": [step.model_dump() for step in get_steps(run_id)],
-        "attempts": [attempt.model_dump() for attempt in get_attempts(run_id)],
-        "integrity": verify_artifacts(run_id),
-        "consistency_audit": get_latest_artifact_content(run_id, "consistency_audit"),
-        "action_projection_audit": get_latest_artifact_content(run_id, "agent_action_projection_audit"),
-        "agent_runtime": get_latest_artifact_content(run_id, "agent_runtime_audit"),
-        "metrics": get_latest_artifact_content(run_id, "lifecycle_metrics"),
-        "hybrid": {
-            "replay_record": hybrid_record,
-            "modifier_bundle": get_latest_artifact_content(run_id, "deterministic_action_modifiers"),
-            "baseline_result": get_latest_artifact_content(run_id, "war_room_result"),
-            "final_result": get_latest_artifact_content(run_id, "hybrid_war_room_result"),
-        } if hybrid_record else None,
-        "negotiation": negotiation_summary,
-    }
 
 
 def get_health_summary() -> LifecycleHealthSummary:
