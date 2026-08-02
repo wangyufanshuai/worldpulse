@@ -150,6 +150,50 @@ This slice is accepted only when:
 No database migration, new HTTP route, response-model field, numeric formula,
 Agent capability or default deployment behavior is authorized by this ADR.
 
+## Implementation and measurement evidence
+
+The implementation keeps the environment default off and pins an enabled
+policy into the existing hashed job runtime profile. The stored envelope links
+the exact `war_room_result` storage SHA-256 to the canonical deterministic run,
+Event Log and final WorldState hashes. Checkpoint recovery and Replay Pack both
+execute the stored-only verifier. The optimized verifier checks the raw
+checkpoint snapshots against Event Log output hashes, applies every stored
+deterministic Delta and constructs the final immutable WorldState once. All 11
+Golden fixtures prove that this replay result equals the full Kernel contract
+replay.
+
+The accepted precommitted evidence run used 3 unreported warmup pairs and 30
+alternating default-off/opt-in pairs on Windows Python 3.11.15 with SQLite
+3.53.1:
+
+| Segment | Median | p95 | Fixed limit |
+|---|---:|---:|---:|
+| Default-off lifecycle | 1578.15515 ms | 1931.9307 ms | reference |
+| Opt-in lifecycle | 1610.82965 ms | 1865.8637 ms | 1.15x control p95 |
+| Build, serialize and persist | 44.31165 ms | 70.2519 ms | 100 ms |
+| Stored validation and replay | 8.0143 ms | 11.6471 ms | 20 ms |
+
+The serialized Artifact was exactly `89,772` bytes in every sample, below the
+`524,288` byte limit. Opt-in/control lifecycle p95 was `0.965803`, below
+`1.15`. As in ADR-0005, a ratio below one reflects independent cohort tail
+variance and is not a performance-improvement claim. The opt-in path added
+exactly one Artifact and one event; migrations remained 10 and tables remained
+83; the temporary database was removed and configured paths and flags were
+restored.
+
+Earlier runs were deliberately rejected rather than rounded or used to relax
+the gate. Stored validation/replay p95 was first `28.1638 ms`, then `20.1830
+ms`, and then `25.6598 ms`. Those failures drove checkpoint-state
+deduplication and exposed a benchmark defect: `repository.get_job()` was being
+evaluated after the replay timer started even though the methodology excluded
+stored lookups. Moving that lookup before the timer aligned implementation with
+the precommitted segment definition; the threshold and validation work did not
+change.
+
+This evidence accepts the default-off opt-in implementation for local SQLite.
+It does not enable the feature by default and is not PostgreSQL capacity
+evidence.
+
 ## Rollback
 
 1. Set `WORLDPULSE_KERNEL_SHADOW_ARTIFACTS=0` so newly created jobs retain the

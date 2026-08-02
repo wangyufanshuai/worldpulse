@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import hashlib
 
-from app.core.models import CausalGraphSnapshot, ResearchRun
+from app.core.models import CausalGraphSnapshot, ResearchRun, WarRoomRun
 from app.services.project_store import connect, loads
 from app.services.world_model import WORLD_MODEL_DISCLAIMER as WAR_ROOM_DISCLAIMER
 from app.services.consistency.models import AgentActionProjectionAudit
 from app.services.consistency.projection import verify_action_projection_audit
+from app.services.simulation_kernel import verify_kernel_shadow_artifact_payload
 
 
 HYBRID_REPLAY_ARTIFACTS = (
@@ -23,6 +24,7 @@ HYBRID_REPLAY_ARTIFACTS = (
     "commitment_ledger",
     "narrative_diffusion",
     "negotiation_replay",
+    "kernel_shadow_run",
 )
 
 
@@ -35,10 +37,14 @@ def _replay_pack_lifecycle_artifacts(target: ResearchRun) -> dict:
     with connect() as conn:
         rows = conn.execute(
             """
-            SELECT artifact_type, schema_version, content_json, sha256
-            FROM run_artifacts
-            WHERE run_id = ?
-            ORDER BY created_at ASC, artifact_id ASC
+            SELECT artifact.artifact_type, artifact.schema_version,
+                   artifact.content_json, artifact.sha256
+            FROM run_artifacts AS artifact
+            LEFT JOIN run_attempts AS attempt
+              ON attempt.attempt_id = artifact.attempt_id
+            WHERE artifact.run_id = ?
+              AND (artifact.attempt_id IS NULL OR attempt.status IN ('running', 'completed'))
+            ORDER BY artifact.created_at ASC, artifact.artifact_id ASC
             """,
             (lifecycle_job_id,),
         ).fetchall()
@@ -57,7 +63,42 @@ def _replay_pack_lifecycle_artifacts(target: ResearchRun) -> dict:
         if row["artifact_type"] == "agent_action_projection_audit":
             projection_audit = AgentActionProjectionAudit.model_validate(verified[row["artifact_type"]]["content"])
             verify_action_projection_audit(projection_audit)
-    if "hybrid_replay_record" not in verified and "negotiation_replay" not in verified:
+    kernel_entry = verified.get("kernel_shadow_run")
+    if kernel_entry:
+        envelope = verify_kernel_shadow_artifact_payload(kernel_entry["content"])
+        source_row = next(
+            (
+                row
+                for row in rows
+                if row["artifact_type"] == envelope.source_artifact_type
+                and row["sha256"] == envelope.source_artifact_sha256
+            ),
+            None,
+        )
+        if source_row is None:
+            raise ValueError("Kernel Replay Pack source Artifact is missing")
+        source_digest = hashlib.sha256(source_row["content_json"].encode("utf-8")).hexdigest()
+        if source_digest != source_row["sha256"]:
+            raise ValueError("Replay artifact hash mismatch: war_room_result")
+        if source_row["schema_version"] != envelope.source_artifact_schema_version:
+            raise ValueError("Kernel Replay Pack source schema mismatch")
+        source_content = loads(source_row["content_json"], {})
+        envelope.verify_source_result(WarRoomRun.model_validate(source_content))
+        verified["war_room_result"] = {
+            "schema_version": source_row["schema_version"],
+            "sha256": source_row["sha256"],
+            "content": source_content,
+        }
+        if not {"hybrid_replay_record", "negotiation_replay"}.intersection(verified):
+            verified = {
+                artifact_type: verified[artifact_type]
+                for artifact_type in ("kernel_shadow_run", "war_room_result")
+            }
+    if not {
+        "hybrid_replay_record",
+        "negotiation_replay",
+        "kernel_shadow_run",
+    }.intersection(verified):
         return {}
     return {"lifecycle_job_id": lifecycle_job_id, "artifacts": verified}
 
@@ -116,7 +157,11 @@ def _replay_pack_model_outputs(sim: dict, graph: CausalGraphSnapshot | None, dif
         "diff_metrics": diff or {},
     }
     if lifecycle_artifacts:
-        outputs["hybrid"] = lifecycle_artifacts
+        artifact_types = set(lifecycle_artifacts.get("artifacts", {}))
+        if artifact_types.intersection({"hybrid_replay_record", "negotiation_replay"}):
+            outputs["hybrid"] = lifecycle_artifacts
+        elif "kernel_shadow_run" in artifact_types:
+            outputs["kernel"] = lifecycle_artifacts
     return outputs
 
 
@@ -154,10 +199,17 @@ def _replay_pack_audit_trail(base: ResearchRun | None, target: ResearchRun, diff
         },
     ]
     if lifecycle_artifacts:
+        artifact_types = set(lifecycle_artifacts.get("artifacts", {}))
+        if artifact_types.intersection({"hybrid_replay_record", "negotiation_replay"}):
+            step = "hybrid_offline_evidence_chain"
+            detail = "Agent proposals, consistency decisions, deterministic modifiers, and replay hashes were loaded from SQLite and SHA-256 verified; no Agent or LLM was called."
+        else:
+            step = "kernel_offline_evidence_chain"
+            detail = "The deterministic source result and Kernel Event Log were loaded from SQLite, SHA-256 verified, and replayed from stored state only; no Agent, LLM, or Provider was called."
         trail.insert(-2, {
-            "step": "hybrid_offline_evidence_chain",
+            "step": step,
             "source": "verified run_artifacts",
-            "detail": "Agent proposals, consistency decisions, deterministic modifiers, and replay hashes were loaded from SQLite and SHA-256 verified; no Agent or LLM was called.",
+            "detail": detail,
         })
     return trail
 

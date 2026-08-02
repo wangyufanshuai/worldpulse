@@ -14,11 +14,18 @@ from app.services.consistency.projection import build_action_projection_audit
 from app.services.hybrid_simulation import run_hybrid_simulation
 from app.services.projects import persist_war_room_result
 from app.services.security import redact_secrets
+from app.services.simulation_kernel import KERNEL_SHADOW_ARTIFACT_SCHEMA
 from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
 from app.services.reviews import create_review_case
 from app.services.negotiation import run_negotiation
 
 from . import checkpoints, repository, steps
+from .kernel_shadow import (
+    KERNEL_SHADOW_ARTIFACT_TYPE,
+    kernel_shadow_policy_for_job,
+    prepare_kernel_shadow_artifact,
+    verify_persisted_kernel_shadow_artifact,
+)
 
 
 simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
@@ -75,9 +82,34 @@ def process_job(run_id: str) -> RunJobStatus:
     if job.job_kind == "calibration":
         from app.services.calibration import process_calibration_job
         return process_calibration_job(run_id)
+    kernel_shadow_policy = kernel_shadow_policy_for_job(job)
     worker_id = job.worker_id
     projected_run_id = repository.get_projected_result_run_id(run_id)
     if projected_run_id:
+        if kernel_shadow_policy is not None:
+            shadow_payload = repository.get_latest_artifact_content(
+                run_id, KERNEL_SHADOW_ARTIFACT_TYPE
+            )
+            source_payload = repository.get_latest_artifact_content(
+                run_id, "war_room_result"
+            )
+            source_summary = repository.get_latest_artifact_summary(
+                run_id, "war_room_result"
+            )
+            if (
+                shadow_payload is None
+                or source_payload is None
+                or source_summary is None
+            ):
+                raise ValueError(
+                    "Pinned Kernel shadow job cannot recover projection without its Artifact chain"
+                )
+            verify_persisted_kernel_shadow_artifact(
+                shadow_payload,
+                job=job,
+                source_result=WarRoomRun.model_validate(source_payload),
+                source_artifact=source_summary,
+            )
         if repository.get_latest_artifact_content(run_id, "projection") is None:
             repository.add_artifact(
                 run_id,
@@ -176,7 +208,46 @@ def process_job(run_id: str) -> RunJobStatus:
             )
         elif phase == "deterministic_run":
             result = run_war_room(scenario)
-            repository.add_artifact(run_id, "war_room_result", "war-room-result.v1", result.model_dump())
+            source_artifact = repository.add_artifact(
+                run_id,
+                "war_room_result",
+                "war-room-result.v1",
+                result.model_dump(),
+            )
+            if kernel_shadow_policy is not None:
+                shadow_started = perf_counter()
+                prepared_shadow = prepare_kernel_shadow_artifact(
+                    job=job,
+                    result=result,
+                    source_artifact=source_artifact,
+                    policy=kernel_shadow_policy,
+                )
+                shadow_artifact = repository.add_artifact(
+                    run_id,
+                    KERNEL_SHADOW_ARTIFACT_TYPE,
+                    KERNEL_SHADOW_ARTIFACT_SCHEMA,
+                    prepared_shadow.payload,
+                )
+                shadow_duration_ms = (perf_counter() - shadow_started) * 1000
+                repository.append_event(
+                    run_id,
+                    "SNAPSHOT",
+                    "deterministic_run",
+                    "Kernel shadow Artifact recorded",
+                    "确定性 baseline 已转换为可离线回放的 Hash 链；未调用 Agent 或 Provider。",
+                    payload={
+                        "baseline_scope": prepared_shadow.envelope.baseline_scope,
+                        "source_artifact_id": source_artifact.artifact_id,
+                        "source_artifact_sha256": source_artifact.sha256,
+                        "kernel_artifact_id": shadow_artifact.artifact_id,
+                        "kernel_artifact_sha256": shadow_artifact.sha256,
+                        "kernel_envelope_hash": prepared_shadow.envelope.content_hash(),
+                        "event_log_hash": prepared_shadow.envelope.event_log_hash,
+                        "final_state_hash": prepared_shadow.envelope.final_state_hash,
+                        "payload_bytes": prepared_shadow.payload_bytes,
+                        "integration_duration_ms": round(shadow_duration_ms, 6),
+                    },
+                )
             if job.engine_mode == "mock_agent":
                 batch = build_mock_agent_batch(result, run_id=run_id, seed=job.seed)
                 proposals = batch.proposals

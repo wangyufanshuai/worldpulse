@@ -82,7 +82,7 @@ def run_benchmark(
     temporary_database_path: Path | None = None
     migration_evidence: dict[str, Any] = {}
 
-    with _isolated_sqlite(temp_root) as database_path:
+    with isolated_sqlite(temp_root) as database_path:
         temporary_database_path = database_path
         migration_evidence = verify_schema(database_path)
         project = research_workspace_service.create_project(
@@ -162,7 +162,7 @@ def run_benchmark(
     if kernel_artifact_persisted:
         raise RuntimeError("Lifecycle benchmark persisted an unauthorized Kernel Artifact")
     report_measurements = {
-        name: _present_measurement(value) for name, value in measurements.items()
+        name: present_measurement(value) for name, value in measurements.items()
     }
     control_p95 = measurements["control_lifecycle"]["p95_ms_raw"]
     combined_p95 = measurements["combined_lifecycle_shadow"]["p95_ms_raw"]
@@ -196,13 +196,13 @@ def run_benchmark(
         },
         "measurements": report_measurements,
         "overhead": {
-            "shadow_p95_ms": _round(shadow_p95),
-            "combined_minus_control_p95_ms": _round(combined_p95 - control_p95),
-            "combined_to_control_p95_ratio": _round(combined_p95 / control_p95),
-            "combined_relative_p95_overhead": _round(
+            "shadow_p95_ms": round_metric(shadow_p95),
+            "combined_minus_control_p95_ms": round_metric(combined_p95 - control_p95),
+            "combined_to_control_p95_ratio": round_metric(combined_p95 / control_p95),
+            "combined_relative_p95_overhead": round_metric(
                 combined_p95 / control_p95 - 1.0
             ),
-            "treatment_to_control_p95_ratio": _round(
+            "treatment_to_control_p95_ratio": round_metric(
                 measurements["treatment_lifecycle"]["p95_ms_raw"] / control_p95
             ),
         },
@@ -257,13 +257,13 @@ def evaluate_gates(
         "shadow_p95": {
             "operator": "<=",
             "limit_ms": SHADOW_P95_LIMIT_MS,
-            "observed_ms": _round(shadow_p95_ms),
+            "observed_ms": round_metric(shadow_p95_ms),
             "passed": shadow_p95_ms <= SHADOW_P95_LIMIT_MS,
         },
         "combined_to_control_p95": {
             "operator": "<=",
             "limit_ratio": COMBINED_TO_CONTROL_P95_LIMIT,
-            "observed_ratio": _round(ratio),
+            "observed_ratio": round_metric(ratio),
             "passed": ratio <= COMBINED_TO_CONTROL_P95_LIMIT,
         },
     }
@@ -392,18 +392,18 @@ def _artifact_profile(
     )
 
 
-def _present_measurement(measurement: dict[str, Any]) -> dict[str, Any]:
+def present_measurement(measurement: dict[str, Any]) -> dict[str, Any]:
     return {
         "sample_count": len(measurement["samples_ms_raw"]),
-        "samples_ms": [_round(value) for value in measurement["samples_ms_raw"]],
-        "min_ms": _round(measurement["min_ms_raw"]),
-        "median_ms": _round(measurement["median_ms_raw"]),
-        "p95_ms": _round(measurement["p95_ms_raw"]),
+        "samples_ms": [round_metric(value) for value in measurement["samples_ms_raw"]],
+        "min_ms": round_metric(measurement["min_ms_raw"]),
+        "median_ms": round_metric(measurement["median_ms_raw"]),
+        "p95_ms": round_metric(measurement["p95_ms_raw"]),
     }
 
 
 @contextmanager
-def _isolated_sqlite(temp_root: Path | None) -> Iterator[Path]:
+def isolated_sqlite(temp_root: Path | None) -> Iterator[Path]:
     original_path = project_store.DB_PATH
     database_url_present = DATABASE_URL_ENV in os.environ
     original_database_url = os.environ.get(DATABASE_URL_ENV)
@@ -431,7 +431,7 @@ def _isolated_sqlite(temp_root: Path | None) -> Iterator[Path]:
             gc.collect()
 
 
-def _round(value: float) -> float:
+def round_metric(value: float) -> float:
     return round(float(value), 6)
 
 

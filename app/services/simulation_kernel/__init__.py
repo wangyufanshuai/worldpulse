@@ -1,4 +1,12 @@
 from .application import SimulationKernelApplicationPort, SimulationKernelApplicationService, simulation_kernel_service
+from .artifacts import (
+    KERNEL_SHADOW_ARTIFACT_SCHEMA,
+    KERNEL_SHADOW_BASELINE_SCOPE,
+    KernelShadowArtifact,
+    VerifiedKernelShadowArtifact,
+    build_kernel_shadow_artifact,
+    verify_kernel_shadow_artifact_payload,
+)
 from .branching import branch_world_state
 from .clock import DeterministicClock
 from .contracts import (
@@ -36,6 +44,10 @@ __all__ = [
     "EventEnvelope",
     "ExperimentBranch",
     "KernelEventLog",
+    "KernelShadowArtifact",
+    "VerifiedKernelShadowArtifact",
+    "KERNEL_SHADOW_ARTIFACT_SCHEMA",
+    "KERNEL_SHADOW_BASELINE_SCOPE",
     "ReplayIntegrityError",
     "ReplayRequest",
     "StateChange",
@@ -45,6 +57,8 @@ __all__ = [
     "WorldState",
     "WarRoomShadowRun",
     "branch_world_state",
+    "build_kernel_shadow_artifact",
+    "verify_kernel_shadow_artifact_payload",
     "compile_deterministic_transition",
     "build_war_room_shadow_run",
     "replay_state",

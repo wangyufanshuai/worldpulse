@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.core.models import RunJobStatus, RunStepRecord, WarRoomRun
+from app.core.models import RunArtifactSummary, RunJobStatus, RunStepRecord, WarRoomRun
 from app.services.agent_contract.models import AgentActionProposal, AgentConstraintContext
 from app.services.consistency.hashing import stable_hash
 from app.services.consistency.models import ConsistencyAuditReport
@@ -10,12 +10,18 @@ from app.services.consistency.models import AgentActionProjectionAudit
 from app.services.consistency.projection import verify_action_projection_audit
 
 from . import repository, steps
+from .kernel_shadow import (
+    KERNEL_SHADOW_ARTIFACT_TYPE,
+    kernel_shadow_policy_for_job,
+    verify_persisted_kernel_shadow_artifact,
+)
 
 
 @dataclass
 class CheckpointState:
     completed_steps: list[RunStepRecord] = field(default_factory=list)
     artifacts: dict[str, dict] = field(default_factory=dict)
+    artifact_summaries: dict[str, RunArtifactSummary] = field(default_factory=dict)
     result: WarRoomRun | None = None
     proposals: list[AgentActionProposal] = field(default_factory=list)
     constraint_context: AgentConstraintContext | None = None
@@ -57,7 +63,11 @@ def load_verified_checkpoint(job: RunJobStatus) -> CheckpointState:
             break
         for artifact_id in selected.artifact_refs:
             artifact_type, payload = repository.get_artifact_record_by_id(job.run_id, artifact_id)
+            summary = repository.get_artifact_summary_by_id(job.run_id, artifact_id)
+            if summary.artifact_type != artifact_type:
+                raise ValueError("Checkpoint Artifact summary type mismatch")
             state.artifacts[artifact_type] = payload
+            state.artifact_summaries[artifact_type] = summary
         state.completed_steps.append(selected)
         previous = selected
 
@@ -101,6 +111,25 @@ def _restore_execution_state(job: RunJobStatus, state: CheckpointState) -> None:
     baseline = state.artifacts.get("war_room_result")
     if baseline:
         state.result = WarRoomRun.model_validate(baseline)
+
+    shadow_payload = state.artifacts.get(KERNEL_SHADOW_ARTIFACT_TYPE)
+    shadow_policy = kernel_shadow_policy_for_job(job)
+    if baseline and shadow_policy is not None and shadow_payload is None:
+        raise ValueError("Pinned Kernel shadow checkpoint is missing its Artifact")
+    if shadow_payload is not None:
+        if baseline is None or state.result is None:
+            raise ValueError("Kernel shadow checkpoint is missing source result")
+        if shadow_policy is None:
+            raise ValueError("Kernel shadow checkpoint has no pinned job policy")
+        source_summary = state.artifact_summaries.get("war_room_result")
+        if source_summary is None:
+            raise ValueError("Kernel shadow checkpoint is missing source Artifact summary")
+        verify_persisted_kernel_shadow_artifact(
+            shadow_payload,
+            job=job,
+            source_result=state.result,
+            source_artifact=source_summary,
+        )
 
     proposal_batch = state.artifacts.get("agent_action_proposals")
     if proposal_batch:

@@ -119,6 +119,25 @@ def get_artifact_content_by_id(run_id: str, artifact_id: str) -> dict:
     return get_artifact_record_by_id(run_id, artifact_id)[1]
 
 
+def get_artifact_summary_by_id(
+    run_id: str, artifact_id: str
+) -> RunArtifactSummary:
+    init_db()
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT artifact_id, run_id, artifact_type, schema_version, content_json,
+                   sha256, created_at, attempt_id, step_id, artifact_version,
+                   supersedes_artifact_id
+            FROM run_artifacts WHERE run_id = ? AND artifact_id = ?
+            """,
+            (run_id, artifact_id),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=409, detail=f"Checkpoint artifact is missing: {artifact_id}")
+    return artifact_from_row(row)
+
+
 def get_artifact_record_by_id(run_id: str, artifact_id: str) -> tuple[str, dict]:
     init_db()
     with connect() as conn:
@@ -160,6 +179,32 @@ def get_latest_artifact_content(run_id: str, artifact_type: str) -> dict | None:
     if artifact_digest(row["content_json"]) != row["sha256"]:
         raise HTTPException(status_code=409, detail=f"Artifact integrity verification failed: {artifact_type}")
     return loads(row["content_json"], {})
+
+
+def get_latest_artifact_summary(
+    run_id: str, artifact_type: str
+) -> RunArtifactSummary | None:
+    init_db()
+    _ensure_job_exists(run_id)
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT a.artifact_id, a.run_id, a.artifact_type, a.schema_version,
+                   a.content_json, a.sha256, a.created_at, a.attempt_id,
+                   a.step_id, a.artifact_version, a.supersedes_artifact_id
+            FROM run_artifacts AS a
+            LEFT JOIN run_attempts AS attempt ON attempt.attempt_id = a.attempt_id
+            LEFT JOIN run_steps AS step ON step.step_id = a.step_id
+            WHERE a.run_id = ? AND a.artifact_type = ?
+              AND (a.attempt_id IS NULL OR attempt.status IN ('running', 'completed'))
+            ORDER BY COALESCE(attempt.attempt_number, 0) DESC,
+                     COALESCE(step.completed_at, step.started_at, a.created_at) DESC,
+                     a.artifact_version DESC, a.created_at DESC, a.artifact_id DESC
+            LIMIT 1
+            """,
+            (run_id, artifact_type),
+        ).fetchone()
+    return artifact_from_row(row) if row is not None else None
 
 
 def get_artifact_contents(run_id: str, artifact_type: str) -> list[dict]:

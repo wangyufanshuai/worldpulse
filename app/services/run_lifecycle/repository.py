@@ -22,14 +22,17 @@ from app.services.rule_packs import active_rule_pack, get_rule_pack
 from . import artifacts as artifact_store
 from . import read_models
 from .integrity import artifact_digest as _artifact_digest
+from .kernel_shadow import pin_kernel_shadow_policy
 from .mappers import attempt_from_row, event_from_row as _event_from_row, job_from_row as _job_from_row
 
 add_artifact = artifact_store.add_artifact
 get_artifact_content_by_id = artifact_store.get_artifact_content_by_id
 get_artifact_contents = artifact_store.get_artifact_contents
 get_artifact_record_by_id = artifact_store.get_artifact_record_by_id
+get_artifact_summary_by_id = artifact_store.get_artifact_summary_by_id
 get_artifacts = artifact_store.get_artifacts
 get_latest_artifact_content = artifact_store.get_latest_artifact_content
+get_latest_artifact_summary = artifact_store.get_latest_artifact_summary
 verify_artifacts = artifact_store.verify_artifacts
 get_audit = read_models.audit_view
 get_projected_result_run_id = read_models.projected_result_run_id
@@ -57,6 +60,7 @@ def create_job(
     scenario = _scenario_payload(request.scenario, request.seed)
     engine_mode = _engine_mode(request.engine_mode)
     normalized_key = _normalize_idempotency_key(idempotency_key)
+    effective_runtime_profile = pin_kernel_shadow_policy(runtime_profile)
     rule_pack = get_rule_pack(pinned_rule_pack_id) if pinned_rule_pack_id else active_rule_pack()
     request_hash = stable_hash(
         {
@@ -69,7 +73,7 @@ def create_job(
             "rule_pack_hash": rule_pack.manifest_hash,
             "evaluation_batch_id": evaluation_batch_id,
             "evaluation_member_id": evaluation_member_id,
-            "runtime_profile": runtime_profile or {},
+            "runtime_profile": effective_runtime_profile,
         }
     )
     run_id = f"job_{uuid4().hex[:12]}"
@@ -122,8 +126,8 @@ def create_job(
                 rule_pack.manifest_hash,
                 evaluation_batch_id,
                 evaluation_member_id,
-                dumps(runtime_profile or {}),
-                stable_hash(runtime_profile or {}) if runtime_profile else None,
+                dumps(effective_runtime_profile),
+                stable_hash(effective_runtime_profile) if effective_runtime_profile else None,
                 ),
             )
     if existing_run_id is not None:
