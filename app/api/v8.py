@@ -3,13 +3,13 @@ from __future__ import annotations
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 
+from app.api.dependencies import current_actor
 from app.core.models import RunJobStatus
 from app.core.scenario_compiler_models import (
     DocumentExtractionEvent, DocumentExtractionJob, DocumentUploadResult, ScenarioCandidate,
     ScenarioCandidateDecision, ScenarioCandidateDecisionRequest, ScenarioDraft, ScenarioDraftCreateRequest,
     ScenarioDraftReviewRequest, ScenarioDraftRunRequest, SourceDocument,
 )
-from app.services.auth import ensure_system_user
 from app.services.scenario_compiler import ScenarioCompilerApplicationPort, scenario_compiler_service
 
 
@@ -18,7 +18,7 @@ service: ScenarioCompilerApplicationPort = scenario_compiler_service
 
 
 def _actor(request: Request):
-    return getattr(request.state, "user", None) or ensure_system_user()
+    return current_actor(request)
 
 
 @router.post("/organizations/{organization_id}/projects/{project_id}/documents", response_model=DocumentUploadResult)

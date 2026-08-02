@@ -17,20 +17,17 @@ from app.api.v8 import router as v8_router
 from app.api.v9 import router as v9_router
 from app.api.v10 import router as v10_router
 from app.api.v11 import router as v11_router
-from app.services.auth import (
-    auth_mode,
-    authenticate_request,
-    configured_cors_origins,
-    enforce_actor_rate_limit,
-    ensure_system_user,
-    permission_for_request,
-    record_security_event,
-    require_csrf,
-    require_permission,
-    validate_security_config,
+from app.services.identity import (
+    IdentityApplicationPort,
+    OrganizationApplicationPort,
+    identity_service,
+    organization_service,
 )
 from app.version import WORLDPULSE_VERSION
-from app.services import organizations
+
+
+identity: IdentityApplicationPort = identity_service
+organization_context: OrganizationApplicationPort = organization_service
 
 
 class UTF8JSONResponse(JSONResponse):
@@ -39,7 +36,7 @@ class UTF8JSONResponse(JSONResponse):
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    validate_security_config()
+    identity.validate_security_config()
     yield
 
 
@@ -53,7 +50,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=configured_cors_origins(),
+    allow_origins=identity.configured_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,40 +66,40 @@ async def local_session_guard(request: Request, call_next):
     if path in public or not path.startswith("/api"):
         return await call_next(request)
     try:
-        authentication_disabled = auth_mode() == "disabled"
-        identity = ensure_system_user() if authentication_disabled else authenticate_request(request)
-        request.state.user = identity
+        authentication_disabled = identity.auth_mode() == "disabled"
+        actor = identity.ensure_system_user() if authentication_disabled else identity.authenticate_request(request)
+        request.state.user = actor
         requested_organization = request.headers.get("x-worldpulse-org") or request.query_params.get("organization_id")
-        organization = organizations.current_organization(identity, requested_organization)
+        organization = organization_context.current_organization(actor, requested_organization)
         request.state.organization_id = organization.organization_id
-        organizations.enforce_api_resource_scope(organization.organization_id, identity, request.method, path)
+        organization_context.enforce_api_resource_scope(organization.organization_id, actor, request.method, path)
         if authentication_disabled:
             return await call_next(request)
-        permission = permission_for_request(request.method, path)
-        require_permission(identity, permission)
+        permission = identity.permission_for_request(request.method, path)
+        identity.require_permission(actor, permission)
         if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
-            require_csrf(request)
+            identity.require_csrf(request)
             if permission == "run":
-                enforce_actor_rate_limit("rate.run", identity.user_id, limit=30, window_seconds=60)
+                identity.enforce_actor_rate_limit("rate.run", actor.user_id, limit=30, window_seconds=60)
             elif permission == "rule_submit":
-                enforce_actor_rate_limit("rate.rule_submit", identity.user_id, limit=10, window_seconds=60)
+                identity.enforce_actor_rate_limit("rate.rule_submit", actor.user_id, limit=10, window_seconds=60)
             elif permission == "ingestion_write":
-                enforce_actor_rate_limit("rate.ingestion_write", identity.user_id, limit=20, window_seconds=60)
+                identity.enforce_actor_rate_limit("rate.ingestion_write", actor.user_id, limit=20, window_seconds=60)
             elif permission == "monitoring_write":
-                enforce_actor_rate_limit("rate.monitoring_write", identity.user_id, limit=30, window_seconds=60)
+                identity.enforce_actor_rate_limit("rate.monitoring_write", actor.user_id, limit=30, window_seconds=60)
         response = await call_next(request)
         if request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
-            record_security_event(
-                "api.write", "allowed", actor_user_id=identity.user_id,
+            identity.record_security_event(
+                "api.write", "allowed", actor_user_id=actor.user_id,
                 resource_type=permission, resource_id=path, client_ip=request.client.host if request.client else None,
                 detail={"method": request.method, "status_code": response.status_code},
             )
             if permission in {"run", "rule_submit", "monitoring_write"}:
-                record_security_event(f"rate.{permission}", "counted", actor_user_id=identity.user_id, resource_id=path)
+                identity.record_security_event(f"rate.{permission}", "counted", actor_user_id=actor.user_id, resource_id=path)
         return response
     except HTTPException as exc:
         actor = getattr(getattr(request, "state", None), "user", None)
-        record_security_event(
+        identity.record_security_event(
             "api.access", "denied", actor_user_id=getattr(actor, "user_id", None),
             resource_id=path, client_ip=request.client.host if request.client else None,
             detail={"method": request.method, "status_code": exc.status_code},

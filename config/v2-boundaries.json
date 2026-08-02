@@ -1,7 +1,7 @@
 {
   "schema_version": "worldpulse-v2-boundaries.v1",
   "contexts": {
-    "identity": ["app.services.auth", "app.services.organizations"],
+    "identity": ["app.services.identity", "app.services.auth", "app.services.organizations"],
     "evidence": ["app.services.evidence", "app.services.evidence_registry", "app.services.ingestion"],
     "scenario": ["app.services.scenario_compiler"],
     "world_model": ["app.services.simulation_data", "app.services.war_room.data"],
@@ -33,6 +33,28 @@
     }
   ],
   "restricted_internal_imports": [
+    {
+      "import_prefix": "app.services.auth",
+      "allowed_callers": [
+        "app.manage",
+        "app.api.dependencies",
+        "app.services.continuous_intelligence.service",
+        "app.services.identity.application",
+        "app.services.trust_center"
+      ]
+    },
+    {
+      "import_prefix": "app.services.organizations",
+      "allowed_callers": [
+        "app.services.auth",
+        "app.services.continuous_intelligence.service",
+        "app.services.evidence_registry",
+        "app.services.identity.application",
+        "app.services.ingestion",
+        "app.services.operations",
+        "app.services.scenario_compiler.service"
+      ]
+    },
     {
       "import_prefix": "app.services.evidence_registry",
       "allowed_callers": ["app.services.evidence.application"]

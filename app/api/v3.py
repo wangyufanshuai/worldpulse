@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import os
-
 from fastapi import APIRouter, Query, Request, Response
 
+from app.api.dependencies import current_actor
 from app.core.trust_models import (
     CalibrationCase,
     CalibrationRunRequest,
@@ -17,54 +16,64 @@ from app.core.trust_models import (
     ReviewDecision,
     ReviewDecisionRequest,
     TrustSummary,
-)
-from app.services.auth import (
-    ABSOLUTE_HOURS,
-    CSRF_COOKIE,
-    SESSION_COOKIE,
-    auth_mode,
-    ensure_system_user,
-    login,
-    logout,
+    UserIdentity,
 )
 from app.services import rule_packs
 from app.services import calibration
 from app.services import reviews
+from app.services.identity import IdentityApplicationPort, identity_service
 from app.services.trust_center import project_trust_summary
 
 
 router = APIRouter()
+identity: IdentityApplicationPort = identity_service
 
 
 @router.post("/auth/login", response_model=SessionStatus)
 def local_login(payload: LoginRequest, request: Request, response: Response) -> SessionStatus:
-    if auth_mode() != "local":
-        identity = ensure_system_user()
-        return SessionStatus(authenticated=True, user=identity)
-    status, token, csrf = login(payload.username, payload.password, request)
-    secure = os.getenv("WORLDPULSE_ENV", "development").strip().lower() == "production"
-    max_age = ABSOLUTE_HOURS * 60 * 60
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, secure=secure, samesite="lax", max_age=max_age, path="/")
-    response.set_cookie(CSRF_COOKIE, csrf, httponly=False, secure=secure, samesite="lax", max_age=max_age, path="/")
+    if identity.auth_mode() != "local":
+        actor = identity.ensure_system_user()
+        return SessionStatus(authenticated=True, user=actor)
+    status, token, csrf = identity.login(payload.username, payload.password, request)
+    cookies = identity.cookie_policy()
+    response.set_cookie(
+        cookies.session_cookie_name,
+        token,
+        httponly=True,
+        secure=cookies.secure,
+        samesite=cookies.same_site,
+        max_age=cookies.max_age_seconds,
+        path=cookies.path,
+    )
+    response.set_cookie(
+        cookies.csrf_cookie_name,
+        csrf,
+        httponly=False,
+        secure=cookies.secure,
+        samesite=cookies.same_site,
+        max_age=cookies.max_age_seconds,
+        path=cookies.path,
+    )
     return status
 
 
 @router.post("/auth/logout")
 def local_logout(request: Request, response: Response) -> dict[str, bool]:
-    logout(request)
-    response.delete_cookie(SESSION_COOKIE, path="/")
-    response.delete_cookie(CSRF_COOKIE, path="/")
+    identity.logout(request)
+    cookies = identity.cookie_policy()
+    response.delete_cookie(cookies.session_cookie_name, path=cookies.path)
+    response.delete_cookie(cookies.csrf_cookie_name, path=cookies.path)
     return {"authenticated": False}
 
 
 @router.get("/auth/me", response_model=SessionStatus)
 def local_me(request: Request) -> SessionStatus:
-    identity = getattr(request.state, "user", None) or ensure_system_user()
-    return SessionStatus(authenticated=True, user=identity)
+    actor = getattr(request.state, "user", None) or identity.ensure_system_user()
+    return SessionStatus(authenticated=True, user=actor)
 
 
-def _actor(request: Request):
-    return getattr(request.state, "user", None) or ensure_system_user()
+def _actor(request: Request) -> UserIdentity:
+    return current_actor(request)
 
 
 @router.get("/rule-packs", response_model=list[RulePackManifest])

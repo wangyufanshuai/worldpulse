@@ -3,15 +3,15 @@ import json
 import time
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
-from app.core.evaluation_models import EvaluationBatchCreateRequest, EvaluationBatch, EvaluationCase, EvaluationMember, EvaluationMetric, EvaluationReport, EvaluationSuiteManifest
-from app.services.auth import ensure_system_user
+from app.api.dependencies import current_actor
+from app.core.evaluation_models import EvaluationBatchCreateRequest, EvaluationBatch, EvaluationMember, EvaluationMetric, EvaluationReport, EvaluationSuiteManifest
 from app.services.evaluation import EvaluationApplicationPort, EvaluationService
 
 router = APIRouter()
 service: EvaluationApplicationPort = EvaluationService()
 
 def actor(request: Request):
-    return getattr(request.state, "user", None) or ensure_system_user()
+    return current_actor(request)
 
 def organization(request: Request) -> str:
     return str(request.state.organization_id)
@@ -64,9 +64,11 @@ def event_stream(batch_id: str, request: Request, after_seq: int = Query(default
     organization_id = organization(request)
     service.get_batch(batch_id, organization_id)
     last = request.headers.get("last-event-id")
-    if last and last.isdigit(): after_seq = max(after_seq, int(last))
+    if last and last.isdigit():
+        after_seq = max(after_seq, int(last))
     def generate():
-        cursor = after_seq; idle = 0
+        cursor = after_seq
+        idle = 0
         while idle < 20:
             rows = service.list_events(batch_id, cursor, organization_id)
             if rows:
@@ -75,7 +77,9 @@ def event_stream(batch_id: str, request: Request, after_seq: int = Query(default
                     cursor = max(cursor, row["seq"])
                     yield f"id: {row['seq']}\nevent: evaluation\ndata: {json.dumps(row, ensure_ascii=False)}\n\n"
             else:
-                idle += 1; yield ": keepalive\n\n"; time.sleep(0.5)
+                idle += 1
+                yield ": keepalive\n\n"
+                time.sleep(0.5)
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 @router.get("/evaluations/{batch_id}/report", response_model=EvaluationReport)

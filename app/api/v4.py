@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, Request
 
+from app.api.dependencies import current_actor
 from app.core.evidence_models import (
     EvidenceClaim,
     EvidenceClaimCreate,
@@ -15,7 +16,6 @@ from app.core.evidence_models import (
     EvidenceSyncResult,
     ProjectEvidenceSummary,
 )
-from app.services.auth import ensure_system_user
 from app.services.evidence import EvidenceApplicationPort, evidence_service
 
 
@@ -24,7 +24,7 @@ service: EvidenceApplicationPort = evidence_service
 
 
 def _actor(request: Request):
-    return getattr(request.state, "user", None) or ensure_system_user()
+    return current_actor(request)
 
 
 def _organization(request: Request) -> str:

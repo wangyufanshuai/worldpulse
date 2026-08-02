@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
+from app.api.dependencies import current_actor
 from app.core.operations_models import OrganizationOperationsSummary, OrganizationQuota, OrganizationQuotaUpdate, PlatformReadiness, WorkerNode
 from app.services import operations
-from app.services.auth import ensure_system_user
 
 
 router = APIRouter()
 
 
 def _actor(request: Request):
-    return getattr(request.state, "user", None) or ensure_system_user()
+    return current_actor(request)
 
 
 @router.get("/platform/readiness", response_model=PlatformReadiness)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, Request
 
+from app.api.dependencies import current_actor
+from app.core.trust_models import UserIdentity
 from app.core.organization_models import (
     DataConnector,
     DataConnectorCreateRequest,
@@ -17,53 +19,61 @@ from app.core.organization_models import (
     OrganizationMemberAddRequest,
 )
 from app.core.models import ResearchProject, ResearchProjectCreate
-from app.services.auth import ensure_system_user
-from app.services import ingestion, organizations
+from app.services import ingestion
+from app.services.identity import (
+    OrganizationApplicationPort,
+    organization_service,
+)
 from app.services.project_app import ResearchWorkspaceApplicationPort, research_workspace_service
 
 
 router = APIRouter()
 project_service: ResearchWorkspaceApplicationPort = research_workspace_service
+organization_context: OrganizationApplicationPort = organization_service
 
 
-def _actor(request: Request):
-    return getattr(request.state, "user", None) or ensure_system_user()
+def _actor(request: Request) -> UserIdentity:
+    return current_actor(request)
 
 
 @router.get("/organizations", response_model=list[Organization])
 def organization_list(request: Request) -> list[Organization]:
-    return organizations.list_organizations(_actor(request))
+    return organization_context.list_organizations(_actor(request))
 
 
 @router.get("/organizations/current", response_model=Organization)
 def organization_current(request: Request) -> Organization:
-    return organizations.current_organization(_actor(request), request.headers.get("x-worldpulse-org"))
+    return organization_context.current_organization(_actor(request), request.headers.get("x-worldpulse-org"))
 
 
 @router.post("/organizations", response_model=Organization)
 def organization_create(payload: OrganizationCreateRequest, request: Request) -> Organization:
-    return organizations.create_organization(payload, _actor(request))
+    return organization_context.create_organization(payload, _actor(request))
 
 
 @router.get("/organizations/{organization_id}/members", response_model=list[OrganizationMember])
 def organization_member_list(organization_id: str, request: Request) -> list[OrganizationMember]:
-    return organizations.list_members(organization_id, _actor(request))
+    return organization_context.list_members(organization_id, _actor(request))
 
 
 @router.post("/organizations/{organization_id}/members", response_model=OrganizationMember)
 def organization_member_add(organization_id: str, payload: OrganizationMemberAddRequest, request: Request) -> OrganizationMember:
-    return organizations.add_member(organization_id, payload, _actor(request))
+    return organization_context.add_member(organization_id, payload, _actor(request))
 
 
 @router.get("/organizations/{organization_id}/projects", response_model=list[ResearchProject])
 def organization_project_list(organization_id: str, request: Request, limit: int = Query(default=50, ge=1, le=100)) -> list[ResearchProject]:
-    organizations.require_organization_role(organization_id, _actor(request), {"owner", "admin", "analyst", "reviewer", "viewer"})
+    organization_context.require_organization_role(
+        organization_id,
+        _actor(request),
+        {"owner", "admin", "analyst", "reviewer", "viewer"},
+    )
     return project_service.list_projects(limit=limit, organization_id=organization_id)
 
 
 @router.post("/organizations/{organization_id}/projects", response_model=ResearchProject)
 def organization_project_create(organization_id: str, payload: ResearchProjectCreate, request: Request) -> ResearchProject:
-    organizations.require_organization_role(organization_id, _actor(request), organizations.ORG_WRITE_ROLES)
+    organization_context.require_organization_role(organization_id, _actor(request), set(organization_context.write_roles))
     return project_service.create_project(payload, organization_id=organization_id)
 
 

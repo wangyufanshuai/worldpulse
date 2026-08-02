@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
+from app.api.dependencies import current_actor
 from app.core.evaluation_models import (
     EvaluationBatch,
     EvaluationVerificationResult,
@@ -13,7 +14,6 @@ from app.core.evaluation_models import (
     LabelPackReviewRequest,
     SealedLabelPack,
 )
-from app.services.auth import ensure_system_user
 from app.services.evaluation import EvaluationApplicationPort, EvaluationService
 from app.services.evaluation import benchmark
 from app.services.evaluation.gates import list_verification_results
@@ -24,7 +24,7 @@ service: EvaluationApplicationPort = EvaluationService()
 
 
 def actor(request: Request):
-    return getattr(request.state, "user", None) or ensure_system_user()
+    return current_actor(request)
 
 
 def organization(request: Request) -> str:

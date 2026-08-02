@@ -6,13 +6,13 @@ import time
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 
+from app.api.dependencies import current_actor
 from app.core.continuous_intelligence_models import (
     ContinuousIntelligenceSummary, InAppNotification, IntelligenceAlert, IntelligenceAlertEvent,
     MonitoringPollEvent, MonitoringPollJob, MonitoringSource, MonitoringSourceCreate,
     MonitoringSourceStatusRequest, NotificationSubscription, NotificationSubscriptionCreate,
     WatchlistCreate, WatchlistManifest,
 )
-from app.services.auth import ensure_system_user
 from app.services.continuous_intelligence import ContinuousIntelligenceService
 
 
@@ -21,7 +21,7 @@ service = ContinuousIntelligenceService()
 
 
 def _actor(request: Request):
-    return getattr(request.state, "user", None) or ensure_system_user()
+    return current_actor(request)
 
 
 @router.get("/organizations/{organization_id}/projects/{project_id}/monitoring/sources", response_model=list[MonitoringSource])
