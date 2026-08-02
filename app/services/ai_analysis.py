@@ -8,9 +8,11 @@ from app.services.ai_client import request_structured_analysis
 from app.services.ai_client import ai_status
 from app.services.event_digest import build_agent_event_digest, build_event_digest
 from app.services.risk_engine import build_risk_overview
-from app.services.simulation_data import agent_state_explanations, get_country_agent
 from app.services.simulation_engine import run_simulation
-from app.services.simulation_health import build_simulation_data_health
+from app.services.world_model import WorldModelApplicationPort, world_model_service
+
+
+world_model: WorldModelApplicationPort = world_model_service
 
 
 def analyze_current_risk(request: AIAnalysisRequest) -> AIAnalysisResult:
@@ -105,14 +107,14 @@ def _base_context(request: AIAnalysisRequest) -> dict:
             **events.model_dump(exclude={"topics"}),
             "topics": [topic.model_dump() for topic in events.topics[:5]],
         },
-        "simulation_data_health": [item.model_dump() for item in build_simulation_data_health()[:5]],
+        "simulation_data_health": [item.model_dump() for item in world_model.simulation_data_health()[:5]],
     }
     if request.agent_code:
-        agent = get_country_agent(request.agent_code)
+        agent = world_model.get_country_agent(request.agent_code)
         if agent is not None:
             context["agent"] = {
                 "detail": agent.model_dump(),
-                "state_explanations": agent_state_explanations(agent),
+                "state_explanations": world_model.explain_agent_state(agent),
             }
     return context
 

@@ -9,7 +9,10 @@ from time import time
 import requests
 
 from app.core.models import EventDigest, EventTopic
-from app.services.simulation_data import get_country_agent
+from app.services.world_model import WorldModelApplicationPort, world_model_service
+
+
+world_model: WorldModelApplicationPort = world_model_service
 
 GDELT_DOC_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 CACHE_DIR = Path("data/cache/events")
@@ -85,7 +88,7 @@ def build_event_digest(window_days: int = 30, region: str = "global") -> EventDi
 
 
 def build_agent_event_digest(code: str, window_days: int = 30) -> EventDigest:
-    agent = get_country_agent(code)
+    agent = world_model.get_country_agent(code)
     if agent is None:
         return build_event_digest(window_days=window_days, region=code)
     digest = build_event_digest(window_days=window_days, region=agent.code)

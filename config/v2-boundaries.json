@@ -4,7 +4,7 @@
     "identity": ["app.services.identity", "app.services.auth", "app.services.organizations"],
     "evidence": ["app.services.evidence", "app.services.evidence_registry", "app.services.ingestion"],
     "scenario": ["app.services.scenario_compiler"],
-    "world_model": ["app.services.simulation_data", "app.services.war_room.data"],
+    "world_model": ["app.services.world_model", "app.services.simulation_data", "app.services.war_room.data"],
     "simulation": [
       "app.services.simulation_engine",
       "app.services.agent_runtime",
@@ -33,6 +33,30 @@
     }
   ],
   "restricted_internal_imports": [
+    {
+      "import_prefix": "app.services.simulation_data",
+      "allowed_callers": [
+        "app.services.simulation_health",
+        "app.services.world_model.application"
+      ]
+    },
+    {
+      "import_prefix": "app.services.simulation_health",
+      "allowed_callers": ["app.services.world_model.application"]
+    },
+    {
+      "import_prefix": "app.services.war_room.data",
+      "allowed_callers": [
+        "app.services.calibration",
+        "app.services.continuous_intelligence.service",
+        "app.services.evaluation.benchmark_contracts",
+        "app.services.evaluation.metrics",
+        "app.services.evaluation.pilot_curation",
+        "app.services.scenario_compiler.extraction",
+        "app.services.scenario_compiler.service",
+        "app.services.world_model.application"
+      ]
+    },
     {
       "import_prefix": "app.services.auth",
       "allowed_callers": [

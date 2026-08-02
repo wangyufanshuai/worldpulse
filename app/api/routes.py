@@ -68,18 +68,18 @@ from app.services.operations import platform_readiness
 from app.services.report import export_report, render_report
 from app.services.run_lifecycle import RunControlApplicationPort, run_control_service
 from app.services.risk_engine import build_latest_risk, build_replay, build_risk_analysis, build_risk_history, build_risk_overview
-from app.services.simulation_engine import list_agents, list_scenarios, run_simulation
-from app.services.simulation_data import agent_state_explanations, get_country_agent
-from app.services.simulation_health import build_simulation_data_health
+from app.services.simulation_engine import run_simulation
 from app.services.species_service import build_species_profile, list_species_presets
 from app.services.workbench import build_workbench_status, render_analysis_report, render_system_report, report_templates
-from app.services.war_room_engine import run_war_room, war_room_presets
+from app.services.war_room_engine import run_war_room
+from app.services.world_model import WorldModelApplicationPort, world_model_service
 from app.services.reviews import review_run_diff_if_material
 from app.version import version_info
 
 router = APIRouter()
 project_service: ResearchWorkspaceApplicationPort = research_workspace_service
 run_lifecycle: RunControlApplicationPort = run_control_service
+world_model: WorldModelApplicationPort = world_model_service
 
 
 @router.get("/health")
@@ -353,29 +353,29 @@ def causal_ai_service_smoke_test() -> dict:
 
 @router.get("/simulation/agents", response_model=list[CountryAgent])
 def simulation_agents() -> list[CountryAgent]:
-    return list_agents()
+    return world_model.list_country_agents()
 
 
 @router.get("/simulation/scenarios", response_model=list[SimulationScenario])
 def simulation_scenario_templates() -> list[SimulationScenario]:
-    return list_scenarios()
+    return world_model.list_simulation_scenarios()
 
 
 @router.get("/simulation/data-health", response_model=list[SimulationDataHealth])
 def simulation_data_health() -> list[SimulationDataHealth]:
-    return build_simulation_data_health()
+    return world_model.simulation_data_health()
 
 
 @router.get("/simulation/agent/{code}", response_model=SimulationAgentDetail)
 def simulation_agent_detail(code: str) -> SimulationAgentDetail:
-    agent = get_country_agent(code)
+    agent = world_model.get_country_agent(code)
     if agent is None:
         from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail=f"Unknown agent code: {code}")
     return SimulationAgentDetail(
         agent=agent,
-        state_explanations=agent_state_explanations(agent),
+        state_explanations=world_model.explain_agent_state(agent),
         source_breakdown=agent.source_breakdown,
         fallback_fields=agent.fallback_fields,
         raw_indicators=agent.raw_indicators,
@@ -389,7 +389,7 @@ def simulation_run(request: SimulationRequest) -> SimulationResult:
 
 @router.get("/war-room/presets", response_model=WarRoomPresetBundle)
 def war_room_preset_bundle() -> WarRoomPresetBundle:
-    return war_room_presets()
+    return world_model.war_room_presets()
 
 
 @router.post("/war-room/run", response_model=WarRoomRun)

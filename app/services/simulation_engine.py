@@ -16,7 +16,10 @@ from app.core.models import (
     SimulationRequest,
     SimulationResult,
 )
-from app.services.simulation_data import list_country_agents, network_edges, simulation_scenarios
+from app.services.world_model import WorldModelApplicationPort, world_model_service
+
+
+world_model: WorldModelApplicationPort = world_model_service
 
 STATE_KEYS = [
     "gdp_pressure",
@@ -47,15 +50,15 @@ CHANNEL_TO_STATE = {
 
 
 def list_agents() -> list[CountryAgent]:
-    return list_country_agents()
+    return world_model.list_country_agents()
 
 
 def list_scenarios():
-    return simulation_scenarios()
+    return world_model.list_simulation_scenarios()
 
 
 def run_simulation(request: SimulationRequest) -> SimulationResult:
-    agents = list_country_agents()
+    agents = world_model.list_country_agents()
     horizon = int(np.clip(request.horizon_months, 3, 36))
     runs = int(np.clip(request.runs, 50, 2000))
     rng = np.random.default_rng(request.seed)
@@ -131,7 +134,7 @@ def _normalized_weights(agents: list[CountryAgent]) -> np.ndarray:
 
 def _edge_graph() -> dict[str, list[dict[str, float | str]]]:
     graph: dict[str, list[dict[str, float | str]]] = defaultdict(list)
-    for edge in network_edges():
+    for edge in world_model.list_network_edges():
         graph[str(edge["source"])].append(edge)
     return graph
 
