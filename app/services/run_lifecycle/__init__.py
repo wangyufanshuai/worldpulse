@@ -1,3 +1,4 @@
+from .ports import RunControlApplicationPort, RunControlApplicationService, run_control_service
 from .executor import process_one_queued_job
 from .repository import (
     append_event,
@@ -24,4 +25,7 @@ __all__ = [
     "process_one_queued_job",
     "retry_job",
     "resume_job",
+    "RunControlApplicationPort",
+    "RunControlApplicationService",
+    "run_control_service",
 ]

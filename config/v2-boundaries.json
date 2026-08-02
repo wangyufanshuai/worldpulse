@@ -25,7 +25,7 @@
   "legacy_internal_imports": [
     {
       "import_prefix": "app.services.run_lifecycle.repository",
-      "allowed_callers": ["app.api.routes", "app.workers.run_worker"]
+      "allowed_callers": ["app.api.routes", "app.workers.run_worker", "app.services.run_lifecycle.ports"]
     },
     {
       "import_prefix": "app.services.negotiation.repository",

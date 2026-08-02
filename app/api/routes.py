@@ -82,7 +82,7 @@ from app.services.projects import (
 )
 from app.services.operations import platform_readiness
 from app.services.report import export_report, render_report
-from app.services.run_lifecycle import repository as run_lifecycle
+from app.services.run_lifecycle import RunControlApplicationPort, run_control_service
 from app.services.risk_engine import build_latest_risk, build_replay, build_risk_analysis, build_risk_history, build_risk_overview
 from app.services.simulation_engine import list_agents, list_scenarios, run_simulation
 from app.services.simulation_data import agent_state_explanations, get_country_agent
@@ -94,6 +94,7 @@ from app.services.reviews import review_run_diff_if_material
 from app.version import version_info
 
 router = APIRouter()
+run_lifecycle: RunControlApplicationPort = run_control_service
 
 
 @router.get("/health")
