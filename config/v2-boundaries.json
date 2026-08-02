@@ -24,10 +24,6 @@
   ],
   "legacy_internal_imports": [
     {
-      "import_prefix": "app.services.run_lifecycle.repository",
-      "allowed_callers": ["app.api.routes", "app.workers.run_worker", "app.services.run_lifecycle.ports"]
-    },
-    {
       "import_prefix": "app.services.negotiation.repository",
       "allowed_callers": ["app.api.v7"]
     },
@@ -56,6 +52,35 @@
     {
       "import_prefix": "app.services.scenario_compiler.service",
       "allowed_callers": ["app.services.scenario_compiler", "app.services.scenario_compiler.application"]
+    },
+    {
+      "import_prefix": "app.services.run_lifecycle.repository",
+      "allowed_callers": [
+        "app.services.calibration",
+        "app.services.evaluation.coordinator",
+        "app.services.evaluation.gates",
+        "app.services.evaluation.observation",
+        "app.services.evaluation.service",
+        "app.services.negotiation.engine",
+        "app.services.negotiation.replay",
+        "app.services.scenario_compiler.service"
+      ]
+    },
+    {
+      "import_prefix": "app.services.run_lifecycle.artifacts",
+      "allowed_callers": ["app.services.run_lifecycle.repository"]
+    },
+    {
+      "import_prefix": "app.services.run_lifecycle.mappers",
+      "allowed_callers": ["app.services.run_lifecycle.artifacts", "app.services.run_lifecycle.repository"]
+    },
+    {
+      "import_prefix": "app.services.run_lifecycle.integrity",
+      "allowed_callers": [
+        "app.services.run_lifecycle.artifacts",
+        "app.services.run_lifecycle.mappers",
+        "app.services.run_lifecycle.repository"
+      ]
     }
   ]
 }

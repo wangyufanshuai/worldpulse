@@ -20,7 +20,10 @@ def _imports(path: Path) -> list[str]:
         if isinstance(node, ast.Import):
             result.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
-            result.append(node.module)
+            result.extend(
+                node.module if alias.name == "*" else f"{node.module}.{alias.name}"
+                for alias in node.names
+            )
     return result
 
 

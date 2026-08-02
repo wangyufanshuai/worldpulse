@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-import hashlib
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -9,7 +8,6 @@ from fastapi import HTTPException
 from app.core.models import (
     LifecycleHealthSummary,
     RunAttemptRecord,
-    RunArtifactSummary,
     RunJobCreateRequest,
     RunJobStatus,
     RunLifecycleEvent,
@@ -20,6 +18,18 @@ from app.db.postgres import is_postgres_url
 from app.services.project_store import connect, dumps, init_db, loads
 from app.services.security import redact_secrets, redact_structure
 from app.services.rule_packs import active_rule_pack, get_rule_pack
+
+from . import artifacts as artifact_store
+from .integrity import artifact_digest as _artifact_digest
+from .mappers import attempt_from_row, event_from_row as _event_from_row, job_from_row as _job_from_row
+
+add_artifact = artifact_store.add_artifact
+get_artifact_content_by_id = artifact_store.get_artifact_content_by_id
+get_artifact_contents = artifact_store.get_artifact_contents
+get_artifact_record_by_id = artifact_store.get_artifact_record_by_id
+get_artifacts = artifact_store.get_artifacts
+get_latest_artifact_content = artifact_store.get_latest_artifact_content
+verify_artifacts = artifact_store.verify_artifacts
 
 
 TERMINAL_STATUSES = {"completed", "cancelled", "failed"}
@@ -540,99 +550,6 @@ def retry_job(run_id: str) -> RunJobStatus:
     )
 
 
-def add_artifact(
-    run_id: str,
-    artifact_type: str,
-    schema_version: str,
-    content: dict,
-    *,
-    attempt_id: str | None = None,
-    step_id: str | None = None,
-    supersedes_artifact_id: str | None = None,
-) -> RunArtifactSummary:
-    init_db()
-    body = dumps(content)
-    sha256 = hashlib.sha256(body.encode("utf-8")).hexdigest()
-    with connect() as conn:
-        job = conn.execute(
-            "SELECT current_attempt_id FROM run_jobs WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
-        if job is None:
-            raise HTTPException(status_code=404, detail=f"Unknown lifecycle run: {run_id}")
-        attempt_id = attempt_id or job["current_attempt_id"]
-        if step_id is None and attempt_id:
-            active_step = conn.execute(
-                """
-                SELECT step_id FROM run_steps
-                WHERE run_id = ? AND attempt_id = ? AND status = 'running'
-                ORDER BY started_at DESC, step_id DESC LIMIT 1
-                """,
-                (run_id, attempt_id),
-            ).fetchone()
-            step_id = active_step["step_id"] if active_step else None
-        if supersedes_artifact_id is None:
-            previous = conn.execute(
-                """
-                SELECT artifact_id FROM run_artifacts
-                WHERE run_id = ? AND artifact_type = ?
-                ORDER BY created_at DESC, artifact_id DESC LIMIT 1
-                """,
-                (run_id, artifact_type),
-            ).fetchone()
-            supersedes_artifact_id = previous["artifact_id"] if previous else None
-        version_row = conn.execute(
-            """
-            SELECT COALESCE(MAX(artifact_version), 0) AS version
-            FROM run_artifacts WHERE run_id = ? AND artifact_type = ?
-            """,
-            (run_id, artifact_type),
-        ).fetchone()
-        artifact_version = int(version_row["version"] or 0) + 1
-    artifact = RunArtifactSummary(
-        artifact_id=f"artifact_{uuid4().hex[:12]}",
-        run_id=run_id,
-        artifact_type=artifact_type,
-        schema_version=schema_version,
-        sha256=sha256,
-        created_at=now_iso(),
-        attempt_id=attempt_id,
-        step_id=step_id,
-        artifact_version=artifact_version,
-        supersedes_artifact_id=supersedes_artifact_id,
-    )
-    with connect() as conn:
-        conn.execute(
-            """
-            INSERT INTO run_artifacts
-            (artifact_id, run_id, artifact_type, schema_version, content_json, sha256, created_at,
-             attempt_id, step_id, artifact_version, supersedes_artifact_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                artifact.artifact_id, artifact.run_id, artifact.artifact_type, artifact.schema_version,
-                body, artifact.sha256, artifact.created_at, artifact.attempt_id, artifact.step_id,
-                artifact.artifact_version, artifact.supersedes_artifact_id,
-            ),
-        )
-    return artifact
-
-
-def get_artifacts(run_id: str) -> list[RunArtifactSummary]:
-    init_db()
-    _ensure_job_exists(run_id)
-    with connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT artifact_id, run_id, artifact_type, schema_version, content_json, sha256, created_at,
-                   attempt_id, step_id, artifact_version, supersedes_artifact_id
-            FROM run_artifacts WHERE run_id = ? ORDER BY created_at ASC, artifact_id ASC
-            """,
-            (run_id,),
-        ).fetchall()
-    return [_artifact_from_row(row) for row in rows]
-
-
 def get_steps(run_id: str):
     _ensure_job_exists(run_id)
     from .steps import get_steps as query_steps
@@ -648,21 +565,7 @@ def get_attempts(run_id: str) -> list[RunAttemptRecord]:
             "SELECT * FROM run_attempts WHERE run_id = ? ORDER BY attempt_number ASC",
             (run_id,),
         ).fetchall()
-    return [
-        RunAttemptRecord(
-            attempt_id=row["attempt_id"],
-            run_id=row["run_id"],
-            worker_id=row["worker_id"],
-            attempt_number=int(row["attempt_number"]),
-            status=row["status"],
-            resume_from_step=row["resume_from_step"],
-            started_at=row["started_at"],
-            completed_at=row["completed_at"],
-            error_code=row["error_code"],
-            error_message=row["error_message"],
-        )
-        for row in rows
-    ]
+    return [attempt_from_row(row) for row in rows]
 
 
 def set_attempt_resume_step(attempt_id: str, step_key: str | None) -> None:
@@ -671,85 +574,6 @@ def set_attempt_resume_step(attempt_id: str, step_key: str | None) -> None:
             "UPDATE run_attempts SET resume_from_step = ? WHERE attempt_id = ?",
             (step_key, attempt_id),
         )
-
-
-def get_artifact_content_by_id(run_id: str, artifact_id: str) -> dict:
-    return get_artifact_record_by_id(run_id, artifact_id)[1]
-
-
-def get_artifact_record_by_id(run_id: str, artifact_id: str) -> tuple[str, dict]:
-    init_db()
-    with connect() as conn:
-        row = conn.execute(
-            "SELECT artifact_type, content_json, sha256 FROM run_artifacts WHERE run_id = ? AND artifact_id = ?",
-            (run_id, artifact_id),
-        ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=409, detail=f"Checkpoint artifact is missing: {artifact_id}")
-    if _artifact_digest(row["content_json"]) != row["sha256"]:
-        raise HTTPException(status_code=409, detail=f"Checkpoint artifact integrity verification failed: {row['artifact_type']}")
-    return row["artifact_type"], loads(row["content_json"], {})
-
-
-def get_latest_artifact_content(run_id: str, artifact_type: str) -> dict | None:
-    init_db()
-    _ensure_job_exists(run_id)
-    with connect() as conn:
-        row = conn.execute(
-            """
-            SELECT a.content_json, a.sha256
-            FROM run_artifacts AS a
-            LEFT JOIN run_attempts AS attempt ON attempt.attempt_id = a.attempt_id
-            LEFT JOIN run_steps AS step ON step.step_id = a.step_id
-            WHERE a.run_id = ? AND a.artifact_type = ?
-              AND (a.attempt_id IS NULL OR attempt.status IN ('running', 'completed'))
-            ORDER BY COALESCE(attempt.attempt_number, 0) DESC,
-                     COALESCE(step.completed_at, step.started_at, a.created_at) DESC,
-                     a.artifact_version DESC, a.created_at DESC, a.artifact_id DESC
-            LIMIT 1
-            """,
-            (run_id, artifact_type),
-        ).fetchone()
-    if row is None:
-        return None
-    if _artifact_digest(row["content_json"]) != row["sha256"]:
-        raise HTTPException(status_code=409, detail=f"Artifact integrity verification failed: {artifact_type}")
-    return loads(row["content_json"], {})
-
-
-def get_artifact_contents(run_id: str, artifact_type: str) -> list[dict]:
-    init_db()
-    _ensure_job_exists(run_id)
-    with connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT a.content_json, a.sha256
-            FROM run_artifacts AS a
-            LEFT JOIN run_attempts AS attempt ON attempt.attempt_id = a.attempt_id
-            LEFT JOIN run_steps AS step ON step.step_id = a.step_id
-            WHERE a.run_id = ? AND a.artifact_type = ?
-              AND (a.attempt_id IS NULL OR attempt.status IN ('running', 'completed'))
-            ORDER BY a.artifact_version, a.created_at, a.artifact_id
-            """,
-            (run_id, artifact_type),
-        ).fetchall()
-    result: list[dict] = []
-    for row in rows:
-        if _artifact_digest(row["content_json"]) != row["sha256"]:
-            raise HTTPException(status_code=409, detail=f"Artifact integrity verification failed: {artifact_type}")
-        result.append(loads(row["content_json"], {}))
-    return result
-
-
-def verify_artifacts(run_id: str) -> dict:
-    artifacts = get_artifacts(run_id)
-    invalid = [item.artifact_type for item in artifacts if item.integrity_status != "verified"]
-    return {
-        "status": "verified" if not invalid else "failed",
-        "verified_count": len(artifacts) - len(invalid),
-        "invalid_count": len(invalid),
-        "invalid_artifact_types": invalid,
-    }
 
 
 def get_projected_result_run_id(run_id: str) -> str | None:
@@ -894,82 +718,6 @@ def _ensure_job_exists(run_id: str) -> None:
         row = conn.execute("SELECT run_id FROM run_jobs WHERE run_id = ?", (run_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"Unknown lifecycle run: {run_id}")
-
-
-def _job_from_row(row) -> RunJobStatus:
-    return RunJobStatus(
-        run_id=row["run_id"],
-        project_id=row["project_id"],
-        engine_mode=row["engine_mode"],
-        status=row["status"],
-        current_phase=row["current_phase"],
-        progress=float(row["progress"] or 0),
-        seed=row["seed"],
-        parent_run_id=row["parent_run_id"],
-        result_run_id=row["result_run_id"],
-        scenario=loads(row["scenario_json"], {}),
-        error_code=row["error_code"],
-        error_message=row["error_message"],
-        created_at=row["created_at"],
-        started_at=row["started_at"],
-        updated_at=row["updated_at"],
-        completed_at=row["completed_at"],
-        cancel_requested_at=row["cancel_requested_at"],
-        pause_requested_at=row["pause_requested_at"],
-        worker_id=row["worker_id"],
-        lease_expires_at=row["lease_expires_at"],
-        attempt_count=int(row["attempt_count"] or 0),
-        current_attempt_id=row["current_attempt_id"],
-        max_attempts=int(row["max_attempts"] or 3),
-        next_attempt_at=row["next_attempt_at"],
-        terminal_reason=row["terminal_reason"],
-        job_kind=row["job_kind"] if "job_kind" in row.keys() else "war_room",
-        agent_pack_id=row["agent_pack_id"] if "agent_pack_id" in row.keys() else None,
-        agent_pack_hash=row["agent_pack_hash"] if "agent_pack_hash" in row.keys() else None,
-        scenario_draft_id=row["scenario_draft_id"] if "scenario_draft_id" in row.keys() else None,
-        scenario_draft_hash=row["scenario_draft_hash"] if "scenario_draft_hash" in row.keys() else None,
-        scenario_evidence_pack_hash=row["scenario_evidence_pack_hash"] if "scenario_evidence_pack_hash" in row.keys() else None,
-        rule_pack_id=row["rule_pack_id"] if "rule_pack_id" in row.keys() else None,
-        rule_pack_hash=row["rule_pack_hash"] if "rule_pack_hash" in row.keys() else None,
-        evaluation_batch_id=row["evaluation_batch_id"] if "evaluation_batch_id" in row.keys() else None,
-        evaluation_member_id=row["evaluation_member_id"] if "evaluation_member_id" in row.keys() else None,
-        runtime_profile=loads(row["runtime_profile_json"], {}) if "runtime_profile_json" in row.keys() else {},
-        runtime_profile_hash=row["runtime_profile_hash"] if "runtime_profile_hash" in row.keys() else None,
-    )
-
-
-def _event_from_row(row) -> RunLifecycleEvent:
-    return RunLifecycleEvent(
-        run_id=row["run_id"],
-        seq=int(row["seq"]),
-        event_type=row["event_type"],
-        phase=row["phase"],
-        tick=row["tick"],
-        title=row["title"],
-        detail=row["detail"],
-        payload=loads(row["payload"], {}),
-        created_at=row["created_at"],
-    )
-
-
-def _artifact_from_row(row) -> RunArtifactSummary:
-    return RunArtifactSummary(
-        artifact_id=row["artifact_id"],
-        run_id=row["run_id"],
-        artifact_type=row["artifact_type"],
-        schema_version=row["schema_version"],
-        sha256=row["sha256"],
-        created_at=row["created_at"],
-        attempt_id=row["attempt_id"] if "attempt_id" in row.keys() else None,
-        step_id=row["step_id"] if "step_id" in row.keys() else None,
-        artifact_version=int(row["artifact_version"] or 1) if "artifact_version" in row.keys() else 1,
-        supersedes_artifact_id=row["supersedes_artifact_id"] if "supersedes_artifact_id" in row.keys() else None,
-        integrity_status="verified" if "content_json" not in row.keys() or _artifact_digest(row["content_json"]) == row["sha256"] else "failed",
-    )
-
-
-def _artifact_digest(body: str) -> str:
-    return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 def _lease_expiry(lease_seconds: int) -> str:
