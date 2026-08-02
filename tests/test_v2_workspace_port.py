@@ -7,6 +7,8 @@ from app.services.project_app import (
     research_workspace_service,
 )
 from app.services.project_app.read_models import ResearchWorkspaceReadService
+from app.services.project_app import service as legacy_workspace_service
+from app.services.project_app.replay_application import replay_pack_service
 
 
 def test_project_routes_use_research_workspace_application_port():
@@ -35,3 +37,24 @@ def test_workspace_read_service_exposes_stable_query_contract():
     read_service = ResearchWorkspaceReadService()
     for method in ("list_projects", "get_project_detail", "war_room_workspace", "project_runs", "project_run_citations"):
         assert callable(getattr(read_service, method))
+
+
+def test_legacy_workspace_facade_forwards_replay_pack_to_adapter(monkeypatch):
+    captured = {}
+
+    def build(project_id, **kwargs):
+        captured.update({"project_id": project_id, **kwargs})
+        return "replay-pack"
+
+    monkeypatch.setattr(replay_pack_service, "build", build)
+    result = legacy_workspace_service.war_room_replay_pack(
+        "project_1",
+        run_id="run_1",
+        base_run_id="run_0",
+        target_run_id="run_1",
+    )
+
+    assert result == "replay-pack"
+    assert captured["project_id"] == "project_1"
+    assert captured["run_id"] == "run_1"
+    assert callable(captured["now_factory"])

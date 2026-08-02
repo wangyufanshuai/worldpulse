@@ -95,12 +95,21 @@
       "allowed_callers": [
         "app.services.project_app.service",
         "app.services.project_app.project_queries",
-        "app.services.project_app.run_queries"
+        "app.services.project_app.run_queries",
+        "app.services.project_app.replay_application"
       ]
     },
     {
       "import_prefix": "app.services.project_app.read_models",
       "allowed_callers": ["app.services.project_app.ports", "app.services.project_app.application"]
+    },
+    {
+      "import_prefix": "app.services.project_app.replay_application",
+      "allowed_callers": ["app.services.project_app.service"]
+    },
+    {
+      "import_prefix": "app.services.project_app.replay_pack",
+      "allowed_callers": ["app.services.project_app.replay_application"]
     }
   ]
 }

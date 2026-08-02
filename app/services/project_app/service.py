@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-import json
 import os
 from uuid import uuid4
 
@@ -45,25 +44,17 @@ from app.services.ai_client import request_structured_analysis
 from app.services.causal_analysis import analyze_causal_world
 from app.services.causal_backtest import run_causal_backtest
 from app.services.causal_data import build_causal_events, select_event
-from app.services.causal_graph import build_causal_chain
-from app.services.project_store import connect, dumps, init_db, loads
+from app.services.causal_graph import build_causal_chain  # noqa: F401 - compatibility façade patch seam
+from app.services.project_store import connect, dumps, init_db
 from app.services.risk_engine import build_risk_overview
 from app.services.simulation_engine import run_simulation
-from app.services.war_room_engine import WAR_ROOM_DISCLAIMER, run_war_room
+from app.services.war_room_engine import run_war_room
 from app.services.project_app.diffing import (
     build_war_room_run_diff,
     event_names as diff_event_names,
     risk_score as diff_risk_score,
 )
-from app.services.project_app.replay_pack import (
-    _render_war_room_replay_markdown,
-    _replay_pack_audit_trail,
-    _replay_pack_lifecycle_artifacts,
-    _replay_pack_manifest,
-    _replay_pack_model_inputs,
-    _replay_pack_model_outputs,
-    _replay_pack_summary,
-)
+from app.services.project_app.replay_application import replay_pack_service
 from app.services.project_app.reports import (
     build_project_report,
 )
@@ -86,8 +77,6 @@ from app.services.project_app.repository import (
     latest_graph as _latest_graph,
     latest_report as _latest_report,
     latest_run as _latest_run,
-    project_runs as _project_runs,
-    report_for_run as _report_for_run,
     run_by_id as _run_by_id,
 )
 
@@ -456,67 +445,12 @@ def compare_project_runs(project_id: str, base_run_id: str, target_run_id: str) 
 
 
 def war_room_replay_pack(project_id: str, run_id: str | None = None, base_run_id: str | None = None, target_run_id: str | None = None) -> WarRoomReplayPack:
-    project = _get_project(project_id)
-    target = _run_by_id(project_id, target_run_id or run_id) if (target_run_id or run_id) else _latest_run(project_id)
-    if target is None:
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=404, detail="No run available for replay pack")
-    target_graph = _graph_for_run(project_id, target.run_id)
-    target_sim = target.simulation_snapshot or {}
-    if not target_sim.get("scenario"):
-        from fastapi import HTTPException
-
-        raise HTTPException(status_code=422, detail="Replay Pack requires a War Room run")
-
-    base = _run_by_id(project_id, base_run_id) if base_run_id else None
-    base_graph = _graph_for_run(project_id, base.run_id) if base else None
-    diff = build_war_room_run_diff(base, target, base_graph, target_graph) if base else None
-    lifecycle_artifacts = _replay_pack_lifecycle_artifacts(target)
-    summary = _replay_pack_summary(target, diff, lifecycle_artifacts)
-    generated_at = _now()
-    manifest = _replay_pack_manifest(project_id, project.title, target, base, diff, generated_at, lifecycle_artifacts)
-    model_inputs = _replay_pack_model_inputs(target_sim)
-    model_outputs = _replay_pack_model_outputs(target_sim, target_graph, diff, lifecycle_artifacts)
-    audit_trail = _replay_pack_audit_trail(base, target, diff, lifecycle_artifacts)
-    markdown = _render_war_room_replay_markdown(project.title, target, target_graph, diff, summary, manifest, model_inputs, audit_trail)
-    json_manifest = json.dumps(
-        {
-            "manifest": manifest,
-            "model_inputs": model_inputs,
-            "model_outputs": model_outputs,
-            "audit_trail": audit_trail,
-            "summary": summary,
-            "counterfactual_observations": diff.get("counterfactual_observations", []) if diff else [],
-            "disclaimer": WAR_ROOM_DISCLAIMER,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
-    return WarRoomReplayPack(
-        project_id=project_id,
-        run_id=target.run_id,
-        base_run_id=base.run_id if base else None,
-        target_run_id=target.run_id if base else None,
-        title=f"{project.title} Replay Pack",
-        scenario=target_sim.get("scenario", {}),
-        policy_actions=target_sim.get("scenario", {}).get("policy_actions", []),
-        risk_heatmap=target_sim.get("risk_heatmap", []),
-        supply_chain_delta=diff.get("supply_chain_delta", []) if diff else [],
-        agent_decisions=target_sim.get("agent_decisions", []),
-        timeline=target_sim.get("timeline", []),
-        timeline_delta=diff.get("timeline_delta", {}) if diff else {},
-        impact_graph=target_sim.get("impact_graph", target_graph.model_dump() if target_graph else {}),
-        assumptions=target_sim.get("assumptions", []),
-        counterfactual_observations=diff.get("counterfactual_observations", []) if diff else [],
-        summary=summary,
-        manifest=manifest,
-        model_inputs=model_inputs,
-        model_outputs=model_outputs,
-        audit_trail=audit_trail,
-        artifacts={"markdown": markdown, "json_manifest": json_manifest},
-        markdown=markdown,
-        disclaimer=WAR_ROOM_DISCLAIMER,
+    return replay_pack_service.build(
+        project_id,
+        run_id=run_id,
+        base_run_id=base_run_id,
+        target_run_id=target_run_id,
+        now_factory=_now,
     )
 
 
