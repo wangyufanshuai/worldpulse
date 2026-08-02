@@ -19,7 +19,7 @@ from app.core.organization_models import (
     IngestionSummary,
 )
 from app.core.trust_models import UserIdentity
-from app.services import evidence_registry
+from app.services.evidence import EvidenceApplicationPort, evidence_service
 from app.services.consistency.hashing import stable_hash
 from app.db.postgres import is_postgres_url
 from app.services.organizations import ORG_WRITE_ROLES, require_organization_role, require_resource_scope, scope_resource
@@ -28,6 +28,7 @@ from app.services.security import redact_secrets
 
 
 FORBIDDEN_CONFIG_KEYS = {"password", "secret", "token", "api_key", "apikey", "authorization", "cookie"}
+evidence_registry: EvidenceApplicationPort = evidence_service
 DEFAULT_CATEGORIES = ["energy", "food", "trade", "finance", "sanctions", "conflict", "climate", "other"]
 
 

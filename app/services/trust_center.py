@@ -10,7 +10,7 @@ from app.services.project_store import connect, init_db, loads
 from app.services.reviews import ensure_artifact_integrity_reviews, list_reviews
 from app.services.reviews import create_review_case
 from app.services.rule_packs import active_rule_pack, list_rule_packs
-from app.services.evidence_registry import project_evidence_summary
+from app.services.evidence import evidence_service
 
 
 def project_trust_summary(project_id: str) -> TrustSummary:
@@ -26,7 +26,7 @@ def project_trust_summary(project_id: str) -> TrustSummary:
     reviews = list_reviews(status="open")
     metrics = calibration.metrics if calibration else {}
     report_allowed = bool(calibration and calibration.gate_status == "passed" and all(metrics.get("gates", {}).values()))
-    evidence_summary = project_evidence_summary(project_id)
+    evidence_summary = evidence_service.project_evidence_summary(project_id)
     mode_eligibility = _mode_eligibility()
     return TrustSummary(
         project_id=project_id,

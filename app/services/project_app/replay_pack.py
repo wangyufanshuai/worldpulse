@@ -63,7 +63,7 @@ def _replay_pack_lifecycle_artifacts(target: ResearchRun) -> dict:
 
 
 def _replay_pack_manifest(project_id: str, project_title: str, target: ResearchRun, base: ResearchRun | None, diff: dict | None, generated_at: str, lifecycle_artifacts: dict | None = None) -> dict:
-    from app.services.evidence_registry import evidence_manifest_for_run
+    from app.services.evidence import evidence_service
 
     trust_manifest = (target.data_snapshot or {}).get("trust_manifest") or (target.simulation_snapshot or {}).get("trust_manifest")
     return {
@@ -82,7 +82,7 @@ def _replay_pack_manifest(project_id: str, project_title: str, target: ResearchR
         "verified_lifecycle_artifacts": sorted((lifecycle_artifacts or {}).get("artifacts", {})),
         "disclaimer": WAR_ROOM_DISCLAIMER,
         "trust_manifest": trust_manifest,
-        "evidence_manifest": evidence_manifest_for_run(project_id, target.run_id),
+        "evidence_manifest": evidence_service.evidence_manifest_for_run(project_id, target.run_id),
     }
 
 

@@ -35,5 +35,11 @@
       "import_prefix": "app.services.evaluation.gates",
       "allowed_callers": ["app.api.v11"]
     }
+  ],
+  "restricted_internal_imports": [
+    {
+      "import_prefix": "app.services.evidence_registry",
+      "allowed_callers": ["app.services.evidence.application"]
+    }
   ]
 }

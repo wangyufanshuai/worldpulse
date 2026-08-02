@@ -29,6 +29,8 @@ def verify(root: Path) -> dict[str, object]:
     forbidden_prefixes = tuple(manifest["forbidden_import_prefixes_from_services"])
     legacy = manifest["legacy_internal_imports"]
     legacy_by_prefix = {item["import_prefix"]: item["allowed_callers"] for item in legacy}
+    restricted = manifest.get("restricted_internal_imports", [])
+    restricted_by_prefix = {item["import_prefix"]: item["allowed_callers"] for item in restricted}
     violations: list[dict[str, str]] = []
     legacy_hits: list[dict[str, str]] = []
 
@@ -44,6 +46,10 @@ def verify(root: Path) -> dict[str, object]:
                 if imported == prefix or imported.startswith(prefix + "."):
                     if module in callers:
                         legacy_hits.append({"caller": module, "import": imported})
+            for prefix, callers in restricted_by_prefix.items():
+                if imported == prefix or imported.startswith(prefix + "."):
+                    if module not in callers:
+                        violations.append({"caller": module, "import": imported})
 
     return {
         "status": "ok" if not violations else "failed",

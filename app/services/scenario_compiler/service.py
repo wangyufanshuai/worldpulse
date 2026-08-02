@@ -17,7 +17,7 @@ from app.core.scenario_compiler_models import (
 )
 from app.core.trust_models import UserIdentity
 from app.db.postgres import is_postgres_url
-from app.services import evidence_registry
+from app.services.evidence import EvidenceApplicationPort, evidence_service
 from app.services.consistency.hashing import stable_hash
 from app.services.organizations import ORG_WRITE_ROLES, require_organization_role, require_resource_scope, scope_resource
 from app.services.project_store import connect, dumps, init_db, loads
@@ -28,6 +28,8 @@ from app.services.war_room.data import POLICY_ACTIONS, SCENARIOS, SUPPLY_CHAINS,
 
 from .blob_store import resolve_blob, store_bytes, store_upload, verify_blob
 from .extraction import EXTRACTOR_VERSION, deterministic_candidates, extract_chunks, optional_llm_candidates
+
+evidence_registry: EvidenceApplicationPort = evidence_service
 
 
 READ_ROLES = {"owner", "admin", "analyst", "reviewer", "viewer"}
