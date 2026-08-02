@@ -6,6 +6,7 @@ from app.services.project_app import (
     ResearchWorkspaceApplicationService,
     research_workspace_service,
 )
+from app.services.project_app.read_models import ResearchWorkspaceReadService
 
 
 def test_project_routes_use_research_workspace_application_port():
@@ -28,3 +29,9 @@ def test_research_workspace_adapter_delegates_to_legacy_service():
     service = ResearchWorkspaceApplicationService(Delegate())
     assert service.list_projects(limit=12, organization_id="org_1") == []
     assert captured == {"limit": 12, "organization_id": "org_1"}
+
+
+def test_workspace_read_service_exposes_stable_query_contract():
+    read_service = ResearchWorkspaceReadService()
+    for method in ("list_projects", "get_project_detail", "war_room_workspace", "project_runs", "project_run_citations"):
+        assert callable(getattr(read_service, method))

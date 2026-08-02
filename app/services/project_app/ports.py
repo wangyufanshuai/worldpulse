@@ -22,6 +22,8 @@ from app.core.models import (
     WarRoomWorkspaceState,
 )
 
+from .read_models import ResearchWorkspaceReadPort, ResearchWorkspaceReadService
+
 
 class ResearchWorkspaceApplicationPort(Protocol):
     def create_project(self, payload: ResearchProjectCreate, organization_id: str = "org_default") -> ResearchProject: ...
@@ -75,24 +77,29 @@ class ResearchWorkspaceApplicationPort(Protocol):
 class ResearchWorkspaceApplicationService:
     """Compatibility adapter over the existing project application service."""
 
-    def __init__(self, delegate: Any | None = None) -> None:
+    def __init__(self, delegate: Any | None = None, read_service: ResearchWorkspaceReadPort | None = None) -> None:
+        self._uses_read_service = delegate is None
         if delegate is None:
             from app.services import projects
 
             delegate = projects
         self._delegate = delegate
+        self._read_service = read_service or ResearchWorkspaceReadService()
+
+    def _read_target(self) -> Any:
+        return self._read_service if self._uses_read_service else self._delegate
 
     def create_project(self, payload: ResearchProjectCreate, organization_id: str = "org_default") -> ResearchProject:
         return self._delegate.create_project(payload, organization_id=organization_id)
 
     def list_projects(self, limit: int = 50, organization_id: str | None = None) -> list[ResearchProject]:
-        return self._delegate.list_projects(limit=limit, organization_id=organization_id)
+        return self._read_target().list_projects(limit=limit, organization_id=organization_id)
 
     def get_project_detail(self, project_id: str, run_id: str | None = None) -> ProjectDetail:
-        return self._delegate.get_project_detail(project_id, run_id=run_id)
+        return self._read_target().get_project_detail(project_id, run_id=run_id)
 
     def war_room_workspace(self, project_id: str, run_id: str | None = None) -> WarRoomWorkspaceState:
-        return self._delegate.war_room_workspace(project_id, run_id=run_id)
+        return self._read_target().war_room_workspace(project_id, run_id=run_id)
 
     def run_project(self, project_id: str, mode: str = "fast") -> ProjectDetail:
         return self._delegate.run_project(project_id, mode=mode)
@@ -110,13 +117,13 @@ class ResearchWorkspaceApplicationService:
         return self._delegate.latest_project_report(project_id)
 
     def project_runs(self, project_id: str) -> list[ResearchRun]:
-        return self._delegate.project_runs(project_id)
+        return self._read_target().project_runs(project_id)
 
     def project_run_detail(self, project_id: str, run_id: str) -> ProjectDetail:
-        return self._delegate.project_run_detail(project_id, run_id)
+        return self._read_target().project_run_detail(project_id, run_id)
 
     def project_run_citations(self, project_id: str, run_id: str) -> list[ReportCitation]:
-        return self._delegate.project_run_citations(project_id, run_id)
+        return self._read_target().project_run_citations(project_id, run_id)
 
     def edit_project_graph(self, project_id: str, payload: GraphEditRequest) -> ProjectDetail:
         return self._delegate.edit_project_graph(project_id, payload)

@@ -97,6 +97,10 @@
         "app.services.project_app.project_queries",
         "app.services.project_app.run_queries"
       ]
+    },
+    {
+      "import_prefix": "app.services.project_app.read_models",
+      "allowed_callers": ["app.services.project_app.ports", "app.services.project_app.application"]
     }
   ]
 }
