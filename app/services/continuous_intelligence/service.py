@@ -25,7 +25,7 @@ from app.services.consistency.hashing import stable_hash
 from app.services.organizations import ORG_WRITE_ROLES, require_organization_role, require_resource_scope, scope_resource
 from app.services.project_store import connect, dumps, init_db, loads
 from app.services.reviews import create_review_case
-from app.services.scenario_compiler import ScenarioCompilerService
+from app.services.scenario_compiler import ScenarioCompilerApplicationPort, scenario_compiler_service
 from app.services.scenario_compiler.extraction import deterministic_candidates
 from app.services.security import redact_secrets
 from app.services.war_room.data import COUNTRIES, POLICY_ACTIONS, SCENARIOS, SUPPLY_CHAINS
@@ -41,7 +41,7 @@ LEASE_SECONDS = 60
 
 class ContinuousIntelligenceService:
     def __init__(self) -> None:
-        self.compiler = ScenarioCompilerService()
+        self.compiler: ScenarioCompilerApplicationPort = scenario_compiler_service
 
     # Sources -----------------------------------------------------------------
     def create_source(self, organization_id: str, project_id: str, payload: MonitoringSourceCreate, actor: UserIdentity) -> MonitoringSource:

@@ -10,11 +10,11 @@ from app.core.scenario_compiler_models import (
     ScenarioDraftReviewRequest, ScenarioDraftRunRequest, SourceDocument,
 )
 from app.services.auth import ensure_system_user
-from app.services.scenario_compiler import ScenarioCompilerService
+from app.services.scenario_compiler import ScenarioCompilerApplicationPort, scenario_compiler_service
 
 
 router = APIRouter()
-service = ScenarioCompilerService()
+service: ScenarioCompilerApplicationPort = scenario_compiler_service
 
 
 def _actor(request: Request):

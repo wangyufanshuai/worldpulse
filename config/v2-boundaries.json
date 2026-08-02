@@ -52,6 +52,10 @@
     {
       "import_prefix": "app.services.evidence.hashing",
       "allowed_callers": ["app.services.evidence.mappers", "app.services.evidence_registry"]
+    },
+    {
+      "import_prefix": "app.services.scenario_compiler.service",
+      "allowed_callers": ["app.services.scenario_compiler", "app.services.scenario_compiler.application"]
     }
   ]
 }

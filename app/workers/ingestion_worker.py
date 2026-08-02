@@ -9,11 +9,11 @@ from uuid import uuid4
 from app.services.ingestion import claim_next_job, execute_claimed_job
 from app.services import operations
 from app.services.project_store import connect
-from app.services.scenario_compiler import ScenarioCompilerService
+from app.services.scenario_compiler import ScenarioCompilerApplicationPort, scenario_compiler_service
 from app.services.continuous_intelligence import ContinuousIntelligenceService
 
 
-scenario_compiler = ScenarioCompilerService()
+scenario_compiler: ScenarioCompilerApplicationPort = scenario_compiler_service
 continuous_intelligence = ContinuousIntelligenceService()
 
 

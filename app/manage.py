@@ -122,8 +122,8 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.command == "blobs":
-        from app.services.scenario_compiler import ScenarioCompilerService
-        result = ScenarioCompilerService().verify_blobs()
+        from app.services.scenario_compiler import scenario_compiler_service
+        result = scenario_compiler_service.verify_blobs()
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result["status"] == "ok" else 1
     if args.command == "monitoring":
