@@ -9,8 +9,8 @@ FROM python:3.11-slim AS app
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements.lock ./
+RUN pip install --no-cache-dir -r requirements.lock
 COPY app ./app
 COPY config ./config
 COPY tests/calibration_cases ./tests/calibration_cases

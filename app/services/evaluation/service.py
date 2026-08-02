@@ -12,9 +12,17 @@ from app.services.project_store import connect, dumps, init_db, loads
 from app.db.postgres import is_postgres_url
 from app.services.rule_packs import active_rule_pack
 from app.services.run_lifecycle import repository as lifecycle_repository
-from app.services.war_room.data import SUPPLY_CHAINS
 from .corpus import suite_manifest
 from .gates import ensure_gate_manifest, list_verification_results, verify_member
+from .metrics import (
+    average as _average,
+    average_optional as _average_optional,
+    historical_case_metrics as _historical_case_metrics,
+)
+from .observation import (
+    aggregate_agent_observations as _aggregate_agent_observations,
+    agent_outcome_observation as _agent_outcome_observation,
+)
 from . import benchmark
 
 TERMINAL = {"completed", "cancelled", "failed"}
@@ -545,172 +553,3 @@ class EvaluationService:
 
     def _member(self, row) -> EvaluationMember:
         return EvaluationMember(member_id=row["member_id"], batch_id=row["batch_id"], case_id=row["case_id"], engine_mode=row["engine_mode"], seed=row["seed"], run_id=row["run_id"], status=row["status"], baseline_result_hash=row["baseline_result_hash"], result_hash=row["result_hash"], metrics=loads(row["metrics_json"], {}), artifact_refs=loads(row["artifact_refs_json"], []), error_code=row["error_code"], error_message=row["error_message"], created_at=row["created_at"], updated_at=row["updated_at"], completed_at=row["completed_at"], input_hash=row["input_hash"], expected_baseline_hash=row["expected_baseline_hash"], verification_status=row["verification_status"], verification_hash=row["verification_hash"])
-
-
-def _historical_case_metrics(result: dict, expected: dict, label_confidence: float, evidence_count: int) -> dict:
-    countries = sorted(result.get("country_agents", []), key=lambda item: float(item.get("risk_score", 0)), reverse=True)
-    ranking = [item.get("code") for item in countries if item.get("code")]
-    expected_ranking = list(expected.get("risk_ranking", []))
-    expected_top3 = list(expected.get("top3_countries", []))
-    baseline_pressure = {item.key: float(item.pressure_score) for item in SUPPLY_CHAINS}
-    chain_actual = {}
-    for item in result.get("supply_chains", []):
-        key = item.get("key")
-        if not key:
-            continue
-        direction = item.get("direction")
-        if direction not in {"up", "down", "flat"}:
-            pressure = item.get("pressure_score")
-            if pressure is None or key not in baseline_pressure:
-                direction = None
-            else:
-                delta = float(pressure) - baseline_pressure[key]
-                direction = "up" if delta >= 2.0 else "down" if delta <= -2.0 else "flat"
-        chain_actual[key] = direction
-    chain_expected = expected.get("supply_chain_directions", {})
-    actual_turns = [int(item.get("day", 0)) for item in result.get("timeline", []) if item.get("turning_point")]
-    expected_turns = [int(item) for item in expected.get("turning_points", [])]
-    ranked_country_coverage = len(set(expected_ranking) & set(ranking)) / 10
-    chain_coverage = len(set(chain_expected) & set(chain_actual)) / 5
-    return {
-        "risk_spearman": _spearman(ranking, expected_ranking),
-        "top3_overlap": len(set(ranking[:3]) & set(expected_top3)) / 3 if expected_top3 else 1.0,
-        "supply_chain_direction_accuracy": _mapping_accuracy(chain_actual, chain_expected),
-        "turning_point_error_days": _turning_error(actual_turns, expected_turns),
-        "agent_outcome_agreement": None,
-        "data_coverage": round(min(1.0, 0.7 * ranked_country_coverage + 0.3 * chain_coverage) if evidence_count >= 2 else 0.0, 6),
-        "label_confidence": float(label_confidence),
-    }
-
-
-def _average(rows: list[dict], key: str) -> float:
-    return round(sum(float(item[key]) for item in rows) / max(1, len(rows)), 6)
-
-
-def _average_optional(rows: list[dict], key: str) -> float | None:
-    values = [float(item[key]) for item in rows if item.get(key) is not None]
-    return round(sum(values) / len(values), 6) if values else None
-
-
-def _mapping_accuracy(actual: dict, expected: dict) -> float:
-    keys = set(expected)
-    return sum(actual.get(key) == expected.get(key) for key in keys) / len(keys) if keys else 0.0
-
-
-def _agent_outcome_observation(run_id: str, engine_mode: str, labels: dict) -> dict:
-    expectations = labels.get("agent_outcome_expectations", {})
-    allowed = set(expectations.get("allowed_action_types", []))
-    forbidden = set(expectations.get("forbidden_action_types", []))
-    expected_commitments = set(expectations.get("expected_commitment_patterns", []))
-    actual: set[str] = set()
-    active_commitments: set[str] = set()
-    if engine_mode == "hybrid":
-        proposals = lifecycle_repository.get_latest_artifact_content(run_id, "agent_action_proposals") or {}
-        proposal_types = {
-            item.get("proposal_id"): item.get("action_type")
-            for item in proposals.get("proposals", [])
-            if item.get("proposal_id") and item.get("action_type")
-        }
-        projection = lifecycle_repository.get_latest_artifact_content(run_id, "agent_action_projection_audit") or {}
-        actual = {
-            proposal_types.get(item.get("proposal_id"))
-            for item in projection.get("records", [])
-            if item.get("outcome") == "accepted" and item.get("projection_status") == "projected"
-        }
-        actual.discard(None)
-    elif engine_mode == "negotiation":
-        source = lifecycle_repository.get_latest_artifact_content(run_id, "negotiation_action_observation")
-        if not source:
-            raise ValueError("Negotiation action observation Artifact is missing")
-        actual = set(source.get("applied_action_types", []))
-        active_commitments = set(source.get("active_commitment_types", []))
-    else:
-        return {
-            "engine_mode": engine_mode,
-            "score": None,
-            "allowed_action_recall": None,
-            "forbidden_action_pass": None,
-            "commitment_pattern_match": None,
-            "actual_action_types": [],
-            "active_commitment_types": [],
-            "verifier_version": "agent-outcome-observation.v1",
-        }
-    allowed_recall = len(actual & allowed) / len(allowed) if allowed else None
-    forbidden_pass = (1.0 if not (actual & forbidden) else 0.0) if forbidden else None
-    commitment_match = len(active_commitments & expected_commitments) / len(expected_commitments) if expected_commitments else None
-    if engine_mode == "hybrid":
-        components = [(allowed_recall, 50), (forbidden_pass, 30)]
-    else:
-        components = [(allowed_recall, 50), (forbidden_pass, 30), (commitment_match, 20)]
-    weighted = [(value, weight) for value, weight in components if value is not None]
-    score = sum(value * weight for value, weight in weighted) / sum(weight for _, weight in weighted) if weighted else None
-    return {
-        "engine_mode": engine_mode,
-        "score": round(score, 6) if score is not None else None,
-        "allowed_action_recall": round(allowed_recall, 6) if allowed_recall is not None else None,
-        "forbidden_action_pass": forbidden_pass,
-        "commitment_pattern_match": round(commitment_match, 6) if commitment_match is not None else None,
-        "actual_action_types": sorted(actual),
-        "active_commitment_types": sorted(active_commitments),
-        "verifier_version": "agent-outcome-observation.v1",
-    }
-
-
-def _aggregate_agent_observations(rows: list[dict]) -> dict:
-    case_mode_rows: list[dict] = []
-    for (case_id, mode) in sorted({(item["case_id"], item["mode"]) for item in rows}):
-        selected = [item for item in rows if item["case_id"] == case_id and item["mode"] == mode]
-        case_mode_rows.append({
-            "case_id": case_id,
-            "mode": mode,
-            "seed_count": len(selected),
-            "score": _average_optional(selected, "score"),
-            "allowed_action_recall": _average_optional(selected, "allowed_action_recall"),
-            "forbidden_action_pass": _average_optional(selected, "forbidden_action_pass"),
-            "commitment_pattern_match": _average_optional(selected, "commitment_pattern_match"),
-            "not_applicable": {
-                key: sum(item.get(key) is None for item in selected)
-                for key in ("score", "allowed_action_recall", "forbidden_action_pass", "commitment_pattern_match")
-            },
-        })
-    result = {
-        "verifier_version": "agent-outcome-observation.v1",
-        "member_count": len(rows),
-        "case_count": len({item["case_id"] for item in rows}),
-        "case_mode_observations": case_mode_rows,
-        "modes": {},
-    }
-    for mode in ("hybrid", "negotiation"):
-        selected = [item for item in case_mode_rows if item["mode"] == mode]
-        result["modes"][mode] = {
-            "case_count": len(selected),
-            "member_count": sum(item["seed_count"] for item in selected),
-            "score": _average_optional(selected, "score"),
-            "allowed_action_recall": _average_optional(selected, "allowed_action_recall"),
-            "forbidden_action_pass": _average_optional(selected, "forbidden_action_pass"),
-            "commitment_pattern_match": _average_optional(selected, "commitment_pattern_match"),
-            "not_applicable": {
-                key: sum(item["not_applicable"][key] for item in selected)
-                for key in ("score", "allowed_action_recall", "forbidden_action_pass", "commitment_pattern_match")
-            },
-        }
-    return result
-
-
-def _spearman(actual: list[str], expected: list[str]) -> float:
-    common = [item for item in expected if item in actual]
-    if len(common) < 2:
-        return 0.0
-    actual_rank = {item: actual.index(item) for item in common}
-    expected_rank = {item: expected.index(item) for item in common}
-    n = len(common)
-    d2 = sum((actual_rank[item] - expected_rank[item]) ** 2 for item in common)
-    return max(-1.0, min(1.0, 1 - (6 * d2) / (n * (n * n - 1))))
-
-
-def _turning_error(actual: list[int], expected: list[int]) -> float:
-    if not expected:
-        return 0.0 if not actual else float(max(actual))
-    if not actual:
-        return float(max(expected))
-    return sum(abs(value - actual[min(index, len(actual) - 1)]) for index, value in enumerate(expected)) / len(expected)

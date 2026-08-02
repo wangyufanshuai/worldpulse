@@ -31,7 +31,7 @@ jobs:
         with:
           node-version: "20"
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.lock -r requirements-dev.lock
       - name: Verify numbered migrations
         env:
           WORLDPULSE_DB_PATH: data/ci-migration.db
@@ -41,6 +41,12 @@ jobs:
           python -m app.manage migrate verify
       - name: Python compile
         run: python -m compileall app
+      - name: V2 boundary check
+        run: python scripts/verify_v2_boundaries.py
+      - name: V2 lint and type ratchet
+        run: |
+          python -m ruff check app/services/evaluation/metrics.py app/services/evaluation/observation.py scripts/verify_v2_boundaries.py tests/test_v2_boundaries.py tests/test_v2_evaluation_boundaries.py
+          python -m mypy --follow-imports=skip app/services/evaluation/metrics.py app/services/evaluation/observation.py scripts/verify_v2_boundaries.py
       - name: Python tests
         run: python -m pytest -q
       - name: Live PostgreSQL migration and concurrency gates
@@ -68,6 +74,9 @@ jobs:
       - name: Frontend build
         working-directory: frontend
         run: npm run build
+      - name: Frontend type check
+        working-directory: frontend
+        run: npm run check:types
       - name: Frontend unit tests
         working-directory: frontend
         run: npm run test:unit
@@ -79,9 +88,9 @@ jobs:
         run: npm run test:e2e
       - name: Dependency audit
         run: |
-          pip install pip-audit
-          pip-audit -r requirements.txt
-          npm --prefix frontend audit --audit-level=critical
+          pip-audit -r requirements.lock
+          pip-audit -r requirements-dev.lock
+          npm --registry=https://registry.npmjs.org --prefix frontend audit --audit-level=high
       - name: Forbidden artifact and secret scan
         run: python scripts/verify_release_artifacts.py
       - name: Docker Compose smoke test

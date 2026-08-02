@@ -1,5 +1,7 @@
 # WorldPulse 全球综合风险指数
 
+当前开发版本为 `1.12.0-dev`，V1.12 历史基准发布链与 V2.0 架构计划分别受治理。V2.0 采用兼容旧合同的模块化单体路线，详见 [`V2.0 Architecture Program`](docs/architecture/v2.0-architecture-program.md)、[`ADR-0001`](docs/architecture/adr/0001-v2-modular-monolith.md) 和 [`Phase 0 Baseline Runbook`](docs/runbooks/v2.0-phase0-baseline.md)。
+
 V1.10.0-rc1 新增默认关闭的持续情报链路：公开 RSS/Atom/JSON Feed 经 SSRF 门禁、版本检测和不可变 Watchlist 匹配后，只能固化为受治理材料和待核验场景候选；它不会自动创建 Draft、启动推演或改写权威数值。详见 [`V1.10 架构`](docs/architecture/v1.10-continuous-intelligence.md)、[`V9 API`](docs/api/v9-continuous-intelligence.md) 和 [`V1.10 运行手册`](docs/runbooks/v1.10-continuous-intelligence.md)。
 
 V1.9.0-rc1 增加证据驱动场景编译：PDF/TXT/Markdown/CSV 通过内容寻址上传、版本化抽取和确定性候选生成后，由 Analyst 整理、Reviewer/Admin 双人审批并冻结 Evidence Pack，才能编译为 deterministic、hybrid 或 negotiation 运行。材料与可选 LLM 只能提供带定位的定性候选，不能写入风险、供应链压力或国家/链路 override。详见 [`V1.9 架构`](docs/architecture/v1.9-scenario-compiler.md)、[`V8 API`](docs/api/v8-scenario-compiler.md) 和 [`V1.9 运行手册`](docs/runbooks/v1.9-scenario-compiler.md)。
@@ -57,7 +59,7 @@ V1.3.0-rc1 将 V1.2 受控混合引擎升级为面向小型内部团队的可信
 
 ```powershell
 cd E:\xuexi\worldpulse
-pip install -r requirements.txt
+pip install -r requirements.lock
 python -m app.manage migrate
 uvicorn app.main:app --reload --port 8010
 ```

@@ -10,7 +10,7 @@
 
 ```powershell
 cd E:\xuexi\worldpulse
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.lock
 npm --prefix frontend install
 $env:WORLDPULSE_DB_PATH="data/worldpulse.db"
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8010

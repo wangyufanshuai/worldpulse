@@ -1,0 +1,39 @@
+{
+  "schema_version": "worldpulse-v2-boundaries.v1",
+  "contexts": {
+    "identity": ["app.services.auth", "app.services.organizations"],
+    "evidence": ["app.services.evidence_registry", "app.services.ingestion"],
+    "scenario": ["app.services.scenario_compiler"],
+    "world_model": ["app.services.simulation_data", "app.services.war_room.data"],
+    "simulation": [
+      "app.services.simulation_engine",
+      "app.services.agent_runtime",
+      "app.services.consistency",
+      "app.services.hybrid_simulation",
+      "app.services.negotiation",
+      "app.services.war_room"
+    ],
+    "run_control": ["app.services.run_lifecycle"],
+    "evaluation": ["app.services.evaluation"],
+    "workspace": ["app.services.project_app", "app.services.projects"]
+  },
+  "forbidden_import_prefixes_from_services": [
+    "app.api",
+    "frontend",
+    "tests"
+  ],
+  "legacy_internal_imports": [
+    {
+      "import_prefix": "app.services.run_lifecycle.repository",
+      "allowed_callers": ["app.api.routes", "app.workers.run_worker"]
+    },
+    {
+      "import_prefix": "app.services.negotiation.repository",
+      "allowed_callers": ["app.api.v7"]
+    },
+    {
+      "import_prefix": "app.services.evaluation.gates",
+      "allowed_callers": ["app.api.v11"]
+    }
+  ]
+}
