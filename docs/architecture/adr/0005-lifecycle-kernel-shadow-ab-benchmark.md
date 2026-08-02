@@ -90,6 +90,37 @@ This slice is accepted only when:
 No Kernel Artifact, schema, API, lifecycle event or database migration may be
 added in this measurement slice.
 
+## Measurement evidence
+
+The precommitted 30-pair evidence run, after 3 unreported warmup pairs, was
+executed on the Windows Python 3.11.15 development runtime with SQLite 3.53.1.
+It produced the following nearest-rank summaries in milliseconds:
+
+| Segment | Median | p95 |
+|---|---:|---:|
+| Control lifecycle | 1425.1018 | 1621.4882 |
+| Treatment lifecycle before shadow | 1443.3907 | 1531.5056 |
+| In-memory shadow post-processing | 8.71585 | 12.0031 |
+| Treatment lifecycle plus shadow | 1452.2286 | 1540.2242 |
+
+Both fixed limits passed: shadow p95 was `12.0031 ms`, and combined/control p95
+was `0.949883`. The latter value must not be interpreted as a speedup or
+negative shadow cost. The control and treatment lifecycles are independent jobs,
+and the measured control cohort had the higher lifecycle tail. The truthful
+additive shadow segment remained positive in every sample; this gate establishes
+budget compatibility, not performance improvement.
+
+The run applied all 10 migrations and verified 83 tables in a fresh temporary
+database. All 30 treatment runs retained the same seven-Artifact profile before
+and after shadow construction, their control profiles matched, and no Kernel
+Artifact was persisted. The temporary database was removed and the configured
+database path was restored. The deterministic source run hash remained
+`a3ab67f74a9c8058f15ad96ac99c989f63471cb0b2eed5928f0eaee621ba0082`.
+
+Passing this local gate authorizes only the design of the next opt-in lifecycle
+integration ADR. It is not PostgreSQL capacity evidence and does not change the
+production executor or persistence contract.
+
 ## Consequences
 
 Positive:
