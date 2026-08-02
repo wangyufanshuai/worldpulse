@@ -12,6 +12,13 @@ from .contracts import (
     WorldState,
 )
 from .replay import ReplayIntegrityError, replay_state
+from .war_room_projection import (
+    DETERMINISTIC_AUTHORITY_OWNER,
+    PROJECTION_SCHEMA_VERSION,
+    WarRoomProjection,
+    build_war_room_projection,
+    project_war_room_run,
+)
 
 __all__ = [
     "Checkpoint",
@@ -28,5 +35,10 @@ __all__ = [
     "WorldState",
     "branch_world_state",
     "replay_state",
+    "DETERMINISTIC_AUTHORITY_OWNER",
+    "PROJECTION_SCHEMA_VERSION",
+    "WarRoomProjection",
+    "build_war_room_projection",
+    "project_war_room_run",
     "simulation_kernel_service",
 ]
