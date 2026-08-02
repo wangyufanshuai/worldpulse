@@ -281,10 +281,10 @@ def main() -> int:
             return 1
         return 0 if result.get("status") not in {"failed"} else 1
     if args.command == "evaluation":
-        from app.services.evaluation import EvaluationService
+        from app.services.evaluation import EvaluationApplicationPort, EvaluationService
         from app.core.evaluation_models import EvaluationBatchCreateRequest
         from app.services.auth import ensure_system_user
-        service = EvaluationService()
+        service: EvaluationApplicationPort = EvaluationService()
         if args.action == "seed":
             result = service.ensure_suite().model_dump(mode="json")
         elif args.action == "verify":

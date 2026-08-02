@@ -14,13 +14,13 @@ from app.core.evaluation_models import (
     SealedLabelPack,
 )
 from app.services.auth import ensure_system_user
-from app.services.evaluation import EvaluationService
+from app.services.evaluation import EvaluationApplicationPort, EvaluationService
 from app.services.evaluation import benchmark
 from app.services.evaluation.gates import list_verification_results
 
 
 router = APIRouter()
-service = EvaluationService()
+service: EvaluationApplicationPort = EvaluationService()
 
 
 def actor(request: Request):

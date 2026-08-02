@@ -8,7 +8,7 @@ from uuid import uuid4
 from app.services.run_lifecycle import process_one_queued_job
 from app.services.run_lifecycle import repository
 from app.services import operations
-from app.services.evaluation import EvaluationService
+from app.services.evaluation import EvaluationApplicationPort, EvaluationService
 
 
 def main() -> int:
@@ -17,7 +17,7 @@ def main() -> int:
     parser.add_argument("--idle-sleep", type=float, default=1.0, help="Seconds to sleep when no queued job is available.")
     args = parser.parse_args()
     worker_id = f"worker_{uuid4().hex[:12]}"
-    evaluation_service = EvaluationService()
+    evaluation_service: EvaluationApplicationPort = EvaluationService()
     stop_requested = False
     scheduling_turn = 0
 

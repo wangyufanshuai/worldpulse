@@ -5,10 +5,10 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
 from app.core.evaluation_models import EvaluationBatchCreateRequest, EvaluationBatch, EvaluationCase, EvaluationMember, EvaluationMetric, EvaluationReport, EvaluationSuiteManifest
 from app.services.auth import ensure_system_user
-from app.services.evaluation import EvaluationService
+from app.services.evaluation import EvaluationApplicationPort, EvaluationService
 
 router = APIRouter()
-service = EvaluationService()
+service: EvaluationApplicationPort = EvaluationService()
 
 def actor(request: Request):
     return getattr(request.state, "user", None) or ensure_system_user()
