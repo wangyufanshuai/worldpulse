@@ -7,11 +7,14 @@ any lifecycle adapter is changed.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from collections.abc import Callable, Mapping
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from app.services.consistency.hashing import stable_hash
+
+from .immutability import freeze_value
 
 
 NumericAuthorityComponent = Literal[
@@ -28,6 +31,43 @@ DeltaSource = Literal["deterministic_reducer", "action_adapter", "agent_observat
 
 class KernelContract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+    _hash_cache: dict[str, str] | None = PrivateAttr(default=None)
+
+    @model_validator(mode="after")
+    def freeze_nested_values(self) -> Self:
+        for field_name in type(self).model_fields:
+            value = getattr(self, field_name)
+            frozen_value = freeze_value(value)
+            if frozen_value is not value:
+                object.__setattr__(self, field_name, frozen_value)
+        return self
+
+    def model_copy(
+        self,
+        *,
+        update: Mapping[str, Any] | None = None,
+        deep: bool = False,
+    ) -> Self:
+        if update is not None:
+            values = {
+                field_name: getattr(self, field_name)
+                for field_name in type(self).model_fields
+            }
+            values.update(update)
+            return type(self).model_validate(values)
+        return super().model_copy(deep=deep)
+
+    def _memoized_hash(self, key: str, payload_factory: Callable[[], Any]) -> str:
+        cache = self._hash_cache
+        if cache is None:
+            cache = {}
+            self._hash_cache = cache
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+        digest = stable_hash(payload_factory())
+        cache[key] = digest
+        return digest
 
 
 class Entity(KernelContract):
@@ -68,7 +108,7 @@ class WorldState(KernelContract):
         }
 
     def content_hash(self) -> str:
-        return stable_hash(self.content_payload())
+        return self._memoized_hash("content", self.content_payload)
 
     def apply_delta(self, delta: StateDelta) -> WorldState:
         if delta.run_id != self.run_id:
@@ -82,14 +122,18 @@ class WorldState(KernelContract):
         if delta.source == "action_adapter" and any(change.is_numeric_authority for change in delta.changes):
             raise ValueError("Action Adapter cannot write numeric-authority components")
 
-        entities = {entity_id: entity.model_copy(deep=True) for entity_id, entity in self.entities.items()}
+        entities = dict(self.entities)
+        changes_by_entity: dict[str, dict[str, Any]] = {}
         for change in delta.changes:
-            entity = entities.get(change.entity_id)
-            if entity is None:
+            if change.entity_id not in entities:
                 raise ValueError(f"Unknown WorldState entity: {change.entity_id}")
+            changes_by_entity.setdefault(change.entity_id, {})[change.component] = change.value
+
+        for entity_id, component_changes in changes_by_entity.items():
+            entity = entities[entity_id]
             components = dict(entity.components)
-            components[change.component] = change.value
-            entities[change.entity_id] = entity.model_copy(update={"components": components})
+            components.update(component_changes)
+            entities[entity_id] = entity.model_copy(update={"components": components})
         return self.model_copy(update={"tick": delta.tick, "entities": entities})
 
 
@@ -112,7 +156,7 @@ class StateDelta(KernelContract):
         return self.model_dump(mode="json")
 
     def content_hash(self) -> str:
-        return stable_hash(self.content_payload())
+        return self._memoized_hash("content", self.content_payload)
 
 
 class EventEnvelope(KernelContract):
@@ -127,7 +171,7 @@ class EventEnvelope(KernelContract):
     payload: dict[str, Any] = Field(default_factory=dict)
 
     def content_hash(self) -> str:
-        return stable_hash(self.model_dump(mode="json"))
+        return self._memoized_hash("content", lambda: self.model_dump(mode="json"))
 
 
 class Checkpoint(KernelContract):
@@ -140,7 +184,7 @@ class Checkpoint(KernelContract):
     artifact_hashes: tuple[str, ...] = ()
 
     def content_hash(self) -> str:
-        return stable_hash(self.model_dump(mode="json"))
+        return self._memoized_hash("content", lambda: self.model_dump(mode="json"))
 
 
 class ReplayRequest(KernelContract):
@@ -160,4 +204,4 @@ class ExperimentBranch(KernelContract):
     scenario_diff: dict[str, Any] = Field(default_factory=dict)
 
     def content_hash(self) -> str:
-        return stable_hash(self.model_dump(mode="json"))
+        return self._memoized_hash("content", lambda: self.model_dump(mode="json"))

@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
-
 from pydantic import model_validator
-
-from app.services.consistency.hashing import stable_hash
 
 from .contracts import EventEnvelope, KernelContract, StateChange, StateDelta, WorldState
 
@@ -33,7 +29,7 @@ class CompiledTransition(KernelContract):
         return self
 
     def content_hash(self) -> str:
-        return stable_hash(self.model_dump(mode="json"))
+        return self._memoized_hash("content", lambda: self.model_dump(mode="json"))
 
 
 def compile_deterministic_transition(
@@ -122,7 +118,7 @@ def _component_changes(source_state: WorldState, target_state: WorldState) -> li
                 StateChange(
                     entity_id=entity_id,
                     component=component,
-                    value=deepcopy(target_value),
+                    value=target_value,
                 )
             )
     return changes

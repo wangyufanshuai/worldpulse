@@ -105,6 +105,91 @@ def test_world_state_rejects_cross_run_delta_even_with_valid_parent_hash():
         state.apply_delta(foreign_delta)
 
 
+def test_kernel_contracts_are_deeply_immutable_and_keep_plain_json_dumps():
+    state = WorldState(
+        run_id="run_immutable",
+        seed=9,
+        rule_pack_hash="c" * 64,
+        entities={
+            "country:USA": Entity(
+                entity_id="country:USA",
+                entity_type="country",
+                components={"nested": {"values": [1, {"label": "stable"}]}},
+            )
+        },
+    )
+    before = state.model_dump(mode="json")
+    before_hash = state.content_hash()
+
+    with pytest.raises(TypeError, match="mappings are immutable"):
+        state.entities["country:NEW"] = state.entities["country:USA"]
+    with pytest.raises(TypeError, match="sequences are immutable"):
+        state.entities["country:USA"].components["nested"]["values"].append(2)
+    with pytest.raises(TypeError, match="mappings are immutable"):
+        state.entities["country:USA"].components["nested"]["values"][1]["label"] = "changed"
+
+    dumped = state.model_dump(mode="json")
+    assert dumped == before
+    assert type(dumped["entities"]) is dict
+    assert type(dumped["entities"]["country:USA"]["components"]["nested"]["values"]) is list
+    assert state.content_hash() == before_hash
+
+
+def test_hash_memoization_is_private_and_updated_copies_get_fresh_hashes(monkeypatch):
+    calls = 0
+    original_stable_hash = kernel_contracts.stable_hash
+
+    def counted_stable_hash(value):
+        nonlocal calls
+        calls += 1
+        return original_stable_hash(value)
+
+    monkeypatch.setattr(kernel_contracts, "stable_hash", counted_stable_hash)
+    state = _initial_state()
+    original_hash = state.content_hash()
+    assert state.content_hash() == original_hash
+    assert calls == 1
+    assert "_hash_cache" not in state.model_dump(mode="json")
+
+    advanced = state.model_copy(update={"tick": 1})
+    assert advanced.content_hash() != original_hash
+    assert advanced.content_hash() == advanced.content_hash()
+    assert calls == 2
+
+
+def test_apply_delta_structurally_shares_only_unchanged_immutable_entities():
+    initial = _initial_state()
+    observer = Entity(
+        entity_id="country:CAN",
+        entity_type="country",
+        components={"risk_score": 12, "notes": ["unchanged"]},
+    )
+    state = initial.model_copy(
+        update={"entities": {**initial.entities, observer.entity_id: observer}}
+    )
+    parent_hash = state.content_hash()
+    delta = StateDelta(
+        run_id=state.run_id,
+        tick=1,
+        parent_state_hash=parent_hash,
+        reducer_version="structural-sharing-test.v1",
+        source="deterministic_reducer",
+        changes=(
+            StateChange(
+                entity_id="country:USA",
+                component="sentiment_pressure",
+                value=37,
+            ),
+        ),
+    )
+    updated = state.apply_delta(delta)
+
+    assert updated.entities[observer.entity_id] is state.entities[observer.entity_id]
+    assert updated.entities["country:USA"] is not state.entities["country:USA"]
+    assert state.content_hash() == parent_hash
+    assert updated.content_hash() != parent_hash
+
+
 def test_provider_free_replay_verifies_event_and_state_hashes():
     initial = _initial_state()
     delta = _delta(initial)
