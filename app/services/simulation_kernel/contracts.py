@@ -8,6 +8,7 @@ any lifecycle adapter is changed.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from types import MappingProxyType
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
@@ -27,6 +28,29 @@ NUMERIC_AUTHORITY_COMPONENTS = frozenset(
     {"risk_score", "supply_chain_pressure", "country_capability", "numeric_authority"}
 )
 DeltaSource = Literal["deterministic_reducer", "action_adapter", "agent_observation", "replay"]
+
+# Shared with mode finalization so execution records cannot accept a
+# caller-supplied authority lineage without a contracts/finalizer import cycle.
+AUTHORITY_PATH_BY_KERNEL_MODE: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "deterministic": (
+            "deterministic_rule_engine",
+            "consistency_evaluator",
+            "simulation_kernel",
+        ),
+        "hybrid": (
+            "deterministic_rule_engine",
+            "consistency_evaluator",
+            "simulation_kernel",
+        ),
+        "negotiation": (
+            "deterministic_rule_engine",
+            "consistency_evaluator",
+            "negotiation_engine",
+            "simulation_kernel",
+        ),
+    }
+)
 
 
 class KernelContract(BaseModel):

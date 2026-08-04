@@ -8,11 +8,15 @@ from typing import Protocol
 from .branching import branch_world_state
 from .contracts import Checkpoint, EventEnvelope, ExperimentBranch, ReplayRequest, StateDelta, WorldState
 from .event_log import KernelEventLog, replay_event_log
+from .mode_contracts import KernelModeExecutionRecord, KernelModeExecutionRequest
+from .mode_finalization import finalize_execution
 from .replay import replay_state
 from .transitions import CompiledTransition, compile_deterministic_transition
 
 
 class SimulationKernelApplicationPort(Protocol):
+    def finalize_execution(self, request: KernelModeExecutionRequest) -> KernelModeExecutionRecord: ...
+
     def compile_transition(
         self,
         source_state: WorldState,
@@ -44,6 +48,9 @@ class SimulationKernelApplicationPort(Protocol):
 
 
 class SimulationKernelApplicationService:
+    def finalize_execution(self, request: KernelModeExecutionRequest) -> KernelModeExecutionRecord:
+        return finalize_execution(request)
+
     def compile_transition(
         self,
         source_state: WorldState,
