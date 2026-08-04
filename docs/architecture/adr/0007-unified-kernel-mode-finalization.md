@@ -152,10 +152,10 @@ new `kp.*.v1` identifier as an existing stored schema.
 | `RR` / `kp.negotiation-round.v1` | `negotiation_round`; `negotiation-round.v1` or the required additive successor | `run_id`, `session_id`, `round_id`, `tick`, `input_hash`, `output_hash`, `before_result_hash`, `after_result_hash`, ascending `proposal_ids`, ascending `accepted_proposal_ids`, `admission_audit_hash`, nullable `projection_consistency_hash`, nullable `modifier_bundle_hash`, `diffusion_hash`, `ledger_hash`, nullable `projection_audit_hash`, nullable `no_projection_reason` |
 | `AC` / `kp.negotiation-admission-consistency.v1` | `consistency_audit`; a pinned `consistency-audit.v1`/`.v2` source only when it losslessly supplies these claims, otherwise an additive successor | `run_id`, fixed role `admission`, `tick`, `audit_hash`, `deterministic_result_hash`, ascending `proposal_ids`, ascending `accepted_proposal_ids`, `decision_count` |
 | `PC` / `kp.negotiation-projection-consistency.v1` | `consistency_audit`; a pinned `consistency-audit.v2` source only when it losslessly supplies these claims, otherwise an additive successor | `run_id`, fixed role `projection`, `tick`, `audit_hash`, `deterministic_result_hash`, ascending `candidate_proposal_ids`, ascending `accepted_proposal_ids`, `decision_count` |
-| `MB` / `kp.action-modifier-bundle.v1` | `deterministic_action_modifiers`; `hybrid-modifier-bundle.v1` or a reviewed additive successor | `run_id`, nullable `tick`, `bundle_hash`, `consistency_audit_hash`, ascending `accepted_proposal_ids`, ascending `(proposal_id, modifier_id, modifier_hash)` tuples, `modifier_count` |
+| `MB` / `kp.action-modifier-bundle.v1` | `deterministic_action_modifiers`; `hybrid-modifier-bundle.v1` or a reviewed additive successor | `run_id`, nullable `tick`, `bundle_hash`, `consistency_audit_hash`, ascending `accepted_proposal_ids`, uniquely lexicographically ordered by UTF-8 bytes of `(proposal_id, modifier_id, modifier_hash)` `modifier_tuples`, `modifier_count` |
 | `ND` / `kp.narrative-diffusion.v1` | `narrative_diffusion`; `narrative-diffusion.v1` or a reviewed additive successor | `run_id`, `tick`, `attempted`, `diffusion_hash`, `application_count`, ascending `proposal_ids`, `before_result_hash`, `after_result_hash` |
 | `CL` / `kp.commitment-ledger.v1` | `commitment_ledger`; `commitment-ledger.v1` or a reviewed additive successor | `run_id`, nullable `tick`, `ledger_hash`, `ledger_entry_count`, ascending `(commitment_id, commitment_hash, status)` tuples |
-| `PA` / `kp.projection-audit.v1` | `agent_action_projection_audit` outside negotiation and `negotiation_projection_audit` in negotiation; `agent-action-projection-audit.v1` or a reviewed additive successor | `run_id`, nullable `tick`, `projection_mode`, `audit_hash`, `consistency_audit_hash`, nullable `modifier_bundle_hash`, ascending `proposal_ids`, ascending `projected_proposal_ids`, `record_count`, `before_result_hash`, `final_result_hash` |
+| `PA` / `kp.projection-audit.v1` | `agent_action_projection_audit` outside negotiation and `negotiation_projection_audit` in negotiation; `agent-action-projection-audit.v1` or a reviewed additive successor | `run_id`, nullable `tick`, `projection_mode`, `audit_hash`, `consistency_audit_hash`, nullable `modifier_bundle_hash`, ascending `proposal_ids`, ascending `projected_proposal_ids`, immutable `modifier_tuples` uniquely lexicographically ordered by UTF-8 bytes of `(proposal_id, modifier_id, modifier_hash)` (always present and possibly empty; required empty for `audit_only`), `modifier_count`, `record_count`, `before_result_hash`, `final_result_hash` |
 | `HR` / `kp.hybrid-replay.v1` | `hybrid_replay_record`; `hybrid-replay-record.v1` only when it losslessly supplies these claims, otherwise a reviewed additive successor | `run_id`, `replay_hash`, `baseline_result_hash`, pre-`hybrid_trace` `final_result_hash`, persisted traced `full_source_run_hash`, `consistency_audit_hash`, `modifier_bundle_hash`, `projection_audit_hash`, `ledger_hash`, ascending `accepted_proposal_ids` |
 | `NR` / `kp.negotiation-replay.v1` | `negotiation_replay`; `negotiation-replay.v1` or a reviewed additive successor | `run_id`, `session_id`, `replay_hash`, `baseline_result_hash`, `final_result_hash`, ordered `round_hashes`, ordered `admission_audit_hashes`, ordered nullable `projection_consistency_hashes`, ordered `diffusion_hashes`, ordered `ledger_hashes`, ordered nullable `projection_audit_hashes`, `message_chain_head`, `provider_calls_required` |
 
@@ -163,8 +163,12 @@ For all `*_hashes` tuples, "ordered" means tick order, preserving a `null`
 slot for a tick at which that proof category is forbidden. `proposal_count`,
 `decision_count`, `modifier_count`, `application_count`,
 `ledger_entry_count`, `record_count` and `invocation_count` must equal the
-length of their corresponding tuple, not merely repeat a payload counter. The
-extractor recomputes each payload-defined `audit_hash`, `bundle_hash`,
+length of their corresponding tuple, not merely repeat a payload counter. For
+`PA`, `modifier_count` must equal the length of its immutable
+`modifier_tuples` claim (zero when that tuple is empty, including every
+`audit_only` PA), and `record_count` must
+equal the length of `proposal_ids`. The extractor recomputes each
+payload-defined `audit_hash`, `bundle_hash`,
 `ledger_hash`, `diffusion_hash` or `replay_hash` over that source schema's
 declared preimage before exposing it as a claim.
 
@@ -222,8 +226,9 @@ claims rather than over opaque hashes alone:
 - in deterministic and audit-only modes, `FC.deterministic_result_hash` equals
   both projections' `source_run_hash`. In hybrid modes it equals the baseline
   source hash, and in negotiation it equals the final source hash;
-- for hybrid modes, accepted IDs agree across `FC`, `MB`, `PA` and `HR`;
-  modifier IDs/hashes agree between `MB` and `PA`; `HR`'s audit, modifier,
+- for hybrid modes, accepted IDs agree across `FC`, `MB`, `PA` and `HR`; the
+  exact invariant is `MB.modifier_tuples == PA.modifier_tuples`, including the
+  valid empty-tuple numeric no-op; `HR`'s audit, modifier,
   ledger and baseline hashes agree with the corresponding claims. Stored replay
   reproduces `HR.final_result_hash`, which is the final canonical result before
   `hybrid_trace` is attached. Run Control then derives that replay result's
@@ -238,8 +243,11 @@ claims rather than over opaque hashes alone:
   each later before-hash equals the prior tick's after-hash, and
   `RR[T].after_result_hash` equals the final projection. Per tick, proposal and
   accepted-ID sets agree with `AC`, and, when `p[t]=1`, with `PC`, `MB` and
-  `PA`; the round's audit/modifier/diffusion/ledger hashes equal those typed
-  claims. `NR` reproduces all tick-ordered hash tuples including `null` slots,
+  `PA`; for each such tick the exact invariant is
+  `MB[t].modifier_tuples == PA[t].modifier_tuples`, including the valid
+  empty-tuple numeric no-op. The round's
+  audit/modifier/diffusion/ledger hashes equal those typed claims. `NR`
+  reproduces all tick-ordered hash tuples including `null` slots,
   has `provider_calls_required = 0`, and binds the baseline/final projection
   hashes;
 - `p[t]` is recomputed from the explicit accepted-ID and diffusion-attempt
