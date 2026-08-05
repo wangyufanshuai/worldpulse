@@ -8,6 +8,8 @@ from app.services.consistency.hashing import stable_hash
 from app.services.project_store import connect, dumps, init_db, loads
 from app.services.security import redact_secrets
 
+from .execution_contract import report_replay_step_versions
+
 
 @dataclass(frozen=True)
 class StepDefinition:
@@ -28,6 +30,35 @@ STEP_DEFINITIONS = (
     StepDefinition("review_package", "calibration-review-package.v1"),
 )
 STEP_BY_KEY = {item.key: item for item in STEP_DEFINITIONS}
+
+
+def step_definitions_for_runtime_profile(
+    runtime_profile: dict | None,
+) -> tuple[StepDefinition, ...]:
+    """Return one non-mixed six-step lifecycle definition sequence."""
+
+    report_version, replay_version = report_replay_step_versions(runtime_profile)
+    return tuple(
+        StepDefinition(
+            item.key,
+            report_version
+            if item.key == "report_generate"
+            else replay_version
+            if item.key == "replay_archive"
+            else item.version,
+        )
+        for item in STEP_DEFINITIONS
+    )
+
+
+def step_definition_for_runtime_profile(
+    step_key: str, runtime_profile: dict | None
+) -> StepDefinition:
+    return next(
+        item
+        for item in step_definitions_for_runtime_profile(runtime_profile)
+        if item.key == step_key
+    )
 
 
 def begin_step(run_id: str, step_key: str, attempt_id: str, input_payload: dict) -> RunStepRecord:

@@ -22,6 +22,11 @@ from app.services.rule_packs import active_rule_pack, get_rule_pack
 from . import artifacts as artifact_store
 from . import read_models
 from .integrity import artifact_digest as _artifact_digest
+from .execution_contract import (
+    pin_legacy_execution_contract,
+    require_claimable_execution_contract,
+    select_execution_contract,
+)
 from .kernel_shadow import pin_kernel_shadow_policy
 from .mappers import attempt_from_row, event_from_row as _event_from_row, job_from_row as _job_from_row
 
@@ -60,7 +65,9 @@ def create_job(
     scenario = _scenario_payload(request.scenario, request.seed)
     engine_mode = _engine_mode(request.engine_mode)
     normalized_key = _normalize_idempotency_key(idempotency_key)
-    effective_runtime_profile = pin_kernel_shadow_policy(runtime_profile)
+    effective_runtime_profile = pin_legacy_execution_contract(
+        pin_kernel_shadow_policy(runtime_profile)
+    )
     rule_pack = get_rule_pack(pinned_rule_pack_id) if pinned_rule_pack_id else active_rule_pack()
     request_hash = stable_hash(
         {
@@ -254,6 +261,14 @@ def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300, pr
         ).fetchone()
         if row is None:
             return None
+        runtime_profile = loads(row["runtime_profile_json"], {})
+        runtime_profile_hash = row["runtime_profile_hash"]
+        execution_contract = select_execution_contract(runtime_profile)
+        if execution_contract.is_v2 and not runtime_profile_hash:
+            raise ValueError("queued V2 job runtime profile is missing its hash")
+        if runtime_profile_hash is not None and stable_hash(runtime_profile) != runtime_profile_hash:
+            raise ValueError("queued job runtime profile hash mismatch")
+        require_claimable_execution_contract(runtime_profile)
         attempt_number = int(row["attempt_count"] or 0) + 1
         attempt_id = f"attempt_{uuid4().hex}"
         updated = conn.execute(

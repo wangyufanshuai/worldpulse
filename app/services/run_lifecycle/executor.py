@@ -20,6 +20,10 @@ from app.services.reviews import create_review_case
 from app.services.negotiation import run_negotiation
 
 from . import checkpoints, repository, steps
+from .execution_contract import (
+    V2ExecutionPathNotEnabledError,
+    select_job_execution_contract,
+)
 from .kernel_shadow import (
     KERNEL_SHADOW_ARTIFACT_TYPE,
     kernel_shadow_policy_for_job,
@@ -82,6 +86,11 @@ def process_job(run_id: str) -> RunJobStatus:
     if job.job_kind == "calibration":
         from app.services.calibration import process_calibration_job
         return process_calibration_job(run_id)
+    execution_contract = select_job_execution_contract(job)
+    if execution_contract.is_v2:
+        raise V2ExecutionPathNotEnabledError(
+            "kernel-mode-execution.v2 report/replay execution is not enabled on this worker"
+        )
     kernel_shadow_policy = kernel_shadow_policy_for_job(job)
     worker_id = job.worker_id
     projected_run_id = repository.get_projected_result_run_id(run_id)
