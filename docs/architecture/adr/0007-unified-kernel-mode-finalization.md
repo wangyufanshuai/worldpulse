@@ -90,6 +90,106 @@ context with
 `constraint_context_hash = H({"schema_version":"agent-constraint-context.v1",
 "context":complete_constraint_context})`.
 
+#### Resolver payload and completed-step contract (ADR-0007 amendment)
+
+The resolver Artifact payloads are closed and deterministic. This amendment
+removes the ambiguity in “complete Agent Pack” without changing the legacy
+`agent-pack-manifest.v1` model or its `manifest_hash` meaning.
+
+The Agent Pack Artifact content is exactly the following object, with no
+wrapper fields and no additional members:
+
+```json
+{
+  "schema_version": "agent-pack-resolver-payload.v1",
+  "agent_pack_id": "...",
+  "status": "active",
+  "seed": 42,
+  "profiles": [
+    {
+      "agent_id": "...",
+      "actor_type": "...",
+      "country_code": "...",
+      "country_name": "...",
+      "capabilities": ["..."],
+      "action_budget": 6,
+      "profile_hash": "..."
+    }
+  ],
+  "legacy_manifest_hash": "...",
+  "created_at": "2000-01-01T00:00:00.000Z"
+}
+```
+
+`profiles` is ordered by UTF-8 `agent_id` and contains unique IDs. Every
+profile object is closed, `capabilities` contains unique action types in UTF-8
+order, and `profile_hash` remains the legacy profile-core hash. The resolver
+payload's `agent_pack_hash` is exactly `H(the complete object above)`; the
+`agent_pack_hash` field is not embedded in that object. `legacy_manifest_hash`
+is retained for compatibility and is never used as the V2 authority hash.
+The fixed timestamp is deterministic and is not a wall-clock value.
+
+The constraint-context Artifact content is exactly this closed object:
+
+```json
+{
+  "schema_version": "agent-constraint-context.v1",
+  "actor_capabilities": [["agent-id", ["action-type"]]],
+  "action_budgets": [["agent-id", 6]],
+  "known_entities": ["..."],
+  "known_evidence_refs": ["..."],
+  "source_label": "..."
+}
+```
+
+`actor_capabilities` and `action_budgets` are ordered by UTF-8 agent ID;
+their IDs must match exactly. Action lists, `known_entities`, and
+`known_evidence_refs` are unique and UTF-8 ordered. The context hash is exactly
+`H({"schema_version":"agent-constraint-context.v1",
+"context":the complete context object without its schema_version member})`.
+The context hash is not embedded in the Artifact payload.
+
+Neither payload contains organization, project, lifecycle-job, run, session,
+attempt, or tick coordinates. Those coordinates are authenticated by the
+Artifact row, completed-step row, and the closed resolver `artifact_refs`
+tuple. A resolver is shared across Agent-capable modes, so `session_id` and
+`tick` are null at this boundary; negotiation reuses the same pair without
+re-resolving it per tick.
+
+The completed `deterministic_run` step output is the closed object below, with
+exactly these keys:
+
+```json
+{
+  "schema_version": "deterministic-run-resolver-output.v1",
+  "run_id": "...",
+  "attempt": "...",
+  "agent_pack_resolver_version": "...",
+  "constraint_context_resolver_version": "...",
+  "effective_seed": 42,
+  "baseline_result_hash": "...",
+  "scenario_hash": "...",
+  "rule_pack_hash": "...",
+  "agent_pack_id": "...",
+  "agent_pack_hash": "...",
+  "constraint_context_hash": "...",
+  "artifact_refs": [
+    ["resolver", "agent-artifact", "...", "...", "agent-pack-resolver-output.v1", "..."],
+    ["resolver", "context-artifact", "...", "...", "constraint-context-resolver-output.v1", "..."]
+  ]
+}
+```
+
+The two refs occur in fixed Agent Pack then constraint-context order. The
+step-output hash is computed from this complete object, including ordered
+refs, but no hash field is self-included. The Agent Pack ref's `content_hash`
+equals `agent_pack_hash`; the context ref's `content_hash` equals
+`constraint_context_hash`. All resolver versions and input hashes above are
+job-pinned values or verified deterministic-baseline outputs, never caller
+overrides. Unknown resolver versions, missing or duplicate refs,
+cross-attempt refs, schema mixing, payload substitution, or any field drift
+fail closed before Provider or Consistency work.
+
 For every Agent-capable mode, the current attempt persists those two complete
 payloads through the existing generic Artifact store as `agent_pack` and
 `agent_constraint_context` Artifacts; their canonical content is respectively
