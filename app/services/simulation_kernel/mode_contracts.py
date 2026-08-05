@@ -15,7 +15,7 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from app.services.consistency.hashing import stable_hash
 
-from .contracts import AUTHORITY_PATH_BY_KERNEL_MODE, KernelContract
+from .contracts import KernelContract
 from .war_room_projection import WarRoomProjection
 
 
@@ -25,13 +25,17 @@ EngineMode: TypeAlias = Literal[
     "deterministic", "mock_agent", "controlled_agent", "hybrid", "hybrid_recorded", "negotiation"
 ]
 KernelMode: TypeAlias = Literal["deterministic", "hybrid", "negotiation"]
-ProofToken: TypeAlias = Literal["AR", "PB", "FC", "RR", "AC", "PC", "MB", "ND", "CL", "PA", "HR", "NR"]
+ProofToken: TypeAlias = Literal[
+    "AR", "PB", "FC", "RR", "NP", "AC", "CL", "EL", "PC", "MB", "ND", "PA", "HR", "NR"
+]
 ProofSchema: TypeAlias = Literal[
     "kp.agent-runtime.v1",
     "kp.proposal-batch.v1",
     "kp.final-consistency.v1",
     "kp.negotiation-round.v1",
+    "kp.negotiation-proposal-batch.v1",
     "kp.negotiation-admission-consistency.v1",
+    "kp.negotiation-eligibility.v1",
     "kp.negotiation-projection-consistency.v1",
     "kp.action-modifier-bundle.v1",
     "kp.narrative-diffusion.v1",
@@ -54,7 +58,14 @@ RelationshipType: TypeAlias = Literal[
     "replays",
     "audit",
     "previous_round",
+    "source_for",
     "filters",
+    "snapshot_after",
+    "sources",
+    "current_ledger",
+    "prior_projection",
+    "origin_admission",
+    "inputs",
     "bounded_by",
     "no_projection_for",
     "snapshot_for",
@@ -65,8 +76,21 @@ RelationshipType: TypeAlias = Literal[
     "modifiers",
     "ledgers",
     "admission",
+    "proposal_sources",
+    "eligibility",
     "supersedes",
 ]
+
+AUTHORITY_PATH_BY_ENGINE_MODE: Mapping[EngineMode, str] = MappingProxyType(
+    {
+        "deterministic": "deterministic_audit_only",
+        "mock_agent": "mock_action_adapter_deterministic",
+        "controlled_agent": "controlled_action_adapter_deterministic",
+        "hybrid": "hybrid_action_adapter_replay",
+        "hybrid_recorded": "hybrid_recorded_action_adapter_replay",
+        "negotiation": "negotiation_governed_deterministic",
+    }
+)
 
 KERNEL_MODE_BY_ENGINE_MODE: Mapping[EngineMode, KernelMode] = MappingProxyType(
     {
@@ -94,6 +118,106 @@ def _validate_ascending_unique(values: tuple[str, ...], field_name: str) -> None
         raise ValueError(f"{field_name} must be unique")
     if tuple(sorted(values, key=lambda value: value.encode("utf-8"))) != values:
         raise ValueError(f"{field_name} must be ascending UTF-8 byte order")
+
+
+ActionClass: TypeAlias = Literal[
+    "deterministic_modifier",
+    "bilateral_commitment",
+    "public_narrative",
+    "audit_only",
+    "alliance_response",
+]
+ProposalSourceKind: TypeAlias = Literal["current_message", "active_commitment_origin"]
+EligibilityOutcome: TypeAlias = Literal[
+    "eligible",
+    "not_admitted",
+    "inactive_commitment",
+    "audit_only",
+    "alliance_response",
+    "already_projected",
+    "semantic_duplicate",
+]
+CommitmentStatus: TypeAlias = Literal["proposed", "active", "rejected", "withdrawn", "expired"]
+Tone: TypeAlias = Literal["firm", "informational", "stabilizing"]
+
+# Claims deliberately use fixed tuples instead of open dictionaries.  The
+# authenticated source Artifacts retain complete objects; the pure Kernel sees
+# only immutable, positionally closed evidence.
+NegotiationProposalSourceTuple: TypeAlias = tuple[
+    str,
+    Digest,
+    str,
+    Digest,
+    str,
+    ActionClass,
+    Digest,
+    ProposalSourceKind,
+    str | None,
+    int,
+    Digest,
+]
+EligibilityDecisionTuple: TypeAlias = tuple[
+    NegotiationProposalSourceTuple,
+    bool,
+    EligibilityOutcome,
+    Digest,
+]
+CommitmentClaimTuple: TypeAlias = tuple[
+    str,
+    Digest,
+    CommitmentStatus,
+    str,
+    tuple[str, ...],
+    Digest,
+    str,
+    Digest,
+    str,
+    Digest,
+    int,
+    Digest,
+]
+ToneDeltaTuple: TypeAlias = tuple[Tone, int]
+CountryDeltaTuple: TypeAlias = tuple[str, int]
+DiffusionApplicationTuple: TypeAlias = tuple[
+    str,
+    str,
+    str,
+    Tone,
+    Literal["domestic", "regional", "global"],
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    Digest,
+]
+ProjectionRecordClaimTuple: TypeAlias = tuple[
+    str,
+    Digest,
+    Digest,
+    Literal["accepted", "rejected", "needs_revision", "not_evaluated"],
+    str,
+    Literal["accepted", "rejected", "constrained", "expired"],
+    str | None,
+    Literal["not_projected", "projected", "constrained", "blocked", "expired"],
+    Digest | None,
+    str | None,
+    Digest,
+]
+
+
+def _validate_aligned(
+    identifiers: tuple[str, ...], hashes: tuple[str, ...], field_name: str
+) -> None:
+    _validate_ascending_unique(identifiers, field_name)
+    if len(identifiers) != len(hashes):
+        raise ValueError(f"{field_name} and hashes must have equal length")
+
+
+def _validate_int64(value: int, field_name: str) -> None:
+    if value < -(2**63) or value > 2**63 - 1:
+        raise ValueError(f"{field_name} must fit signed int64")
 
 
 class KernelModeContract(KernelContract):
@@ -125,23 +249,26 @@ class KernelModeClaims(KernelModeContract):
 class ARClaims(KernelModeClaims):
     runtime_hash: Digest
     proposal_ids: tuple[str, ...] = ()
+    proposal_hashes: tuple[Digest, ...] = ()
     proposal_count: int = Field(ge=0)
     invocation_ids: tuple[str, ...] = ()
+    invocation_hashes: tuple[Digest, ...] = ()
     invocation_count: int = Field(ge=0)
 
     @model_validator(mode="after")
     def validate_counts(self) -> Self:
-        _validate_ascending_unique(self.proposal_ids, "proposal_ids")
-        _validate_ascending_unique(self.invocation_ids, "invocation_ids")
+        _validate_aligned(self.proposal_ids, self.proposal_hashes, "AR proposal_ids")
+        _validate_aligned(self.invocation_ids, self.invocation_hashes, "AR invocation_ids")
         if self.proposal_count != len(self.proposal_ids) or self.invocation_count != len(self.invocation_ids):
             raise ValueError("AR claim counts must equal tuple lengths")
         return self
 
 
 class PBClaims(KernelModeClaims):
-    source_kind: Literal["mock_agent", "controlled_agent"]
-    batch_hash: Digest | None = None
-    runtime_hash: Digest | None = None
+    source_kind: Literal["mock_batch", "agent_runtime"]
+    source_runtime_hash: Digest | None = None
+    source_mock_batch_hash: Digest | None = None
+    batch_hash: Digest
     proposal_ids: tuple[str, ...] = ()
     proposal_hashes: tuple[Digest, ...] = ()
     proposal_count: int = Field(ge=0)
@@ -149,8 +276,16 @@ class PBClaims(KernelModeClaims):
     @model_validator(mode="after")
     def validate_batch_claims(self) -> Self:
         _validate_ascending_unique(self.proposal_ids, "proposal_ids")
-        if (self.batch_hash is None) == (self.runtime_hash is None):
-            raise ValueError("PB claims require exactly one of batch_hash or runtime_hash")
+        if (self.source_runtime_hash is None) == (self.source_mock_batch_hash is None):
+            raise ValueError("PB claims require exactly one source hash")
+        if self.source_kind == "mock_batch" and (
+            self.source_mock_batch_hash is None or self.source_runtime_hash is not None
+        ):
+            raise ValueError("mock_batch PB claims require only source_mock_batch_hash")
+        if self.source_kind == "agent_runtime" and (
+            self.source_runtime_hash is None or self.source_mock_batch_hash is not None
+        ):
+            raise ValueError("agent_runtime PB claims require only source_runtime_hash")
         if self.proposal_count != len(self.proposal_ids) or len(self.proposal_ids) != len(self.proposal_hashes):
             raise ValueError("PB proposal count and hashes must match proposal_ids")
         return self
@@ -161,12 +296,13 @@ class FCClaims(KernelModeClaims):
     audit_hash: Digest
     deterministic_result_hash: Digest
     proposal_ids: tuple[str, ...] = ()
+    proposal_hashes: tuple[Digest, ...] = ()
     accepted_proposal_ids: tuple[str, ...] = ()
     decision_count: int = Field(ge=0)
 
     @model_validator(mode="after")
     def validate_consistency_claims(self) -> Self:
-        _validate_ascending_unique(self.proposal_ids, "proposal_ids")
+        _validate_aligned(self.proposal_ids, self.proposal_hashes, "FC proposal_ids")
         _validate_ascending_unique(self.accepted_proposal_ids, "accepted_proposal_ids")
         if self.decision_count != len(self.proposal_ids):
             raise ValueError("FC decision_count must equal proposal_ids length")
@@ -181,15 +317,22 @@ class RRClaims(KernelModeClaims):
     tick: int = Field(ge=1, le=6)
     input_hash: Digest
     output_hash: Digest
+    round_hash: Digest
     before_result_hash: Digest
     after_result_hash: Digest
+    message_tuples: tuple[tuple[int, str, Digest], ...] = ()
+    messages_hash: Digest
+    message_count: int = Field(ge=0)
     proposal_ids: tuple[str, ...] = ()
     accepted_proposal_ids: tuple[str, ...] = ()
+    proposal_batch_hash: Digest
     admission_audit_hash: Digest
+    ledger_hash: Digest
+    eligibility_hash: Digest
+    eligible_proposal_ids: tuple[str, ...] = ()
     projection_consistency_hash: Digest | None = None
     modifier_bundle_hash: Digest | None = None
-    diffusion_hash: Digest
-    ledger_hash: Digest
+    diffusion_evidence_hash: Digest
     projection_audit_hash: Digest | None = None
     no_projection_reason: Literal["no_projection"] | None = None
 
@@ -197,8 +340,43 @@ class RRClaims(KernelModeClaims):
     def validate_round_claims(self) -> Self:
         _validate_ascending_unique(self.proposal_ids, "proposal_ids")
         _validate_ascending_unique(self.accepted_proposal_ids, "accepted_proposal_ids")
+        _validate_ascending_unique(self.eligible_proposal_ids, "eligible_proposal_ids")
         if not set(self.accepted_proposal_ids).issubset(self.proposal_ids):
             raise ValueError("RR accepted_proposal_ids must be proposals")
+        if self.message_count != len(self.message_tuples):
+            raise ValueError("RR message_count must equal message_tuples length")
+        sequence_numbers = tuple(item[0] for item in self.message_tuples)
+        if any(type(value) is not int or value < 1 for value in sequence_numbers):
+            raise ValueError("RR message sequence numbers must be strict positive integers")
+        if tuple(sorted(self.message_tuples, key=lambda item: (item[0], item[1].encode("utf-8")))) != self.message_tuples:
+            raise ValueError("RR message_tuples must be ordered by seq and message_id")
+        return self
+
+
+class NPClaims(KernelModeClaims):
+    session_id: str = Field(min_length=1, max_length=160)
+    tick: int = Field(ge=1, le=6)
+    source_hashes: tuple[Digest, Digest, Digest]
+    proposal_claim_tuples: tuple[NegotiationProposalSourceTuple, ...] = ()
+    proposal_count: int = Field(ge=0)
+    batch_hash: Digest
+
+    @model_validator(mode="after")
+    def validate_proposal_sources(self) -> Self:
+        proposal_ids = tuple(item[0] for item in self.proposal_claim_tuples)
+        _validate_ascending_unique(proposal_ids, "NP proposal ids")
+        if self.proposal_count != len(self.proposal_claim_tuples):
+            raise ValueError("NP proposal_count must equal proposal_claim_tuples length")
+        for item in self.proposal_claim_tuples:
+            source_kind = item[7]
+            commitment_id = item[8]
+            source_tick = item[9]
+            action_class = item[5]
+            if source_kind == "current_message":
+                if commitment_id is not None or source_tick != self.tick:
+                    raise ValueError("current-message NP source coordinates are invalid")
+            elif commitment_id is None or source_tick >= self.tick or action_class != "bilateral_commitment":
+                raise ValueError("active-commitment NP source coordinates are invalid")
         return self
 
 
@@ -208,17 +386,62 @@ class ACClaims(KernelModeClaims):
     audit_hash: Digest
     deterministic_result_hash: Digest
     proposal_ids: tuple[str, ...] = ()
+    proposal_hashes: tuple[Digest, ...] = ()
     accepted_proposal_ids: tuple[str, ...] = ()
     decision_count: int = Field(ge=0)
 
     @model_validator(mode="after")
     def validate_admission_claims(self) -> Self:
-        _validate_ascending_unique(self.proposal_ids, "proposal_ids")
+        _validate_aligned(self.proposal_ids, self.proposal_hashes, "AC proposal_ids")
         _validate_ascending_unique(self.accepted_proposal_ids, "accepted_proposal_ids")
         if self.decision_count != len(self.proposal_ids):
             raise ValueError("AC decision_count must equal proposal_ids length")
         if not set(self.accepted_proposal_ids).issubset(self.proposal_ids):
             raise ValueError("AC accepted_proposal_ids must be proposals")
+        return self
+
+
+class ELClaims(KernelModeClaims):
+    session_id: str = Field(min_length=1, max_length=160)
+    tick: int = Field(ge=1, le=6)
+    decision_tuples: tuple[EligibilityDecisionTuple, ...] = ()
+    decision_count: int = Field(ge=0)
+    eligible_proposal_ids: tuple[str, ...] = ()
+    eligible_proposal_count: int = Field(ge=0)
+    eligibility_hash: Digest
+
+    @model_validator(mode="after")
+    def validate_eligibility_claims(self) -> Self:
+        decision_ids = tuple(item[0][0] for item in self.decision_tuples)
+        _validate_ascending_unique(decision_ids, "EL decision proposal ids")
+        _validate_ascending_unique(self.eligible_proposal_ids, "EL eligible_proposal_ids")
+        if self.decision_count != len(self.decision_tuples):
+            raise ValueError("EL decision_count must equal decision_tuples length")
+        if self.eligible_proposal_count != len(self.eligible_proposal_ids):
+            raise ValueError("EL eligible_proposal_count must equal eligible_proposal_ids length")
+        eligible_from_decisions = tuple(
+            item[0][0] for item in self.decision_tuples if item[2] == "eligible"
+        )
+        if eligible_from_decisions != self.eligible_proposal_ids:
+            raise ValueError("EL eligible ids must equal eligible decision ids")
+        for proposal, prior_projected, outcome, decision_hash in self.decision_tuples:
+            expected = stable_hash(
+                {"decision": [proposal, prior_projected, outcome]}
+            )
+            if decision_hash != expected:
+                raise ValueError("EL decision_hash mismatch")
+        expected_eligibility_hash = stable_hash(
+            {
+                "schema_version": "negotiation-eligibility.v1",
+                "run_id": self.run_id,
+                "session_id": self.session_id,
+                "tick": self.tick,
+                "decision_hashes": tuple(item[3] for item in self.decision_tuples),
+                "eligible_proposal_ids": self.eligible_proposal_ids,
+            }
+        )
+        if self.eligibility_hash != expected_eligibility_hash:
+            raise ValueError("EL eligibility_hash mismatch")
         return self
 
 
@@ -228,12 +451,17 @@ class PCClaims(KernelModeClaims):
     audit_hash: Digest
     deterministic_result_hash: Digest
     candidate_proposal_ids: tuple[str, ...] = ()
+    proposal_hashes: tuple[Digest, ...] = ()
     accepted_proposal_ids: tuple[str, ...] = ()
     decision_count: int = Field(ge=0)
 
     @model_validator(mode="after")
     def validate_projection_claims(self) -> Self:
-        _validate_ascending_unique(self.candidate_proposal_ids, "candidate_proposal_ids")
+        _validate_aligned(
+            self.candidate_proposal_ids,
+            self.proposal_hashes,
+            "PC candidate_proposal_ids",
+        )
         _validate_ascending_unique(self.accepted_proposal_ids, "accepted_proposal_ids")
         if self.decision_count != len(self.candidate_proposal_ids):
             raise ValueError("PC decision_count must equal candidate_proposal_ids length")
@@ -281,53 +509,96 @@ class MBClaims(KernelModeClaims):
         if self.modifier_count != len(self.modifier_tuples):
             raise ValueError("MB modifier_count must equal modifier_tuples length")
         _validate_modifier_tuples(self.modifier_tuples, "MB modifier_tuples")
-        if any(item.proposal_id not in self.accepted_proposal_ids for item in self.modifier_tuples):
-            raise ValueError("MB modifier_tuples must belong to accepted proposals")
+        if tuple(item.proposal_id for item in self.modifier_tuples) != self.accepted_proposal_ids:
+            raise ValueError("MB requires exactly one modifier tuple per accepted proposal")
         return self
 
 
 class NDClaims(KernelModeClaims):
+    session_id: str = Field(min_length=1, max_length=160)
     tick: int = Field(ge=1, le=6)
     attempted: bool
-    diffusion_hash: Digest
-    application_count: int = Field(ge=0)
-    proposal_ids: tuple[str, ...] = ()
+    input_proposal_ids: tuple[str, ...] = ()
+    input_proposal_hashes: tuple[Digest, ...] = ()
+    narrative_diffusion_audit_hash: Digest
+    diffusion_request_hash: Digest
     before_result_hash: Digest
     after_result_hash: Digest
+    tone_delta_tuples: tuple[ToneDeltaTuple, ...]
+    country_delta_tuples: tuple[CountryDeltaTuple, ...] = ()
+    application_tuples: tuple[DiffusionApplicationTuple, ...] = ()
+    application_count: int = Field(ge=0)
+    diffusion_evidence_hash: Digest
 
     @model_validator(mode="after")
     def validate_diffusion_claims(self) -> Self:
-        _validate_ascending_unique(self.proposal_ids, "proposal_ids")
-        if self.application_count != len(self.proposal_ids):
-            raise ValueError("ND application_count must equal proposal_ids length")
+        _validate_aligned(
+            self.input_proposal_ids,
+            self.input_proposal_hashes,
+            "ND input_proposal_ids",
+        )
+        if self.attempted != bool(self.input_proposal_ids):
+            raise ValueError("ND attempted must equal nonempty input proposal predicate")
+        if self.application_count != len(self.application_tuples):
+            raise ValueError("ND application_count must equal application_tuples length")
+        expected_tones = (
+            ("firm", 30000),
+            ("informational", -10000),
+            ("stabilizing", -40000),
+        )
+        if self.tone_delta_tuples != expected_tones:
+            raise ValueError("ND tone_delta_tuples must equal the fixed Q=10000 tuple")
+        country_ids = tuple(item[0] for item in self.country_delta_tuples)
+        _validate_ascending_unique(country_ids, "ND country ids")
+        application_keys = tuple(
+            (
+                item[0].encode("utf-8"),
+                item[1].encode("utf-8"),
+                item[2].encode("utf-8"),
+                item[3].encode("utf-8"),
+                item[4].encode("utf-8"),
+                item[11].encode("utf-8"),
+            )
+            for item in self.application_tuples
+        )
+        if len(set(application_keys)) != len(application_keys) or tuple(sorted(application_keys)) != application_keys:
+            raise ValueError("ND application_tuples must be unique and canonical")
+        for _, value in self.tone_delta_tuples + self.country_delta_tuples:
+            _validate_int64(value, "ND fixed-point delta")
+        for item in self.application_tuples:
+            for value in item[5:11]:
+                _validate_int64(value, "ND application fixed-point value")
         if not self.attempted and (
             self.application_count != 0
-            or self.proposal_ids
+            or self.country_delta_tuples
+            or self.application_tuples
             or self.before_result_hash != self.after_result_hash
         ):
             raise ValueError("unattempted ND claims must be an empty numeric no-op")
         return self
 
 
-class CommitmentReference(KernelModeContract):
-    commitment_id: str = Field(min_length=1, max_length=160)
-    commitment_hash: Digest
-    status: str = Field(min_length=1, max_length=80)
-
-
 class CLClaims(KernelModeClaims):
+    session_id: str | None = Field(default=None, min_length=1, max_length=160)
     tick: int | None = Field(default=None, ge=1, le=6)
     ledger_hash: Digest
     ledger_entry_count: int = Field(ge=0)
-    commitments: tuple[CommitmentReference, ...] = ()
+    commitments: tuple[CommitmentClaimTuple, ...] = ()
 
     @model_validator(mode="after")
     def validate_ledger_claims(self) -> Self:
         if self.ledger_entry_count != len(self.commitments):
             raise ValueError("CL ledger_entry_count must equal commitments length")
-        if tuple(sorted(self.commitments, key=lambda item: (item.commitment_id, item.commitment_hash, item.status))) != self.commitments:
-            raise ValueError("CL commitments must be in canonical order")
-        if len({item.commitment_id for item in self.commitments}) != len(self.commitments):
+        commitment_ids = tuple(item[0] for item in self.commitments)
+        _validate_ascending_unique(commitment_ids, "CL commitment ids")
+        for item in self.commitments:
+            parties = item[4]
+            _validate_ascending_unique(parties, "CL party_agent_ids")
+            if len(parties) != 2:
+                raise ValueError("negotiation CL commitments must bind exactly two parties")
+            if item[10] < 1 or item[10] > 6:
+                raise ValueError("CL source_admission_tick must be in 1..6")
+        if len(set(commitment_ids)) != len(self.commitments):
             raise ValueError("CL commitment ids must be unique")
         return self
 
@@ -339,7 +610,11 @@ class PAClaims(KernelModeClaims):
     consistency_audit_hash: Digest
     modifier_bundle_hash: Digest | None = None
     proposal_ids: tuple[str, ...] = ()
+    proposal_hashes: tuple[Digest, ...] = ()
+    record_input_hashes: tuple[Digest, ...] = ()
+    record_claim_tuples: tuple[ProjectionRecordClaimTuple, ...] = ()
     projected_proposal_ids: tuple[str, ...] = ()
+    projected_semantic_key_hashes: tuple[Digest, ...] = ()
     modifier_tuples: tuple[ModifierReference, ...] = ()
     modifier_count: int = Field(ge=0)
     record_count: int = Field(ge=0)
@@ -348,17 +623,34 @@ class PAClaims(KernelModeClaims):
 
     @model_validator(mode="after")
     def validate_audit_claims(self) -> Self:
-        _validate_ascending_unique(self.proposal_ids, "proposal_ids")
-        _validate_ascending_unique(self.projected_proposal_ids, "projected_proposal_ids")
-        if self.record_count != len(self.proposal_ids):
-            raise ValueError("PA record_count must equal proposal_ids length")
+        _validate_aligned(self.proposal_ids, self.proposal_hashes, "PA proposal_ids")
+        _validate_aligned(
+            self.projected_proposal_ids,
+            self.projected_semantic_key_hashes,
+            "PA projected_proposal_ids",
+        )
+        if not (
+            self.record_count
+            == len(self.proposal_ids)
+            == len(self.record_input_hashes)
+            == len(self.record_claim_tuples)
+        ):
+            raise ValueError("PA record vectors and proposal vectors must have equal length")
+        for index, record in enumerate(self.record_claim_tuples):
+            if (
+                record[0] != self.proposal_ids[index]
+                or record[1] != self.proposal_hashes[index]
+                or record[2] != self.record_input_hashes[index]
+                or record[10] != self.final_result_hash
+            ):
+                raise ValueError("PA record claims must align with top-level vectors")
         if self.modifier_count != len(self.modifier_tuples):
             raise ValueError("PA modifier_count must equal modifier_tuples length")
         _validate_modifier_tuples(self.modifier_tuples, "PA modifier_tuples")
         if not set(self.projected_proposal_ids).issubset(self.proposal_ids):
             raise ValueError("PA projected_proposal_ids must be proposals")
-        if any(item.proposal_id not in self.projected_proposal_ids for item in self.modifier_tuples):
-            raise ValueError("PA modifier_tuples must belong to projected proposals")
+        if tuple(item.proposal_id for item in self.modifier_tuples) != self.projected_proposal_ids:
+            raise ValueError("PA requires exactly one modifier tuple per projected proposal")
         if self.projection_mode == "audit_only" and self.modifier_tuples:
             raise ValueError("audit_only PA modifier_tuples must be empty")
         return self
@@ -372,6 +664,7 @@ class HRClaims(KernelModeClaims):
     baseline_result_hash: Digest
     final_result_hash: Digest
     full_source_run_hash: Digest
+    proposal_batch_hash: Digest
     consistency_audit_hash: Digest
     modifier_bundle_hash: Digest
     projection_audit_hash: Digest
@@ -397,12 +690,15 @@ class NRClaims(KernelModeClaims):
     baseline_result_hash: Digest
     final_result_hash: Digest
     round_hashes: tuple[Digest, ...]
+    proposal_batch_hashes: tuple[Digest, ...]
     admission_audit_hashes: tuple[Digest, ...]
-    projection_consistency_hashes: tuple[Digest | None, ...]
-    diffusion_hashes: tuple[Digest, ...]
     ledger_hashes: tuple[Digest, ...]
+    eligibility_hashes: tuple[Digest, ...]
+    projection_consistency_hashes: tuple[Digest | None, ...]
+    modifier_bundle_hashes: tuple[Digest | None, ...]
+    diffusion_evidence_hashes: tuple[Digest, ...]
     projection_audit_hashes: tuple[Digest | None, ...]
-    message_chain_head: Digest
+    message_chain_head: Digest | None
     provider_calls_required: Literal[0] = 0
 
     @field_validator("provider_calls_required", mode="before")
@@ -416,10 +712,13 @@ class NRClaims(KernelModeClaims):
     def validate_negotiation_replay_claims(self) -> Self:
         sequences = (
             self.round_hashes,
+            self.proposal_batch_hashes,
             self.admission_audit_hashes,
-            self.projection_consistency_hashes,
-            self.diffusion_hashes,
             self.ledger_hashes,
+            self.eligibility_hashes,
+            self.projection_consistency_hashes,
+            self.modifier_bundle_hashes,
+            self.diffusion_evidence_hashes,
             self.projection_audit_hashes,
         )
         if any(len(sequence) != 6 for sequence in sequences):
@@ -428,14 +727,16 @@ class NRClaims(KernelModeClaims):
 
 
 ModeClaims: TypeAlias = (
-    ARClaims | PBClaims | FCClaims | RRClaims | ACClaims | PCClaims | MBClaims | NDClaims | CLClaims | PAClaims | HRClaims | NRClaims
+    ARClaims | PBClaims | FCClaims | RRClaims | NPClaims | ACClaims | CLClaims | ELClaims | PCClaims | MBClaims | NDClaims | PAClaims | HRClaims | NRClaims
 )
 _CLAIMS_BY_SCHEMA: Mapping[ProofSchema, type[KernelModeClaims]] = MappingProxyType({
     "kp.agent-runtime.v1": ARClaims,
     "kp.proposal-batch.v1": PBClaims,
     "kp.final-consistency.v1": FCClaims,
     "kp.negotiation-round.v1": RRClaims,
+    "kp.negotiation-proposal-batch.v1": NPClaims,
     "kp.negotiation-admission-consistency.v1": ACClaims,
+    "kp.negotiation-eligibility.v1": ELClaims,
     "kp.negotiation-projection-consistency.v1": PCClaims,
     "kp.action-modifier-bundle.v1": MBClaims,
     "kp.narrative-diffusion.v1": NDClaims,
@@ -449,7 +750,9 @@ _TOKEN_BY_SCHEMA: Mapping[ProofSchema, ProofToken] = MappingProxyType({
     "kp.proposal-batch.v1": "PB",
     "kp.final-consistency.v1": "FC",
     "kp.negotiation-round.v1": "RR",
+    "kp.negotiation-proposal-batch.v1": "NP",
     "kp.negotiation-admission-consistency.v1": "AC",
+    "kp.negotiation-eligibility.v1": "EL",
     "kp.negotiation-projection-consistency.v1": "PC",
     "kp.action-modifier-bundle.v1": "MB",
     "kp.narrative-diffusion.v1": "ND",
@@ -463,7 +766,9 @@ _ARTIFACT_TYPES_BY_SCHEMA: Mapping[ProofSchema, frozenset[str]] = MappingProxyTy
     "kp.proposal-batch.v1": frozenset({"agent_action_proposals"}),
     "kp.final-consistency.v1": frozenset({"consistency_audit"}),
     "kp.negotiation-round.v1": frozenset({"negotiation_round"}),
+    "kp.negotiation-proposal-batch.v1": frozenset({"negotiation_proposal_batch"}),
     "kp.negotiation-admission-consistency.v1": frozenset({"consistency_audit"}),
+    "kp.negotiation-eligibility.v1": frozenset({"negotiation_eligibility"}),
     "kp.negotiation-projection-consistency.v1": frozenset({"consistency_audit"}),
     "kp.action-modifier-bundle.v1": frozenset({"deterministic_action_modifiers"}),
     "kp.narrative-diffusion.v1": frozenset({"narrative_diffusion"}),
@@ -474,19 +779,19 @@ _ARTIFACT_TYPES_BY_SCHEMA: Mapping[ProofSchema, frozenset[str]] = MappingProxyTy
 })
 _SOURCE_SCHEMAS_BY_SCHEMA: Mapping[ProofSchema, frozenset[str]] = MappingProxyType({
     "kp.agent-runtime.v1": frozenset({"agent-runtime-result.v1"}),
-    "kp.proposal-batch.v1": frozenset({"mock-agent-batch.v1", "agent-action-batch.v1"}),
-    "kp.final-consistency.v1": frozenset({"consistency-audit.v1", "consistency-audit.v2"}),
-    "kp.negotiation-round.v1": frozenset({"negotiation-round.v1"}),
-    "kp.negotiation-admission-consistency.v1": frozenset(
-        {"consistency-audit.v1", "consistency-audit.v2"}
-    ),
-    "kp.negotiation-projection-consistency.v1": frozenset({"consistency-audit.v2"}),
-    "kp.action-modifier-bundle.v1": frozenset({"hybrid-modifier-bundle.v1"}),
-    "kp.narrative-diffusion.v1": frozenset({"narrative-diffusion.v1"}),
-    "kp.commitment-ledger.v1": frozenset({"commitment-ledger.v1"}),
-    "kp.projection-audit.v1": frozenset({"agent-action-projection-audit.v1"}),
-    "kp.hybrid-replay.v1": frozenset({"hybrid-replay-record.v1"}),
-    "kp.negotiation-replay.v1": frozenset({"negotiation-replay.v1"}),
+    "kp.proposal-batch.v1": frozenset({"kernel-proposal-batch.v1"}),
+    "kp.final-consistency.v1": frozenset({"consistency-audit.v3"}),
+    "kp.negotiation-round.v1": frozenset({"negotiation-round.v2"}),
+    "kp.negotiation-proposal-batch.v1": frozenset({"negotiation-proposal-batch.v1"}),
+    "kp.negotiation-admission-consistency.v1": frozenset({"consistency-audit.v3"}),
+    "kp.negotiation-eligibility.v1": frozenset({"negotiation-eligibility.v1"}),
+    "kp.negotiation-projection-consistency.v1": frozenset({"consistency-audit.v3"}),
+    "kp.action-modifier-bundle.v1": frozenset({"hybrid-modifier-bundle.v2"}),
+    "kp.narrative-diffusion.v1": frozenset({"narrative-diffusion.v2"}),
+    "kp.commitment-ledger.v1": frozenset({"commitment-ledger.v2"}),
+    "kp.projection-audit.v1": frozenset({"agent-action-projection-audit.v2", "negotiation-projection-audit.v2"}),
+    "kp.hybrid-replay.v1": frozenset({"hybrid-replay-record.v2"}),
+    "kp.negotiation-replay.v1": frozenset({"negotiation-replay.v2"}),
 })
 
 
@@ -627,7 +932,7 @@ class KernelModeExecutionRecord(KernelModeContract):
     attempt: str = Field(min_length=1, max_length=160)
     effective_seed: int
     rule_pack_hash: Digest
-    authority_path: tuple[str, ...]
+    authority_path: str
     baseline_source_run_hash: Digest
     baseline_deterministic_source_hash: Digest
     baseline_world_state_hash: Digest
@@ -641,8 +946,8 @@ class KernelModeExecutionRecord(KernelModeContract):
     def validate_record_hash(self) -> Self:
         if self.kernel_mode != normalize_kernel_mode(self.engine_mode):
             raise ValueError("kernel_mode does not match engine_mode")
-        if self.authority_path != AUTHORITY_PATH_BY_KERNEL_MODE[self.kernel_mode]:
-            raise ValueError("authority_path must match the fixed Kernel mode authority path")
+        if self.authority_path != AUTHORITY_PATH_BY_ENGINE_MODE[self.engine_mode]:
+            raise ValueError("authority_path must match the fixed engine-mode authority path")
         expected_hash = stable_hash(self.model_dump(mode="json", exclude={"record_hash"}))
         if self.record_hash != expected_hash:
             raise ValueError("Kernel mode execution record_hash mismatch")
@@ -654,7 +959,9 @@ AgentRuntimeClaims = ARClaims
 ProposalBatchClaims = PBClaims
 FinalConsistencyClaims = FCClaims
 NegotiationRoundClaims = RRClaims
+NegotiationProposalBatchClaims = NPClaims
 NegotiationAdmissionConsistencyClaims = ACClaims
+NegotiationEligibilityClaims = ELClaims
 NegotiationProjectionConsistencyClaims = PCClaims
 ActionModifierBundleClaims = MBClaims
 NarrativeDiffusionClaims = NDClaims

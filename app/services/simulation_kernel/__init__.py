@@ -10,6 +10,7 @@ from .artifacts import (
 from .branching import branch_world_state
 from .clock import DeterministicClock
 from .contracts import (
+    AUTHORITY_PATH_BY_KERNEL_MODE,
     Checkpoint,
     Entity,
     EventEnvelope,
@@ -22,6 +23,7 @@ from .contracts import (
 from .event_log import KernelEventLog, replay_event_log
 from .mode_contracts import (
     ARClaims,
+    AUTHORITY_PATH_BY_ENGINE_MODE,
     ActionModifierBundleClaims,
     AgentRuntimeClaims,
     CommitmentLedgerClaims,
@@ -34,8 +36,12 @@ from .mode_contracts import (
     KernelModeExecutionRequest,
     KernelModeProofReference,
     KernelModeProofRelationship,
+    ELClaims,
     ModifierReference,
     NarrativeDiffusionClaims,
+    NegotiationEligibilityClaims,
+    NegotiationProposalBatchClaims,
+    NPClaims,
     NegotiationAdmissionConsistencyClaims,
     NegotiationProjectionConsistencyClaims,
     NegotiationReplayClaims,
@@ -47,11 +53,10 @@ from .mode_contracts import (
     normalize_kernel_mode,
 )
 from .mode_finalization import (
-    AUTHORITY_PATH_BY_KERNEL_MODE,
-    EMPTY_COMMITMENT_LEDGER_HASH,
     KernelModeFinalizationError,
     KernelModeFinalizationNotImplementedError,
     finalize_execution,
+    empty_commitment_ledger_hash,
 )
 from .replay import ReplayIntegrityError, replay_state
 from .transitions import (
@@ -84,7 +89,8 @@ __all__ = [
     "KernelModeProofRelationship",
     "KERNEL_MODE_BY_ENGINE_MODE",
     "AUTHORITY_PATH_BY_KERNEL_MODE",
-    "EMPTY_COMMITMENT_LEDGER_HASH",
+    "AUTHORITY_PATH_BY_ENGINE_MODE",
+    "empty_commitment_ledger_hash",
     "KernelModeFinalizationError",
     "KernelModeFinalizationNotImplementedError",
     "KernelShadowArtifact",
@@ -124,6 +130,10 @@ __all__ = [
     "ProposalBatchClaims",
     "FinalConsistencyClaims",
     "NegotiationRoundClaims",
+    "NegotiationProposalBatchClaims",
+    "NegotiationEligibilityClaims",
+    "NPClaims",
+    "ELClaims",
     "NegotiationAdmissionConsistencyClaims",
     "NegotiationProjectionConsistencyClaims",
     "ActionModifierBundleClaims",

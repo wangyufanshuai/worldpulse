@@ -13,15 +13,18 @@ from typing import NoReturn, TypeVar, cast
 
 from app.services.consistency.hashing import stable_hash
 
-from .contracts import AUTHORITY_PATH_BY_KERNEL_MODE, NUMERIC_AUTHORITY_COMPONENTS
+from .contracts import NUMERIC_AUTHORITY_COMPONENTS
 from .mode_contracts import (
+    AUTHORITY_PATH_BY_ENGINE_MODE,
     ARClaims,
-    CLClaims,
     ACClaims,
+    CLClaims,
+    ELClaims,
     FCClaims,
     HRClaims,
     MBClaims,
     NDClaims,
+    NPClaims,
     NRClaims,
     PAClaims,
     PBClaims,
@@ -43,7 +46,18 @@ class KernelModeFinalizationNotImplementedError(KernelModeFinalizationError, Not
     """A future ADR mode was intentionally not admitted by this slice."""
 
 
-EMPTY_COMMITMENT_LEDGER_HASH = stable_hash({"commitments": []})
+def empty_commitment_ledger_hash(run_id: str) -> str:
+    """Return the run-bound canonical empty commitment-ledger.v2 digest."""
+
+    return stable_hash(
+        {
+            "schema_version": "commitment-ledger.v2",
+            "run_id": run_id,
+            "session_id": None,
+            "tick": None,
+            "entries": (),
+        }
+    )
 _IMPLEMENTED_ENGINE_MODES = frozenset(
     {"deterministic", "mock_agent", "controlled_agent", "hybrid", "hybrid_recorded", "negotiation"}
 )
@@ -87,7 +101,7 @@ def _build_record(request: KernelModeExecutionRequest) -> KernelModeExecutionRec
         "attempt": request.attempt,
         "effective_seed": request.effective_seed,
         "rule_pack_hash": request.rule_pack_hash,
-        "authority_path": AUTHORITY_PATH_BY_KERNEL_MODE[request.kernel_mode],
+        "authority_path": AUTHORITY_PATH_BY_ENGINE_MODE[request.engine_mode],
         "baseline_source_run_hash": request.baseline.source_run_hash,
         "baseline_deterministic_source_hash": request.baseline.deterministic_source_hash,
         "baseline_world_state_hash": request.baseline.world_state_hash,
@@ -194,7 +208,7 @@ def _finalize_deterministic(
     _require_sequence(references, (("FC", None),))
     fc_ref = references[0]
     fc = _claims(fc_ref, FCClaims)
-    _require_source_schema(fc_ref, "consistency-audit.v1", "consistency-audit.v2")
+    _require_source_schema(fc_ref, "consistency-audit.v3")
     _require_relationships(fc_ref, ())
     if fc.proposal_ids or fc.accepted_proposal_ids or fc.decision_count:
         _fail("deterministic FC must contain no Agent proposals")
@@ -223,20 +237,28 @@ def _finalize_audit_only(
 
     fc_ref = _single(by_token, "FC", "audit-only proof requires exactly one FC")
     fc = _claims(fc_ref, FCClaims)
-    _require_source_schema(fc_ref, "consistency-audit.v1", "consistency-audit.v2")
+    _require_source_schema(fc_ref, "consistency-audit.v3")
     if request.engine_mode == "mock_agent":
-        _require_source_schema(pb_ref, "mock-agent-batch.v1")
-        if pb.source_kind != "mock_agent" or pb.batch_hash is None or pb.runtime_hash is not None:
+        _require_source_schema(pb_ref, "kernel-proposal-batch.v1")
+        if (
+            pb.source_kind != "mock_batch"
+            or pb.source_mock_batch_hash is None
+            or pb.source_runtime_hash is not None
+        ):
             _fail("mock_agent PB source claims mismatch")
         _require_relationships(pb_ref, ())
     else:
         ar_ref = _single(by_token, "AR", "controlled_agent proof requires exactly one AR")
         ar = _claims(ar_ref, ARClaims)
         _require_source_schema(ar_ref, "agent-runtime-result.v1")
-        _require_source_schema(pb_ref, "agent-action-batch.v1")
-        if pb.source_kind != "controlled_agent" or pb.runtime_hash != ar.runtime_hash or pb.batch_hash is not None:
+        _require_source_schema(pb_ref, "kernel-proposal-batch.v1")
+        if (
+            pb.source_kind != "agent_runtime"
+            or pb.source_runtime_hash != ar.runtime_hash
+            or pb.source_mock_batch_hash is not None
+        ):
             _fail("controlled_agent PB runtime binding mismatch")
-        if ar.proposal_ids != pb.proposal_ids:
+        if ar.proposal_ids != pb.proposal_ids or ar.proposal_hashes != pb.proposal_hashes:
             _fail("AR/PB proposal ids mismatch")
         _require_relationships(ar_ref, ())
         _require_relationships(pb_ref, (("generated_by", ar_ref),))
@@ -290,12 +312,12 @@ def _finalize_hybrid(
     hr = _claims(hr_ref, HRClaims)
 
     _require_source_schema(ar_ref, "agent-runtime-result.v1")
-    _require_source_schema(pb_ref, "agent-action-batch.v1")
-    _require_source_schema(fc_ref, "consistency-audit.v1", "consistency-audit.v2")
-    _require_source_schema(mb_ref, "hybrid-modifier-bundle.v1")
-    _require_source_schema(cl_ref, "commitment-ledger.v1")
+    _require_source_schema(pb_ref, "kernel-proposal-batch.v1")
+    _require_source_schema(fc_ref, "consistency-audit.v3")
+    _require_source_schema(mb_ref, "hybrid-modifier-bundle.v2")
+    _require_source_schema(cl_ref, "commitment-ledger.v2")
     _require_projection_audit_source(pa_ref)
-    _require_source_schema(hr_ref, "hybrid-replay-record.v1")
+    _require_source_schema(hr_ref, "hybrid-replay-record.v2")
 
     _require_relationships(ar_ref, ())
     _require_relationships(pb_ref, (("generated_by", ar_ref),))
@@ -317,9 +339,13 @@ def _finalize_hybrid(
         ),
     )
 
-    if pb.source_kind != "controlled_agent" or pb.runtime_hash != ar.runtime_hash or pb.batch_hash is not None:
+    if (
+        pb.source_kind != "agent_runtime"
+        or pb.source_runtime_hash != ar.runtime_hash
+        or pb.source_mock_batch_hash is not None
+    ):
         _fail("hybrid PB runtime binding mismatch")
-    if ar.proposal_ids != pb.proposal_ids:
+    if ar.proposal_ids != pb.proposal_ids or ar.proposal_hashes != pb.proposal_hashes:
         _fail("AR/PB proposal ids mismatch")
     if fc.proposal_ids != pb.proposal_ids:
         _fail("PB/FC proposal ids mismatch")
@@ -327,7 +353,13 @@ def _finalize_hybrid(
         _fail("hybrid FC result hash must bind the baseline projection")
     if mb.accepted_proposal_ids != fc.accepted_proposal_ids or mb.consistency_audit_hash != fc.audit_hash:
         _fail("hybrid Modifier Bundle claims mismatch")
-    if cl.ledger_entry_count != 0 or cl.commitments or cl.ledger_hash != EMPTY_COMMITMENT_LEDGER_HASH:
+    if (
+        cl.session_id is not None
+        or cl.tick is not None
+        or cl.ledger_entry_count != 0
+        or cl.commitments
+        or cl.ledger_hash != empty_commitment_ledger_hash(request.run_id)
+    ):
         _fail("hybrid Commitment Ledger must be the canonical empty ledger")
     if (
         pa.projection_mode != "hybrid"
@@ -348,6 +380,7 @@ def _finalize_hybrid(
         or hr.baseline_result_hash != request.baseline.source_run_hash
         or hr.final_result_hash != pa.final_result_hash
         or hr.full_source_run_hash != request.final.source_run_hash
+        or hr.proposal_batch_hash != pb.batch_hash
         or hr.consistency_audit_hash != fc.audit_hash
         or hr.modifier_bundle_hash != mb.bundle_hash
         or hr.projection_audit_hash != pa.audit_hash
@@ -370,24 +403,28 @@ def _finalize_negotiation(
     request: KernelModeExecutionRequest,
     references: tuple[KernelModeProofReference, ...],
 ) -> None:
-    """Validate the six-tick ADR-0007 negotiation authority chain.
-
-    The input is deliberately already-extracted typed evidence.  This function
-    neither replays negotiation nor loads artifacts: it proves that the fixed
-    evidence topology and its explicit claim bindings admit the final Kernel
-    projection.
-    """
+    """Validate the closed six-tick NP/EL-governed negotiation proof."""
 
     tick_count = 6
-    if len(references) < 26:
-        _fail("negotiation proof is shorter than the mandatory six-tick chain")
+    fixed_prefix_count = 5 * tick_count
+    if len(references) < 38:
+        _fail("negotiation proof is shorter than the mandatory 38-reference chain")
 
-    round_refs = references[:tick_count]
-    admission_refs = references[tick_count : 2 * tick_count]
-    _require_token_ticks(round_refs, "RR")
-    _require_token_ticks(admission_refs, "AC")
+    round_refs = references[0:6]
+    proposal_refs = references[6:12]
+    admission_refs = references[12:18]
+    ledger_refs = references[18:24]
+    eligibility_refs = references[24:30]
+    for block, token in (
+        (round_refs, "RR"),
+        (proposal_refs, "NP"),
+        (admission_refs, "AC"),
+        (ledger_refs, "CL"),
+        (eligibility_refs, "EL"),
+    ):
+        _require_token_ticks(block, token)  # type: ignore[arg-type]
 
-    cursor = 2 * tick_count
+    cursor = fixed_prefix_count
     projection_refs: list[KernelModeProofReference] = []
     while cursor < len(references) and references[cursor].token == "PC":
         projection_refs.append(references[cursor])
@@ -403,8 +440,6 @@ def _finalize_negotiation(
         cursor += 1
     diffusion_refs = references[cursor : cursor + tick_count]
     cursor += tick_count
-    ledger_refs = references[cursor : cursor + tick_count]
-    cursor += tick_count
     projection_audit_refs: list[KernelModeProofReference] = []
     while cursor < len(references) and references[cursor].token == "PA":
         projection_audit_refs.append(references[cursor])
@@ -412,41 +447,44 @@ def _finalize_negotiation(
     if cursor >= len(references) or references[cursor].token != "NR" or cursor + 1 != len(references):
         _fail("negotiation NR must be the final proof reference")
     replay_ref = references[cursor]
-
     _require_token_ticks(diffusion_refs, "ND")
-    _require_token_ticks(ledger_refs, "CL")
     if final_ref.tick is not None or replay_ref.tick is not None:
         _fail("negotiation FC and NR references may not carry ticks")
 
     rounds = tuple(_claims(reference, RRClaims) for reference in round_refs)
+    proposals = tuple(_claims(reference, NPClaims) for reference in proposal_refs)
     admissions = tuple(_claims(reference, ACClaims) for reference in admission_refs)
+    ledgers = tuple(_claims(reference, CLClaims) for reference in ledger_refs)
+    eligibilities = tuple(_claims(reference, ELClaims) for reference in eligibility_refs)
     projections = tuple(_claims(reference, PCClaims) for reference in projection_refs)
     final_audit = _claims(final_ref, FCClaims)
     modifiers = tuple(_claims(reference, MBClaims) for reference in modifier_refs)
     diffusions = tuple(_claims(reference, NDClaims) for reference in diffusion_refs)
-    ledgers = tuple(_claims(reference, CLClaims) for reference in ledger_refs)
     projection_audits = tuple(_claims(reference, PAClaims) for reference in projection_audit_refs)
     replay = _claims(replay_ref, NRClaims)
 
-    _require_claim_ticks(rounds, tuple(range(1, tick_count + 1)), "RR")
-    _require_claim_ticks(admissions, tuple(range(1, tick_count + 1)), "AC")
+    for claims, token in (
+        (rounds, "RR"),
+        (proposals, "NP"),
+        (admissions, "AC"),
+        (ledgers, "CL"),
+        (eligibilities, "EL"),
+        (diffusions, "ND"),
+    ):
+        _require_claim_ticks(claims, tuple(range(1, 7)), token)  # type: ignore[arg-type]
     _require_claim_ticks(projections, tuple(reference.tick for reference in projection_refs), "PC")
     _require_claim_ticks(modifiers, tuple(reference.tick for reference in modifier_refs), "MB")
-    _require_claim_ticks(diffusions, tuple(range(1, tick_count + 1)), "ND")
-    _require_claim_ticks(ledgers, tuple(range(1, tick_count + 1)), "CL")
     _require_claim_ticks(projection_audits, tuple(reference.tick for reference in projection_audit_refs), "PA")
 
     projected_ticks = tuple(
-        tick
-        for tick, (admission, diffusion) in enumerate(zip(admissions, diffusions, strict=True), start=1)
-        if admission.accepted_proposal_ids or diffusion.attempted
+        tick for tick, eligibility in enumerate(eligibilities, start=1)
+        if eligibility.eligible_proposal_ids
     )
     _require_tick_set(projection_refs, projected_ticks, "PC")
     _require_tick_set(modifier_refs, projected_ticks, "MB")
     _require_tick_set(projection_audit_refs, projected_ticks, "PA")
-    expected_count = 26 + 3 * len(projected_ticks)
-    if len(references) != expected_count:
-        _fail("negotiation proof count does not match 26 + 3P")
+    if len(references) != 38 + 3 * len(projected_ticks):
+        _fail("negotiation proof count does not match 38 + 3P")
 
     projection_by_tick = _by_tick(projection_refs)
     modifier_by_tick = _by_tick(modifier_refs)
@@ -454,73 +492,126 @@ def _finalize_negotiation(
     _require_retry_supersession_completeness(
         request,
         round_refs=round_refs,
+        proposal_refs=proposal_refs,
         admission_refs=admission_refs,
+        ledger_refs=ledger_refs,
+        eligibility_refs=eligibility_refs,
         projection_by_tick=projection_by_tick,
         modifier_by_tick=modifier_by_tick,
         diffusion_refs=diffusion_refs,
-        ledger_refs=ledger_refs,
         audit_by_tick=audit_by_tick,
         final_ref=final_ref,
         replay_ref=replay_ref,
     )
 
-    for reference in round_refs:
-        _require_source_schema(reference, "negotiation-round.v1")
-    for reference in admission_refs:
-        _require_source_schema(reference, "consistency-audit.v1", "consistency-audit.v2")
-    for reference in projection_refs:
-        _require_source_schema(reference, "consistency-audit.v2")
-    _require_source_schema(final_ref, "consistency-audit.v1", "consistency-audit.v2")
-    for reference in modifier_refs:
-        _require_source_schema(reference, "hybrid-modifier-bundle.v1")
-    for reference in diffusion_refs:
-        _require_source_schema(reference, "narrative-diffusion.v1")
-    for reference in ledger_refs:
-        _require_source_schema(reference, "commitment-ledger.v1")
+    schema_blocks: tuple[tuple[Sequence[KernelModeProofReference], str], ...] = (
+        (round_refs, "negotiation-round.v2"),
+        (proposal_refs, "negotiation-proposal-batch.v1"),
+        (admission_refs, "consistency-audit.v3"),
+        (ledger_refs, "commitment-ledger.v2"),
+        (eligibility_refs, "negotiation-eligibility.v1"),
+        (projection_refs, "consistency-audit.v3"),
+        (modifier_refs, "hybrid-modifier-bundle.v2"),
+        (diffusion_refs, "narrative-diffusion.v2"),
+    )
+    for schema_references, schema in schema_blocks:
+        for reference in schema_references:
+            _require_source_schema(reference, schema)
+    _require_source_schema(final_ref, "consistency-audit.v3")
     for reference in projection_audit_refs:
         _require_negotiation_projection_audit_source(reference)
-    _require_source_schema(replay_ref, "negotiation-replay.v1")
+    _require_source_schema(replay_ref, "negotiation-replay.v2")
 
     session_id = rounds[0].session_id
-    if replay.session_id != session_id or any(round_item.session_id != session_id for round_item in rounds):
+    if (
+        replay.session_id != session_id
+        or any(item.session_id != session_id for item in rounds)
+        or any(item.session_id != session_id for item in proposals)
+        or any(item.session_id != session_id for item in eligibilities)
+        or any(item.session_id != session_id for item in diffusions)
+    ):
         _fail("negotiation session_id mismatch")
+    if any(item.session_id != session_id for item in ledgers):
+        _fail("negotiation Commitment Ledger session_id mismatch")
 
     for tick in range(1, tick_count + 1):
         index = tick - 1
-        rr_ref, ac_ref, nd_ref, cl_ref = (
-            round_refs[index],
-            admission_refs[index],
-            diffusion_refs[index],
-            ledger_refs[index],
+        rr_ref = round_refs[index]
+        np_ref = proposal_refs[index]
+        ac_ref = admission_refs[index]
+        cl_ref = ledger_refs[index]
+        el_ref = eligibility_refs[index]
+        nd_ref = diffusion_refs[index]
+        rr, np, ac, cl, el, nd = (
+            rounds[index], proposals[index], admissions[index], ledgers[index],
+            eligibilities[index], diffusions[index],
         )
-        rr, ac, nd, cl = rounds[index], admissions[index], diffusions[index], ledgers[index]
+
         previous = () if tick == 1 else (("previous_round", round_refs[index - 1]),)
         _require_relationships(rr_ref, previous)
-        _require_relationships(ac_ref, (("evaluates", rr_ref),))
-        _require_relationships(cl_ref, (("snapshot_for", rr_ref),))
+        _require_relationships(np_ref, (("source_for", rr_ref),))
+        _require_relationships(ac_ref, (("evaluates", np_ref),))
+        _require_relationships(cl_ref, (("snapshot_after", ac_ref),))
+        prior_pa = tuple(audit_by_tick[prior] for prior in projected_ticks if prior < tick)
+        origin_ticks = sorted(
+            {item[9] for item in np.proposal_claim_tuples if item[7] == "active_commitment_origin"}
+        )
+        _require_relationships(
+            el_ref,
+            (("sources", np_ref), ("admitted_by", ac_ref), ("current_ledger", cl_ref))
+            + tuple(("prior_projection", reference) for reference in prior_pa)
+            + tuple(("origin_admission", admission_refs[origin_tick - 1]) for origin_tick in origin_ticks),
+        )
 
-        if rr.proposal_ids != ac.proposal_ids or rr.accepted_proposal_ids != ac.accepted_proposal_ids:
-            _fail("negotiation RR/AC proposal bindings mismatch")
-        if rr.admission_audit_hash != ac.audit_hash or ac.deterministic_result_hash != rr.before_result_hash:
-            _fail("negotiation RR/AC audit binding mismatch")
-        if nd.diffusion_hash != rr.diffusion_hash:
-            _fail("negotiation RR/ND diffusion hash mismatch")
-        if cl.ledger_hash != rr.ledger_hash:
-            _fail("negotiation RR/CL ledger hash mismatch")
-        if nd.before_result_hash != rr.before_result_hash or nd.after_result_hash != rr.after_result_hash:
-            _fail("negotiation RR/ND result hash binding mismatch")
+        current_sources = tuple(item for item in np.proposal_claim_tuples if item[7] == "current_message")
+        current_ids = tuple(item[0] for item in current_sources)
+        current_hashes = tuple(item[1] for item in current_sources)
+        if (
+            rr.proposal_ids != current_ids
+            or ac.proposal_ids != current_ids
+            or ac.proposal_hashes != current_hashes
+            or rr.accepted_proposal_ids != ac.accepted_proposal_ids
+            or rr.proposal_batch_hash != np.batch_hash
+            or np.source_hashes != (rr.messages_hash, ac.audit_hash, cl.ledger_hash)
+            or rr.admission_audit_hash != ac.audit_hash
+            or rr.ledger_hash != cl.ledger_hash
+            or rr.eligibility_hash != el.eligibility_hash
+            or rr.eligible_proposal_ids != el.eligible_proposal_ids
+            or ac.deterministic_result_hash != rr.before_result_hash
+        ):
+            _fail("negotiation RR/NP/AC/CL/EL bindings mismatch")
+        if cl.tick != tick:
+            _fail("negotiation Commitment Ledger tick mismatch")
+        _validate_eligibility_claims(
+            tick=tick,
+            proposal=np,
+            admission=ac,
+            ledger=cl,
+            eligibility=el,
+            admissions=admissions,
+            prior_audits=tuple(
+                _claims(audit_by_tick[prior], PAClaims)
+                for prior in projected_ticks if prior < tick
+            ),
+        )
+
+        _validate_message_coordinates(rr, tick=tick, session_id=session_id)
+        if rr.diffusion_evidence_hash != nd.diffusion_evidence_hash:
+            _fail("negotiation RR/ND diffusion evidence hash mismatch")
 
         is_projected = tick in projected_ticks
         if not is_projected:
-            _require_relationships(nd_ref, (("no_projection_for", rr_ref),))
+            _require_relationships(nd_ref, (("inputs", el_ref),))
             if (
                 nd.attempted
+                or nd.input_proposal_ids
                 or rr.no_projection_reason != "no_projection"
                 or rr.projection_consistency_hash is not None
                 or rr.modifier_bundle_hash is not None
                 or rr.projection_audit_hash is not None
                 or rr.before_result_hash != rr.after_result_hash
-                or nd.before_result_hash != nd.after_result_hash
+                or nd.before_result_hash != rr.before_result_hash
+                or nd.after_result_hash != rr.after_result_hash
             ):
                 _fail("no-projection negotiation tick claims mismatch")
             continue
@@ -531,37 +622,45 @@ def _finalize_negotiation(
         pc = _claims(pc_ref, PCClaims)
         mb = _claims(mb_ref, MBClaims)
         pa = _claims(pa_ref, PAClaims)
-        _require_relationships(pc_ref, (("filters", ac_ref), ("evaluates", rr_ref)))
-        _require_relationships(mb_ref, (("maps", rr_ref), ("admitted_by", pc_ref)))
-        _require_relationships(nd_ref, (("bounded_by", mb_ref),))
+        _require_relationships(pc_ref, (("filters", el_ref),))
+        _require_relationships(mb_ref, (("admitted_by", pc_ref),))
+        _require_relationships(nd_ref, (("inputs", el_ref), ("bounded_by", mb_ref)))
         _require_relationships(
             pa_ref,
-            (
-                ("round", rr_ref),
-                ("governed_by", pc_ref),
-                ("audits", mb_ref),
-                ("diffusion", nd_ref),
-                ("ledger_snapshot", cl_ref),
-            ),
+            (("round", rr_ref), ("governed_by", pc_ref), ("audits", mb_ref),
+             ("diffusion", nd_ref), ("ledger_snapshot", cl_ref)),
         )
-        if rr.no_projection_reason is not None:
-            _fail("projected negotiation tick may not carry no_projection reason")
+
+        proposal_by_id = {item[0]: item for item in np.proposal_claim_tuples}
+        selected_hashes = tuple(proposal_by_id[item][1] for item in el.eligible_proposal_ids)
+        projected_semantics = tuple(proposal_by_id[item][6] for item in pc.accepted_proposal_ids)
+        narrative_ids = tuple(
+            item for item in pc.accepted_proposal_ids if proposal_by_id[item][5] == "public_narrative"
+        )
+        narrative_hashes = tuple(proposal_by_id[item][1] for item in narrative_ids)
         if (
-            pc.candidate_proposal_ids != rr.proposal_ids
-            or pc.accepted_proposal_ids != rr.accepted_proposal_ids
+            rr.no_projection_reason is not None
+            or pc.candidate_proposal_ids != el.eligible_proposal_ids
+            or pc.proposal_hashes != selected_hashes
             or pc.deterministic_result_hash != rr.before_result_hash
             or rr.projection_consistency_hash != pc.audit_hash
-            or mb.accepted_proposal_ids != rr.accepted_proposal_ids
+            or mb.accepted_proposal_ids != pc.accepted_proposal_ids
             or mb.consistency_audit_hash != pc.audit_hash
             or rr.modifier_bundle_hash != mb.bundle_hash
             or pa.projection_mode != "negotiation"
             or pa.consistency_audit_hash != pc.audit_hash
             or pa.modifier_bundle_hash != mb.bundle_hash
-            or pa.proposal_ids != rr.proposal_ids
-            or pa.projected_proposal_ids != rr.accepted_proposal_ids
+            or pa.proposal_ids != pc.candidate_proposal_ids
+            or pa.proposal_hashes != pc.proposal_hashes
+            or pa.record_input_hashes != pc.proposal_hashes
+            or pa.projected_proposal_ids != pc.accepted_proposal_ids
+            or pa.projected_semantic_key_hashes != projected_semantics
             or pa.modifier_tuples != mb.modifier_tuples
             or pa.modifier_count != mb.modifier_count
             or pa.before_result_hash != rr.before_result_hash
+            or nd.input_proposal_ids != narrative_ids
+            or nd.input_proposal_hashes != narrative_hashes
+            or nd.after_result_hash != pa.final_result_hash
             or pa.final_result_hash != rr.after_result_hash
             or rr.projection_audit_hash != pa.audit_hash
         ):
@@ -571,45 +670,167 @@ def _finalize_negotiation(
         _fail("negotiation first round must bind the baseline projection")
     if rounds[-1].after_result_hash != request.final.source_run_hash:
         _fail("negotiation final round must bind the final projection")
-    if any(
-        rounds[index].before_result_hash != rounds[index - 1].after_result_hash
-        for index in range(1, tick_count)
-    ):
+    if any(rounds[index].before_result_hash != rounds[index - 1].after_result_hash for index in range(1, 6)):
         _fail("negotiation round result hash chain mismatch")
+
+    all_messages = tuple(item for round_item in rounds for item in round_item.message_tuples)
+    sequences = tuple(item[0] for item in all_messages)
+    if sequences != tuple(range(1, len(all_messages) + 1)):
+        _fail("negotiation message sequence must be one global contiguous chain")
+    expected_message_head = all_messages[-1][2] if all_messages else None
 
     _require_relationships(final_ref, (("evaluates", round_refs[-1]),))
     if (
-        final_audit.proposal_ids != rounds[-1].proposal_ids
-        or final_audit.accepted_proposal_ids != rounds[-1].accepted_proposal_ids
+        final_audit.proposal_ids
+        or final_audit.proposal_hashes
+        or final_audit.accepted_proposal_ids
+        or final_audit.decision_count != 0
         or final_audit.deterministic_result_hash != request.final.source_run_hash
     ):
-        _fail("negotiation FC/final projection binding mismatch")
+        _fail("negotiation FC must be the empty terminal-state audit")
 
     _require_relationships(
         replay_ref,
         tuple(("replays", reference) for reference in round_refs)
+        + tuple(("proposal_sources", reference) for reference in proposal_refs)
         + tuple(("admission", reference) for reference in admission_refs)
-        + (("final_audit", final_ref),)
+        + tuple(("ledgers", reference) for reference in ledger_refs)
+        + tuple(("eligibility", reference) for reference in eligibility_refs)
         + tuple(("projection", projection_by_tick[tick]) for tick in projected_ticks)
+        + (("final_audit", final_ref),)
         + tuple(("modifiers", modifier_by_tick[tick]) for tick in projected_ticks)
         + tuple(("diffusion", reference) for reference in diffusion_refs)
-        + tuple(("ledgers", reference) for reference in ledger_refs)
         + tuple(("audits", audit_by_tick[tick]) for tick in projected_ticks),
     )
     if (
         replay.baseline_result_hash != request.baseline.source_run_hash
         or replay.final_result_hash != request.final.source_run_hash
-        or replay.round_hashes != tuple(item.output_hash for item in rounds)
+        or replay.round_hashes != tuple(item.round_hash for item in rounds)
+        or replay.proposal_batch_hashes != tuple(item.batch_hash for item in proposals)
         or replay.admission_audit_hashes != tuple(item.audit_hash for item in admissions)
-        or replay.projection_consistency_hashes
-        != tuple(rounds[tick - 1].projection_consistency_hash for tick in range(1, tick_count + 1))
-        or replay.diffusion_hashes != tuple(item.diffusion_hash for item in diffusions)
         or replay.ledger_hashes != tuple(item.ledger_hash for item in ledgers)
-        or replay.projection_audit_hashes
-        != tuple(rounds[tick - 1].projection_audit_hash for tick in range(1, tick_count + 1))
+        or replay.eligibility_hashes != tuple(item.eligibility_hash for item in eligibilities)
+        or replay.projection_consistency_hashes != tuple(item.projection_consistency_hash for item in rounds)
+        or replay.modifier_bundle_hashes != tuple(item.modifier_bundle_hash for item in rounds)
+        or replay.diffusion_evidence_hashes != tuple(item.diffusion_evidence_hash for item in diffusions)
+        or replay.projection_audit_hashes != tuple(item.projection_audit_hash for item in rounds)
+        or replay.message_chain_head != expected_message_head
         or replay.provider_calls_required != 0
     ):
         _fail("negotiation replay claims mismatch")
+
+
+def _validate_message_coordinates(rr: RRClaims, *, tick: int, session_id: str) -> None:
+    expected_round_id = f"round_{stable_hash({'session': session_id, 'tick': tick})[:20]}"
+    if rr.round_id != expected_round_id:
+        _fail("negotiation round_id is not the canonical session/tick derivation")
+
+
+def _validate_eligibility_claims(
+    *,
+    tick: int,
+    proposal: NPClaims,
+    admission: ACClaims,
+    ledger: CLClaims,
+    eligibility: ELClaims,
+    admissions: Sequence[ACClaims],
+    prior_audits: Sequence[PAClaims],
+) -> None:
+    """Recompute GOV-EL-1 from immutable NP/AC/CL/prior-PA claims."""
+
+    decision_sources = tuple(item[0] for item in eligibility.decision_tuples)
+    if decision_sources != proposal.proposal_claim_tuples:
+        _fail("EL decisions must reproduce every NP proposal tuple field-for-field")
+
+    prior_ids = {
+        proposal_id for audit in prior_audits for proposal_id in audit.projected_proposal_ids
+    }
+    prior_semantics = {
+        semantic_hash
+        for audit in prior_audits
+        for semantic_hash in audit.projected_semantic_key_hashes
+    }
+    admission_hashes = dict(zip(admission.proposal_ids, admission.proposal_hashes, strict=True))
+    accepted_ids = set(admission.accepted_proposal_ids)
+    ledger_by_id = {item[0]: item for item in ledger.commitments}
+
+    expected: dict[str, str | None] = {}
+    preliminary_by_semantic: dict[str, list[str]] = {}
+    for item in proposal.proposal_claim_tuples:
+        proposal_id, proposal_hash = item[0], item[1]
+        source_kind, commitment_id = item[7], item[8]
+        action_class, semantic_hash = item[5], item[6]
+
+        if source_kind == "current_message" and (
+            proposal_id not in accepted_ids or admission_hashes.get(proposal_id) != proposal_hash
+        ):
+            expected[proposal_id] = "not_admitted"
+            continue
+
+        active_entry = None
+        if source_kind == "active_commitment_origin":
+            if commitment_id is None:
+                _fail("active commitment origin must carry a commitment id")
+            active_entry = ledger_by_id.get(commitment_id)
+            source_tick = item[9]
+            if source_tick < 1 or source_tick >= tick:
+                _fail("active commitment origin admission tick is invalid")
+            origin_admission = admissions[source_tick - 1]
+            origin_hashes = dict(
+                zip(origin_admission.proposal_ids, origin_admission.proposal_hashes, strict=True)
+            )
+            if (
+                active_entry is None
+                or active_entry[2] != "active"
+                or active_entry[3] != item[4]
+                or active_entry[6] != proposal_id
+                or active_entry[7] != proposal_hash
+                or active_entry[8] != item[2]
+                or active_entry[9] != item[3]
+                or active_entry[10] != source_tick
+                or active_entry[11] != item[10]
+                or origin_admission.audit_hash != item[10]
+                or proposal_id not in origin_admission.accepted_proposal_ids
+                or origin_hashes.get(proposal_id) != proposal_hash
+            ):
+                _fail("active commitment origin is not bound to CL and its accepting AC")
+
+        if action_class == "audit_only":
+            expected[proposal_id] = "audit_only"
+            continue
+        if action_class == "alliance_response":
+            expected[proposal_id] = "alliance_response"
+            continue
+        if action_class == "bilateral_commitment" and active_entry is None:
+            active_matches = tuple(
+                item
+                for item in ledger.commitments
+                if item[2] == "active" and item[6] == proposal_id and item[7] == proposal_hash
+            )
+            if len(active_matches) != 1:
+                expected[proposal_id] = "inactive_commitment"
+                continue
+        if proposal_id in prior_ids:
+            expected[proposal_id] = "already_projected"
+            continue
+        if semantic_hash in prior_semantics:
+            expected[proposal_id] = "semantic_duplicate"
+            continue
+        expected[proposal_id] = None
+        preliminary_by_semantic.setdefault(semantic_hash, []).append(proposal_id)
+
+    for group in preliminary_by_semantic.values():
+        winner = min(group, key=lambda value: value.encode("utf-8"))
+        for proposal_id in group:
+            expected[proposal_id] = "eligible" if proposal_id == winner else "semantic_duplicate"
+
+    for decision in eligibility.decision_tuples:
+        proposal_item, prior_projected, outcome, _ = decision
+        proposal_id = proposal_item[0]
+        if prior_projected != (proposal_id in prior_ids):
+            _fail("EL prior_projected flag does not match prior PA membership")
+        if outcome != expected[proposal_id]:
+            _fail("EL outcome does not match canonical eligibility precedence")
 
 
 def _require_projection_identity(request: KernelModeExecutionRequest) -> None:
@@ -649,7 +870,9 @@ _ModeClaim = TypeVar(
     PBClaims,
     FCClaims,
     RRClaims,
+    NPClaims,
     ACClaims,
+    ELClaims,
     PCClaims,
     MBClaims,
     NDClaims,
@@ -724,13 +947,13 @@ def _require_source_schema(reference: KernelModeProofReference, *versions: str) 
 
 
 def _require_projection_audit_source(reference: KernelModeProofReference) -> None:
-    _require_source_schema(reference, "agent-action-projection-audit.v1")
+    _require_source_schema(reference, "agent-action-projection-audit.v2")
     if reference.artifact_type != "agent_action_projection_audit":
         _fail("Projection Audit artifact_type does not match audit-only execution mode")
 
 
 def _require_negotiation_projection_audit_source(reference: KernelModeProofReference) -> None:
-    _require_source_schema(reference, "agent-action-projection-audit.v1")
+    _require_source_schema(reference, "negotiation-projection-audit.v2")
     if reference.artifact_type != "negotiation_projection_audit":
         _fail("Projection Audit artifact_type does not match negotiation execution mode")
 
@@ -773,7 +996,7 @@ def _validate_supersedes_relationships(
         _fail("supersedes requires closed negotiation retry context")
     if len(supersedes) != 1 or reference.relationships[-1] != supersedes[0]:
         _fail("supersedes must be the sole final retry relationship")
-    if reference.token not in {"RR", "AC", "PC", "MB", "ND", "CL", "PA"} or reference.tick is None:
+    if reference.token not in {"RR", "NP", "AC", "CL", "EL", "PC", "MB", "ND", "PA"} or reference.tick is None:
         _fail("supersedes is only allowed on ticked negotiation proof references")
     if reference.tick not in request.retry_completed_ticks:
         _fail("supersedes is only allowed for completed retry ticks")
@@ -788,11 +1011,13 @@ def _require_retry_supersession_completeness(
     request: KernelModeExecutionRequest,
     *,
     round_refs: Sequence[KernelModeProofReference],
+    proposal_refs: Sequence[KernelModeProofReference],
     admission_refs: Sequence[KernelModeProofReference],
+    ledger_refs: Sequence[KernelModeProofReference],
+    eligibility_refs: Sequence[KernelModeProofReference],
     projection_by_tick: Mapping[int, KernelModeProofReference],
     modifier_by_tick: Mapping[int, KernelModeProofReference],
     diffusion_refs: Sequence[KernelModeProofReference],
-    ledger_refs: Sequence[KernelModeProofReference],
     audit_by_tick: Mapping[int, KernelModeProofReference],
     final_ref: KernelModeProofReference,
     replay_ref: KernelModeProofReference,
@@ -811,9 +1036,11 @@ def _require_retry_supersession_completeness(
         index = tick - 1
         reemitted = [
             round_refs[index],
+            proposal_refs[index],
             admission_refs[index],
-            diffusion_refs[index],
             ledger_refs[index],
+            eligibility_refs[index],
+            diffusion_refs[index],
         ]
         for references_by_tick in (projection_by_tick, modifier_by_tick, audit_by_tick):
             if tick in references_by_tick:
