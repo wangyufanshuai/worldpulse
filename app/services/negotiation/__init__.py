@@ -2,6 +2,16 @@ from typing import Any
 
 from .application import NegotiationReadApplicationService, negotiation_read_service
 from .ports import NegotiationReadApplicationPort
+from .proof_sources import (
+    CommitmentLedgerSource,
+    NegotiationEligibilitySource,
+    NegotiationProposalBatchSource,
+    NarrativeDiffusionSource,
+    extract_cl_claims,
+    extract_el_claims,
+    extract_nd_claims,
+    extract_np_claims,
+)
 from .repository import NegotiationRepository
 
 
@@ -22,6 +32,14 @@ __all__ = [
     "NegotiationReadApplicationPort",
     "NegotiationReadApplicationService",
     "NegotiationRepository",
+    "CommitmentLedgerSource",
+    "NegotiationEligibilitySource",
+    "NegotiationProposalBatchSource",
+    "NarrativeDiffusionSource",
+    "extract_cl_claims",
+    "extract_el_claims",
+    "extract_nd_claims",
+    "extract_np_claims",
     "negotiation_read_service",
     "replay_negotiation_from_storage",
     "run_negotiation",
