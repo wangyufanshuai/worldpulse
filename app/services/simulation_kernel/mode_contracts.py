@@ -205,6 +205,26 @@ ProjectionRecordClaimTuple: TypeAlias = tuple[
     str | None,
     Digest,
 ]
+ConsistencyDecisionClaimTuple: TypeAlias = tuple[
+    str,
+    Digest,
+    Literal["accepted", "rejected", "needs_revision", "not_evaluated"],
+    Digest,
+    str,
+    Literal["accepted", "rejected", "constrained", "expired"],
+    str | None,
+    Literal["not_projected", "projected", "constrained", "blocked", "expired"],
+    Digest | None,
+]
+ConsistencyPreProjectionTuple: TypeAlias = tuple[
+    str,
+    Digest,
+    Literal["accepted", "rejected", "needs_revision", "not_evaluated"],
+    Digest,
+    str,
+    Literal["accepted", "rejected", "constrained", "expired"],
+    str | None,
+]
 
 
 def _validate_aligned(
@@ -218,6 +238,48 @@ def _validate_aligned(
 def _validate_int64(value: int, field_name: str) -> None:
     if value < -(2**63) or value > 2**63 - 1:
         raise ValueError(f"{field_name} must fit signed int64")
+
+
+def _validate_consistency_context(
+    agent_pack_id: str | None,
+    agent_pack_hash: str | None,
+    constraint_context_hash: str | None,
+) -> None:
+    nulls = (
+        agent_pack_id is None,
+        agent_pack_hash is None,
+        constraint_context_hash is None,
+    )
+    if any(nulls) and not all(nulls):
+        raise ValueError("Consistency context identity must be all-null or all-non-null")
+
+
+def _validate_consistency_vectors(
+    *,
+    proposal_ids: tuple[str, ...],
+    proposal_hashes: tuple[str, ...],
+    accepted_proposal_ids: tuple[str, ...],
+    decision_tuples: tuple[ConsistencyDecisionClaimTuple, ...],
+    decision_count: int,
+    field_name: str,
+) -> None:
+    _validate_aligned(proposal_ids, proposal_hashes, f"{field_name} proposal_ids")
+    _validate_ascending_unique(
+        accepted_proposal_ids, f"{field_name} accepted_proposal_ids"
+    )
+    if decision_count != len(decision_tuples) or decision_count != len(proposal_ids):
+        raise ValueError(f"{field_name} decision vectors/count must align")
+    if tuple(item[0] for item in decision_tuples) != proposal_ids or tuple(
+        item[1] for item in decision_tuples
+    ) != proposal_hashes:
+        raise ValueError(f"{field_name} decision tuples must align with proposals")
+    if any(item[3] != item[1] for item in decision_tuples):
+        raise ValueError(f"{field_name} decision input hashes must equal proposal hashes")
+    accepted_from_decisions = tuple(
+        item[0] for item in decision_tuples if item[2] == "accepted"
+    )
+    if accepted_from_decisions != accepted_proposal_ids:
+        raise ValueError(f"{field_name} accepted ids must equal accepted decisions")
 
 
 class KernelModeContract(KernelContract):
@@ -244,6 +306,17 @@ class KernelModeClaims(KernelModeContract):
     """Base class for the closed, schema-selected claim records."""
 
     run_id: str = Field(min_length=1, max_length=160)
+
+
+class ConsistencyClaims(KernelModeClaims):
+    """Shared, typed identity carried by FC, AC, and PC consistency claims."""
+
+    evaluator_version: str = Field(min_length=1, max_length=160)
+    agent_pack_id: str | None = Field(default=None, min_length=1, max_length=160)
+    agent_pack_hash: Digest | None = None
+    constraint_context_hash: Digest | None = None
+    inner_audit_hash: Digest
+    deterministic_result_hash: Digest
 
 
 class ARClaims(KernelModeClaims):
@@ -291,23 +364,31 @@ class PBClaims(KernelModeClaims):
         return self
 
 
-class FCClaims(KernelModeClaims):
+class FCClaims(ConsistencyClaims):
     role: Literal["final"] = "final"
+    tick: None = None
     audit_hash: Digest
-    deterministic_result_hash: Digest
     proposal_ids: tuple[str, ...] = ()
     proposal_hashes: tuple[Digest, ...] = ()
     accepted_proposal_ids: tuple[str, ...] = ()
+    decision_tuples: tuple[ConsistencyDecisionClaimTuple, ...] = ()
     decision_count: int = Field(ge=0)
 
     @model_validator(mode="after")
     def validate_consistency_claims(self) -> Self:
-        _validate_aligned(self.proposal_ids, self.proposal_hashes, "FC proposal_ids")
-        _validate_ascending_unique(self.accepted_proposal_ids, "accepted_proposal_ids")
-        if self.decision_count != len(self.proposal_ids):
-            raise ValueError("FC decision_count must equal proposal_ids length")
-        if not set(self.accepted_proposal_ids).issubset(self.proposal_ids):
-            raise ValueError("FC accepted_proposal_ids must be proposals")
+        _validate_consistency_context(
+            self.agent_pack_id,
+            self.agent_pack_hash,
+            self.constraint_context_hash,
+        )
+        _validate_consistency_vectors(
+            proposal_ids=self.proposal_ids,
+            proposal_hashes=self.proposal_hashes,
+            accepted_proposal_ids=self.accepted_proposal_ids,
+            decision_tuples=self.decision_tuples,
+            decision_count=self.decision_count,
+            field_name="FC",
+        )
         return self
 
 
@@ -380,24 +461,29 @@ class NPClaims(KernelModeClaims):
         return self
 
 
-class ACClaims(KernelModeClaims):
+class ACClaims(ConsistencyClaims):
     role: Literal["admission"] = "admission"
     tick: int = Field(ge=1, le=6)
+    agent_pack_id: str = Field(min_length=1, max_length=160)
+    agent_pack_hash: Digest
+    constraint_context_hash: Digest
     audit_hash: Digest
-    deterministic_result_hash: Digest
     proposal_ids: tuple[str, ...] = ()
     proposal_hashes: tuple[Digest, ...] = ()
     accepted_proposal_ids: tuple[str, ...] = ()
+    decision_tuples: tuple[ConsistencyDecisionClaimTuple, ...] = ()
     decision_count: int = Field(ge=0)
 
     @model_validator(mode="after")
     def validate_admission_claims(self) -> Self:
-        _validate_aligned(self.proposal_ids, self.proposal_hashes, "AC proposal_ids")
-        _validate_ascending_unique(self.accepted_proposal_ids, "accepted_proposal_ids")
-        if self.decision_count != len(self.proposal_ids):
-            raise ValueError("AC decision_count must equal proposal_ids length")
-        if not set(self.accepted_proposal_ids).issubset(self.proposal_ids):
-            raise ValueError("AC accepted_proposal_ids must be proposals")
+        _validate_consistency_vectors(
+            proposal_ids=self.proposal_ids,
+            proposal_hashes=self.proposal_hashes,
+            accepted_proposal_ids=self.accepted_proposal_ids,
+            decision_tuples=self.decision_tuples,
+            decision_count=self.decision_count,
+            field_name="AC",
+        )
         return self
 
 
@@ -445,28 +531,29 @@ class ELClaims(KernelModeClaims):
         return self
 
 
-class PCClaims(KernelModeClaims):
+class PCClaims(ConsistencyClaims):
     role: Literal["projection"] = "projection"
     tick: int = Field(ge=1, le=6)
+    agent_pack_id: str = Field(min_length=1, max_length=160)
+    agent_pack_hash: Digest
+    constraint_context_hash: Digest
     audit_hash: Digest
-    deterministic_result_hash: Digest
     candidate_proposal_ids: tuple[str, ...] = ()
     proposal_hashes: tuple[Digest, ...] = ()
     accepted_proposal_ids: tuple[str, ...] = ()
+    decision_tuples: tuple[ConsistencyDecisionClaimTuple, ...] = ()
     decision_count: int = Field(ge=0)
 
     @model_validator(mode="after")
     def validate_projection_claims(self) -> Self:
-        _validate_aligned(
-            self.candidate_proposal_ids,
-            self.proposal_hashes,
-            "PC candidate_proposal_ids",
+        _validate_consistency_vectors(
+            proposal_ids=self.candidate_proposal_ids,
+            proposal_hashes=self.proposal_hashes,
+            accepted_proposal_ids=self.accepted_proposal_ids,
+            decision_tuples=self.decision_tuples,
+            decision_count=self.decision_count,
+            field_name="PC",
         )
-        _validate_ascending_unique(self.accepted_proposal_ids, "accepted_proposal_ids")
-        if self.decision_count != len(self.candidate_proposal_ids):
-            raise ValueError("PC decision_count must equal candidate_proposal_ids length")
-        if not set(self.accepted_proposal_ids).issubset(self.candidate_proposal_ids):
-            raise ValueError("PC accepted_proposal_ids must be candidates")
         return self
 
 
@@ -498,6 +585,7 @@ def _validate_modifier_tuples(
 class MBClaims(KernelModeClaims):
     tick: int | None = Field(default=None, ge=1, le=6)
     bundle_hash: Digest
+    inner_bundle_hash: Digest
     consistency_audit_hash: Digest
     accepted_proposal_ids: tuple[str, ...] = ()
     modifier_tuples: tuple[ModifierReference, ...] = ()
@@ -604,6 +692,7 @@ class CLClaims(KernelModeClaims):
 
 
 class PAClaims(KernelModeClaims):
+    session_id: str | None = Field(default=None, min_length=1, max_length=160)
     tick: int | None = Field(default=None, ge=1, le=6)
     projection_mode: Literal["audit_only", "hybrid", "negotiation"]
     audit_hash: Digest
@@ -611,10 +700,12 @@ class PAClaims(KernelModeClaims):
     modifier_bundle_hash: Digest | None = None
     proposal_ids: tuple[str, ...] = ()
     proposal_hashes: tuple[Digest, ...] = ()
+    proposal_count: int = Field(ge=0)
     record_input_hashes: tuple[Digest, ...] = ()
     record_claim_tuples: tuple[ProjectionRecordClaimTuple, ...] = ()
     projected_proposal_ids: tuple[str, ...] = ()
     projected_semantic_key_hashes: tuple[Digest, ...] = ()
+    projected_count: int = Field(ge=0)
     modifier_tuples: tuple[ModifierReference, ...] = ()
     modifier_count: int = Field(ge=0)
     record_count: int = Field(ge=0)
@@ -630,12 +721,15 @@ class PAClaims(KernelModeClaims):
             "PA projected_proposal_ids",
         )
         if not (
-            self.record_count
+            self.proposal_count
+            == self.record_count
             == len(self.proposal_ids)
             == len(self.record_input_hashes)
             == len(self.record_claim_tuples)
         ):
             raise ValueError("PA record vectors and proposal vectors must have equal length")
+        if self.projected_count != len(self.projected_proposal_ids):
+            raise ValueError("PA projected_count must equal projected proposal length")
         for index, record in enumerate(self.record_claim_tuples):
             if (
                 record[0] != self.proposal_ids[index]
@@ -651,6 +745,54 @@ class PAClaims(KernelModeClaims):
             raise ValueError("PA projected_proposal_ids must be proposals")
         if tuple(item.proposal_id for item in self.modifier_tuples) != self.projected_proposal_ids:
             raise ValueError("PA requires exactly one modifier tuple per projected proposal")
+        modifiers_by_proposal = {
+            item.proposal_id: item for item in self.modifier_tuples
+        }
+        for record in self.record_claim_tuples:
+            outcome = record[5]
+            rejection_reason = record[6]
+            projection_status = record[7]
+            projection_hash = record[8]
+            modifier_id = record[9]
+            if outcome == "accepted":
+                valid = (
+                    projection_status == "projected"
+                    and projection_hash is not None
+                    and modifier_id is not None
+                    and rejection_reason is None
+                ) or (
+                    projection_status == "not_projected"
+                    and projection_hash is None
+                    and modifier_id is None
+                    and rejection_reason is None
+                )
+            else:
+                valid = (
+                    projection_status
+                    == {
+                        "rejected": "blocked",
+                        "constrained": "constrained",
+                        "expired": "expired",
+                    }[outcome]
+                    and projection_hash is None
+                    and modifier_id is None
+                    and rejection_reason is not None
+                )
+            if not valid:
+                raise ValueError("PA record violates the closed projection truth table")
+            if projection_status == "projected":
+                modifier = modifiers_by_proposal.get(record[0])
+                if (
+                    modifier is None
+                    or modifier.modifier_id != modifier_id
+                    or modifier.modifier_hash != projection_hash
+                ):
+                    raise ValueError("PA projected record must bind its modifier tuple")
+        projected_records = tuple(
+            record for record in self.record_claim_tuples if record[7] == "projected"
+        )
+        if tuple(record[0] for record in projected_records) != self.projected_proposal_ids:
+            raise ValueError("PA projected records must equal projected proposal ids")
         if self.projection_mode == "audit_only" and self.modifier_tuples:
             raise ValueError("audit_only PA modifier_tuples must be empty")
         return self

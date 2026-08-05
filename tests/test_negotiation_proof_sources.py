@@ -8,9 +8,12 @@ from pydantic import ValidationError
 from app.services.consistency.hashing import stable_hash
 from app.services.negotiation.proof_sources import (
     extract_cl_claims,
+    extract_consistency_claims,
     extract_el_claims,
+    extract_mb_claims,
     extract_nd_claims,
     extract_np_claims,
+    extract_pa_claims,
 )
 
 
@@ -301,6 +304,179 @@ def _nd_payload(*, attempted: bool) -> dict:
     return payload
 
 
+def _mb_payload() -> dict:
+    modifier_without_identity = {
+        "schema_version": "deterministic-action-modifier.v1",
+        "adapter_version": "worldpulse-action-adapter.v0.11",
+        "proposal_id": "proposal-0001",
+        "turn": 1,
+        "action_type": "diplomatic_signal",
+        "policy_actions": ["alliance_deterrence"],
+        "chain_adjustments": {},
+        "rationale_refs": ["evidence-0001"],
+        "no_numeric_effect_reason": None,
+    }
+    modifier_hash = stable_hash(modifier_without_identity)
+    modifier = {
+        **modifier_without_identity,
+        "modifier_id": f"modifier_{modifier_hash[:16]}",
+        "modifier_hash": modifier_hash,
+    }
+    scenario_patch = {
+        "seed": 17,
+        "policy_actions": ["alliance_deterrence"],
+        "chain_overrides": {},
+    }
+    inner = {
+        "schema_version": "hybrid-modifier-bundle.v1",
+        "adapter_version": "worldpulse-action-adapter.v0.11",
+        "accepted_proposal_ids": ["proposal-0001"],
+        "modifiers": [modifier],
+        "scenario_patch": scenario_patch,
+    }
+    inner["bundle_hash"] = stable_hash(inner)
+    payload = {
+        "schema_version": "hybrid-modifier-bundle.v2",
+        "run_id": RUN_ID,
+        "tick": 1,
+        "consistency_audit_hash": DIGESTS[1],
+        "inner_bundle": inner,
+        "inner_bundle_hash": inner["bundle_hash"],
+        "accepted_proposal_ids": ["proposal-0001"],
+        "modifiers": [modifier],
+        "scenario_patch": scenario_patch,
+        "modifier_tuples": [
+            {
+                "proposal_id": "proposal-0001",
+                "modifier_id": modifier["modifier_id"],
+                "modifier_hash": modifier_hash,
+            }
+        ],
+        "modifier_count": 1,
+    }
+    payload["bundle_hash"] = stable_hash(payload)
+    return payload
+
+
+def _pa_payload(mb_payload: dict) -> dict:
+    proposal = _proposal()
+    proposal_hash = stable_hash(proposal)
+    modifier = mb_payload["modifier_tuples"][0]
+    semantic_hash = stable_hash(
+        {
+            "actor_id": proposal["actor_id"],
+            "action_type": proposal["action_type"],
+            "target_ids": tuple(proposal["target_ids"]),
+            "parameters": proposal["parameters"],
+        }
+    )
+    record = {
+        "proposal_id": proposal["proposal_id"],
+        "proposal_hash": proposal_hash,
+        "input_hash": proposal_hash,
+        "decision": "accepted",
+        "rule_version": "worldpulse-consistency.v1.2",
+        "outcome": "accepted",
+        "rejection_reason": None,
+        "projection_status": "projected",
+        "projection_hash": modifier["modifier_hash"],
+        "modifier_id": modifier["modifier_id"],
+        "final_result_hash": DIGESTS[5],
+    }
+    payload = {
+        "schema_version": "negotiation-projection-audit.v2",
+        "run_id": RUN_ID,
+        "session_id": SESSION_ID,
+        "tick": 1,
+        "projection_mode": "negotiation",
+        "consistency_audit_hash": DIGESTS[1],
+        "modifier_bundle_hash": mb_payload["bundle_hash"],
+        "proposal_ids": [proposal["proposal_id"]],
+        "proposal_hashes": [proposal_hash],
+        "proposal_count": 1,
+        "projected_proposal_ids": [proposal["proposal_id"]],
+        "projected_semantic_key_hashes": [semantic_hash],
+        "projected_count": 1,
+        "modifier_tuples": [modifier],
+        "modifier_count": 1,
+        "records": [record],
+        "record_count": 1,
+        "before_result_hash": DIGESTS[4],
+        "final_result_hash": DIGESTS[5],
+    }
+    payload["audit_hash"] = stable_hash(payload)
+    return payload
+
+
+def _consistency_payload(*, role: str = "admission") -> dict:
+    proposal = _proposal()
+    proposal_hash = stable_hash(proposal)
+    tick = None if role == "final" else 1
+    inner_run_id = (
+        RUN_ID
+        if role == "final"
+        else f"{RUN_ID}:tick:1"
+        if role == "admission"
+        else f"{RUN_ID}:projection:1"
+    )
+    created_at = {
+        "final": "2000-01-01T00:00:00.000Z",
+        "admission": "2000-01-01T00:00:01.000Z",
+        "projection": "2000-01-01T00:00:02.000Z",
+    }[role]
+    decision = {
+        "proposal_id": proposal["proposal_id"],
+        "decision": "accepted",
+        "rule_findings": [],
+        "evidence_refs": proposal["evidence_refs"],
+        "explanation_zh": "受控提案通过一致性校验。",
+        "outcome": "accepted",
+        "input_hash": proposal_hash,
+        "rule_version": "worldpulse-consistency.v1.2",
+        "rejection_reason": None,
+        "projection_status": "not_projected",
+        "projection_hash": None,
+    }
+    decision["audit_hash"] = stable_hash(decision)
+    inner = {
+        "schema_version": "consistency-audit.v2",
+        "evaluator_version": "worldpulse-consistency.v0.8",
+        "run_id": inner_run_id,
+        "overall_status": "passed",
+        "summary": {},
+        "findings": [],
+        "proposal_decisions": [decision],
+        "evaluated_rule_count": 1,
+        "skipped_rule_count": 0,
+        "deterministic_result_hash": DIGESTS[4],
+        "created_at": created_at,
+    }
+    inner["audit_hash"] = stable_hash(
+        {
+            key: value
+            for key, value in inner.items()
+            if key not in {"run_id", "created_at", "audit_hash"}
+        }
+    )
+    context = role != "final"
+    payload = {
+        "schema_version": "consistency-audit.v3",
+        "run_id": RUN_ID,
+        "role": role,
+        "tick": tick,
+        "evaluator_version": "worldpulse-consistency.v0.8",
+        "agent_pack_id": "agent-pack-test" if context else None,
+        "agent_pack_hash": DIGESTS[5] if context else None,
+        "constraint_context_hash": DIGESTS[6] if context else None,
+        "proposal_ids": [proposal["proposal_id"]],
+        "proposal_hashes": [proposal_hash],
+        "inner_audit": inner,
+        "inner_audit_hash": inner["audit_hash"],
+    }
+    payload["audit_hash"] = stable_hash(payload)
+    return payload
+
+
 def test_np_source_verifies_complete_proposals_before_extracting_claims():
     payload = _np_payload()
     claims = extract_np_claims(
@@ -473,4 +649,230 @@ def test_nd_source_rejects_fixed_point_and_seed_tampering_even_with_local_rehash
             session_id=SESSION_ID,
             tick=1,
             effective_seed=18,
+        )
+
+
+def test_mb_and_pa_sources_bind_legacy_adapter_output_to_v2_projection_claims():
+    mb_payload = _mb_payload()
+    mb_claims = extract_mb_claims(
+        mb_payload,
+        run_id=RUN_ID,
+        tick=1,
+        consistency_audit_hash=DIGESTS[1],
+    )
+    pa_payload = _pa_payload(mb_payload)
+    pa_claims = extract_pa_claims(
+        pa_payload,
+        run_id=RUN_ID,
+        session_id=SESSION_ID,
+        tick=1,
+        projection_mode="negotiation",
+        consistency_audit_hash=DIGESTS[1],
+        complete_proposals=(_proposal(),),
+        modifier_claims=mb_claims,
+    )
+    assert mb_claims.inner_bundle_hash == mb_payload["inner_bundle_hash"]
+    assert pa_claims.session_id == SESSION_ID
+    assert pa_claims.proposal_count == 1
+    assert pa_claims.projected_count == 1
+    assert pa_claims.projected_proposal_ids == ("proposal-0001",)
+    assert pa_claims.modifier_tuples == mb_claims.modifier_tuples
+
+
+def test_mb_source_rejects_reidentified_or_duplicated_legacy_modifiers():
+    reidentified = _mb_payload()
+    reidentified["inner_bundle"]["modifiers"][0]["modifier_id"] = "modifier_reidentified"
+    reidentified["modifiers"][0]["modifier_id"] = "modifier_reidentified"
+    reidentified["modifier_tuples"][0]["modifier_id"] = "modifier_reidentified"
+    reidentified["inner_bundle"]["bundle_hash"] = stable_hash(
+        {
+            key: value
+            for key, value in reidentified["inner_bundle"].items()
+            if key != "bundle_hash"
+        }
+    )
+    reidentified["inner_bundle_hash"] = reidentified["inner_bundle"]["bundle_hash"]
+    reidentified["bundle_hash"] = stable_hash(
+        {key: value for key, value in reidentified.items() if key != "bundle_hash"}
+    )
+    with pytest.raises(ValidationError, match="outer modifier hash"):
+        extract_mb_claims(
+            reidentified,
+            run_id=RUN_ID,
+            tick=1,
+            consistency_audit_hash=DIGESTS[1],
+        )
+
+    duplicated = _mb_payload()
+    duplicated["inner_bundle"]["accepted_proposal_ids"].append("proposal-0001")
+    duplicated["inner_bundle"]["modifiers"].append(
+        deepcopy(duplicated["inner_bundle"]["modifiers"][0])
+    )
+    duplicated["inner_bundle"]["bundle_hash"] = stable_hash(
+        {
+            key: value
+            for key, value in duplicated["inner_bundle"].items()
+            if key != "bundle_hash"
+        }
+    )
+    duplicated["inner_bundle_hash"] = duplicated["inner_bundle"]["bundle_hash"]
+    duplicated["bundle_hash"] = stable_hash(
+        {key: value for key, value in duplicated.items() if key != "bundle_hash"}
+    )
+    with pytest.raises(ValidationError, match="mapping mismatch"):
+        extract_mb_claims(
+            duplicated,
+            run_id=RUN_ID,
+            tick=1,
+            consistency_audit_hash=DIGESTS[1],
+        )
+
+
+def test_pa_truth_table_and_semantic_hash_fail_closed_after_local_rehash():
+    mb_payload = _mb_payload()
+    mb_claims = extract_mb_claims(
+        mb_payload,
+        run_id=RUN_ID,
+        tick=1,
+        consistency_audit_hash=DIGESTS[1],
+    )
+    pa_payload = _pa_payload(mb_payload)
+    pa_payload["records"][0]["rejection_reason"] = "not allowed for projected"
+    pa_payload["audit_hash"] = stable_hash(
+        {key: value for key, value in pa_payload.items() if key != "audit_hash"}
+    )
+    with pytest.raises(ValidationError, match="truth table"):
+        extract_pa_claims(
+            pa_payload,
+            run_id=RUN_ID,
+            session_id=SESSION_ID,
+            tick=1,
+            projection_mode="negotiation",
+            consistency_audit_hash=DIGESTS[1],
+            complete_proposals=(_proposal(),),
+            modifier_claims=mb_claims,
+        )
+
+    semantic_tamper = _pa_payload(mb_payload)
+    semantic_tamper["projected_semantic_key_hashes"] = [DIGESTS[7]]
+    semantic_tamper["audit_hash"] = stable_hash(
+        {key: value for key, value in semantic_tamper.items() if key != "audit_hash"}
+    )
+    with pytest.raises(ValueError, match="semantic hash mismatch"):
+        extract_pa_claims(
+            semantic_tamper,
+            run_id=RUN_ID,
+            session_id=SESSION_ID,
+            tick=1,
+            projection_mode="negotiation",
+            consistency_audit_hash=DIGESTS[1],
+            complete_proposals=(_proposal(),),
+            modifier_claims=mb_claims,
+        )
+
+    wrong_schema_mode = _pa_payload(mb_payload)
+    wrong_schema_mode["schema_version"] = "agent-action-projection-audit.v2"
+    wrong_schema_mode["session_id"] = None
+    wrong_schema_mode["tick"] = None
+    wrong_schema_mode["audit_hash"] = stable_hash(
+        {key: value for key, value in wrong_schema_mode.items() if key != "audit_hash"}
+    )
+    with pytest.raises(ValidationError, match="may not use negotiation"):
+        extract_pa_claims(
+            wrong_schema_mode,
+            run_id=RUN_ID,
+            session_id=None,
+            tick=None,
+            projection_mode="negotiation",
+            consistency_audit_hash=DIGESTS[1],
+            complete_proposals=(_proposal(),),
+            modifier_claims=mb_claims,
+        )
+
+
+@pytest.mark.parametrize("role", ["final", "admission", "projection"])
+def test_consistency_v3_source_binds_inner_v2_context_and_synthetic_time(role):
+    payload = _consistency_payload(role=role)
+    context = role != "final"
+    claims = extract_consistency_claims(
+        payload,
+        run_id=RUN_ID,
+        role=role,
+        tick=None if role == "final" else 1,
+        evaluator_version="worldpulse-consistency.v0.8",
+        agent_pack_id="agent-pack-test" if context else None,
+        agent_pack_hash=DIGESTS[5] if context else None,
+        constraint_context_hash=DIGESTS[6] if context else None,
+        complete_proposals=(_proposal(),),
+    )
+    assert claims.accepted_proposal_ids == ("proposal-0001",)
+    assert claims.decision_tuples[0][3] == claims.proposal_hashes[0]
+
+
+def test_consistency_v3_rejects_inner_schema_and_time_drift_after_rehash():
+    payload = _consistency_payload(role="admission")
+    payload["inner_audit"]["created_at"] = "2000-01-01T00:00:09.000Z"
+    payload["inner_audit"]["unexpected"] = True
+    payload["inner_audit"]["audit_hash"] = stable_hash(
+        {
+            key: value
+            for key, value in payload["inner_audit"].items()
+            if key not in {"run_id", "created_at", "audit_hash"}
+        }
+    )
+    payload["inner_audit_hash"] = payload["inner_audit"]["audit_hash"]
+    payload["audit_hash"] = stable_hash(
+        {key: value for key, value in payload.items() if key != "audit_hash"}
+    )
+    with pytest.raises(ValidationError, match="exact closed field set"):
+        extract_consistency_claims(
+            payload,
+            run_id=RUN_ID,
+            role="admission",
+            tick=1,
+            evaluator_version="worldpulse-consistency.v0.8",
+            agent_pack_id="agent-pack-test",
+            agent_pack_hash=DIGESTS[5],
+            constraint_context_hash=DIGESTS[6],
+            complete_proposals=(_proposal(),),
+        )
+
+
+def test_consistency_v3_rejects_reordered_inner_decisions_after_local_rehash():
+    first = _proposal()
+    second = deepcopy(first)
+    second["proposal_id"] = "proposal-0002"
+    payload = _consistency_payload(role="admission")
+    first_decision = payload["inner_audit"]["proposal_decisions"][0]
+    second_decision = deepcopy(first_decision)
+    second_decision["proposal_id"] = second["proposal_id"]
+    second_decision["input_hash"] = stable_hash(second)
+    second_decision["audit_hash"] = stable_hash(
+        {key: value for key, value in second_decision.items() if key != "audit_hash"}
+    )
+    payload["proposal_ids"] = [first["proposal_id"], second["proposal_id"]]
+    payload["proposal_hashes"] = [stable_hash(first), stable_hash(second)]
+    payload["inner_audit"]["proposal_decisions"] = [second_decision, first_decision]
+    payload["inner_audit"]["audit_hash"] = stable_hash(
+        {
+            key: value
+            for key, value in payload["inner_audit"].items()
+            if key not in {"run_id", "created_at", "audit_hash"}
+        }
+    )
+    payload["inner_audit_hash"] = payload["inner_audit"]["audit_hash"]
+    payload["audit_hash"] = stable_hash(
+        {key: value for key, value in payload.items() if key != "audit_hash"}
+    )
+    with pytest.raises(ValueError, match="decision order"):
+        extract_consistency_claims(
+            payload,
+            run_id=RUN_ID,
+            role="admission",
+            tick=1,
+            evaluator_version="worldpulse-consistency.v0.8",
+            agent_pack_id="agent-pack-test",
+            agent_pack_hash=DIGESTS[5],
+            constraint_context_hash=DIGESTS[6],
+            complete_proposals=(first, second),
         )

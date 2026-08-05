@@ -9,7 +9,7 @@ rules before constructing a deterministic execution record.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import NoReturn, TypeVar, cast
+from typing import NoReturn, Protocol, TypeVar, cast
 
 from app.services.consistency.hashing import stable_hash
 
@@ -19,6 +19,9 @@ from .mode_contracts import (
     ARClaims,
     ACClaims,
     CLClaims,
+    ConsistencyClaims,
+    ConsistencyDecisionClaimTuple,
+    ConsistencyPreProjectionTuple,
     ELClaims,
     FCClaims,
     HRClaims,
@@ -29,6 +32,7 @@ from .mode_contracts import (
     PAClaims,
     PBClaims,
     PCClaims,
+    ProjectionRecordClaimTuple,
     RRClaims,
     KernelModeExecutionRecord,
     KernelModeExecutionRequest,
@@ -208,6 +212,7 @@ def _finalize_deterministic(
     _require_sequence(references, (("FC", None),))
     fc_ref = references[0]
     fc = _claims(fc_ref, FCClaims)
+    _require_consistency_context(fc, agent_context=False)
     _require_source_schema(fc_ref, "consistency-audit.v3")
     _require_relationships(fc_ref, ())
     if fc.proposal_ids or fc.accepted_proposal_ids or fc.decision_count:
@@ -237,6 +242,7 @@ def _finalize_audit_only(
 
     fc_ref = _single(by_token, "FC", "audit-only proof requires exactly one FC")
     fc = _claims(fc_ref, FCClaims)
+    _require_consistency_context(fc, agent_context=True)
     _require_source_schema(fc_ref, "consistency-audit.v3")
     if request.engine_mode == "mock_agent":
         _require_source_schema(pb_ref, "kernel-proposal-batch.v1")
@@ -275,10 +281,13 @@ def _finalize_audit_only(
 
     pa_ref = _single(by_token, "PA", "nonzero-proposal audit-only proof requires exactly one PA")
     pa = _claims(pa_ref, PAClaims)
+    _require_projection_decision_alignment(pa, fc.decision_tuples)
     _require_projection_audit_source(pa_ref)
     _require_relationships(pa_ref, (("covers", pb_ref), ("governed_by", fc_ref)))
     if (
         pa.projection_mode != "audit_only"
+        or pa.session_id is not None
+        or pa.tick is not None
         or pa.consistency_audit_hash != fc.audit_hash
         or pa.modifier_bundle_hash is not None
         or pa.proposal_ids != pb.proposal_ids
@@ -310,6 +319,8 @@ def _finalize_hybrid(
     cl = _claims(cl_ref, CLClaims)
     pa = _claims(pa_ref, PAClaims)
     hr = _claims(hr_ref, HRClaims)
+    _require_consistency_context(fc, agent_context=True)
+    _require_projection_decision_alignment(pa, fc.decision_tuples)
 
     _require_source_schema(ar_ref, "agent-runtime-result.v1")
     _require_source_schema(pb_ref, "kernel-proposal-batch.v1")
@@ -362,7 +373,10 @@ def _finalize_hybrid(
     ):
         _fail("hybrid Commitment Ledger must be the canonical empty ledger")
     if (
-        pa.projection_mode != "hybrid"
+        mb.tick is not None
+        or pa.session_id is not None
+        or pa.tick is not None
+        or pa.projection_mode != "hybrid"
         or pa.consistency_audit_hash != fc.audit_hash
         or pa.modifier_bundle_hash != mb.bundle_hash
         or pa.proposal_ids != pb.proposal_ids
@@ -462,6 +476,25 @@ def _finalize_negotiation(
     diffusions = tuple(_claims(reference, NDClaims) for reference in diffusion_refs)
     projection_audits = tuple(_claims(reference, PAClaims) for reference in projection_audit_refs)
     replay = _claims(replay_ref, NRClaims)
+
+    _require_consistency_context(final_audit, agent_context=True)
+    expected_context = (
+        final_audit.evaluator_version,
+        final_audit.agent_pack_id,
+        final_audit.agent_pack_hash,
+        final_audit.constraint_context_hash,
+    )
+    if any(
+        (
+            item.evaluator_version,
+            item.agent_pack_id,
+            item.agent_pack_hash,
+            item.constraint_context_hash,
+        )
+        != expected_context
+        for item in (*admissions, *projections)
+    ):
+        _fail("negotiation Consistency context identity mismatch")
 
     for claims, token in (
         (rounds, "RR"),
@@ -622,6 +655,7 @@ def _finalize_negotiation(
         pc = _claims(pc_ref, PCClaims)
         mb = _claims(mb_ref, MBClaims)
         pa = _claims(pa_ref, PAClaims)
+        _require_projection_decision_alignment(pa, pc.decision_tuples)
         _require_relationships(pc_ref, (("filters", el_ref),))
         _require_relationships(mb_ref, (("admitted_by", pc_ref),))
         _require_relationships(nd_ref, (("inputs", el_ref), ("bounded_by", mb_ref)))
@@ -648,6 +682,7 @@ def _finalize_negotiation(
             or mb.consistency_audit_hash != pc.audit_hash
             or rr.modifier_bundle_hash != mb.bundle_hash
             or pa.projection_mode != "negotiation"
+            or pa.session_id != session_id
             or pa.consistency_audit_hash != pc.audit_hash
             or pa.modifier_bundle_hash != mb.bundle_hash
             or pa.proposal_ids != pc.candidate_proposal_ids
@@ -833,6 +868,63 @@ def _validate_eligibility_claims(
             _fail("EL outcome does not match canonical eligibility precedence")
 
 
+def _require_consistency_context(
+    claims: ConsistencyClaims, *, agent_context: bool
+) -> None:
+    values = (
+        claims.agent_pack_id,
+        claims.agent_pack_hash,
+        claims.constraint_context_hash,
+    )
+    if agent_context and any(value is None for value in values):
+        _fail("Agent-capable FC requires complete Consistency context identity")
+    if not agent_context and any(value is not None for value in values):
+        _fail("deterministic FC requires null Consistency context identity")
+
+
+class _TickedClaim(Protocol):
+    @property
+    def tick(self) -> int | None: ...
+
+
+def _require_projection_decision_alignment(
+    audit: PAClaims,
+    decisions: Sequence[ConsistencyDecisionClaimTuple],
+) -> None:
+    """Compare only the pre-projection fields governed by Consistency."""
+
+    def projection_fields(
+        record: ProjectionRecordClaimTuple,
+    ) -> ConsistencyPreProjectionTuple:
+        return (
+            record[0],
+            record[1],
+            record[3],
+            record[2],
+            record[4],
+            record[5],
+            record[6],
+        )
+
+    audit_fields = tuple(
+        projection_fields(record) for record in audit.record_claim_tuples
+    )
+    consistency_fields = tuple(
+        (
+            decision[0],
+            decision[1],
+            decision[2],
+            decision[3],
+            decision[4],
+            decision[5],
+            decision[6],
+        )
+        for decision in decisions
+    )
+    if audit_fields != consistency_fields:
+        _fail("Projection Audit pre-projection decisions do not match Consistency")
+
+
 def _require_projection_identity(request: KernelModeExecutionRequest) -> None:
     if (
         request.baseline.source_run_hash != request.final.source_run_hash
@@ -913,9 +1005,11 @@ def _require_token_ticks(references: Sequence[KernelModeProofReference], token: 
 
 
 def _require_claim_ticks(
-    claims: Sequence[object], expected_ticks: Sequence[int | None], token: ProofToken
+    claims: Sequence[_TickedClaim],
+    expected_ticks: Sequence[int | None],
+    token: ProofToken,
 ) -> None:
-    if tuple(getattr(claim, "tick", None) for claim in claims) != tuple(expected_ticks):
+    if tuple(claim.tick for claim in claims) != tuple(expected_ticks):
         _fail(f"negotiation {token} claim ticks must match reference ticks")
 
 

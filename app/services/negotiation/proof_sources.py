@@ -9,6 +9,7 @@ the reduced immutable claims admitted by the pure Simulation Kernel.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_EVEN
 from typing import Annotated, Literal, Self, TypeAlias
 
@@ -16,16 +17,34 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.services.agent_contract.models import AgentActionProposal
 from app.services.consistency.hashing import stable_hash
+from app.services.consistency.models import (
+    AgentActionDecision,
+    ConsistencyAuditReport,
+    ConsistencyFinding,
+)
+from app.services.hybrid_simulation.adapter import verify_modifier_bundle
+from app.services.hybrid_simulation.models import (
+    DeterministicActionModifier,
+    HybridModifierBundle,
+)
 from app.services.simulation_kernel.mode_contracts import (
     CLClaims,
+    ACClaims,
     ELClaims,
+    FCClaims,
+    MBClaims,
     NDClaims,
     NPClaims,
+    PAClaims,
+    PCClaims,
     CommitmentClaimTuple,
+    ConsistencyDecisionClaimTuple,
     CountryDeltaTuple,
     DiffusionApplicationTuple,
     EligibilityDecisionTuple,
     NegotiationProposalSourceTuple,
+    ModifierReference,
+    ProjectionRecordClaimTuple,
     ToneDeltaTuple,
 )
 
@@ -447,6 +466,415 @@ class CommitmentLedgerSource(ClosedSource):
         )
 
 
+ConsistencyRole: TypeAlias = Literal["final", "admission", "projection"]
+
+
+def _require_closed_keys(
+    value: object, expected: set[str], field_name: str
+) -> None:
+    if not isinstance(value, dict) or set(value) != expected:
+        raise ValueError(f"{field_name} must have its exact closed field set")
+
+
+def _synthetic_consistency_time(role: ConsistencyRole, tick: int | None) -> str:
+    offset = 0 if role == "final" else 2 * int(tick or 0) - (1 if role == "admission" else 0)
+    value = datetime(2000, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=offset)
+    return value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def _validate_inner_consistency_payload(
+    raw: dict[str, object],
+) -> ConsistencyAuditReport:
+    _require_closed_keys(
+        raw,
+        set(ConsistencyAuditReport.model_fields),
+        "Consistency inner audit",
+    )
+    raw_findings = raw.get("findings")
+    if not isinstance(raw_findings, tuple):
+        raise ValueError("Consistency findings must be a canonical array")
+    for finding in raw_findings:
+        _require_closed_keys(
+            finding,
+            set(ConsistencyFinding.model_fields),
+            "Consistency finding",
+        )
+    raw_decisions = raw.get("proposal_decisions")
+    if not isinstance(raw_decisions, tuple):
+        raise ValueError("Consistency decisions must be a canonical array")
+    for decision in raw_decisions:
+        _require_closed_keys(
+            decision,
+            set(AgentActionDecision.model_fields),
+            "Consistency decision",
+        )
+        decision_findings = decision.get("rule_findings")
+        if not isinstance(decision_findings, tuple):
+            raise ValueError("Consistency decision findings must be a canonical array")
+        for finding in decision_findings:
+            _require_closed_keys(
+                finding,
+                set(ConsistencyFinding.model_fields),
+                "Consistency decision finding",
+            )
+    report = ConsistencyAuditReport.model_validate(_restore_lists(raw), strict=True)
+    if report.schema_version != "consistency-audit.v2":
+        raise ValueError("Consistency inner source must be exact v2")
+    for decision in report.proposal_decisions:
+        decision_payload = decision.model_dump(mode="json", exclude={"audit_hash"})
+        if stable_hash(decision_payload) != decision.audit_hash:
+            raise ValueError("Consistency decision audit hash mismatch")
+    audit_payload = report.model_dump(
+        mode="json", exclude={"run_id", "audit_hash", "created_at"}
+    )
+    if stable_hash(audit_payload) != report.audit_hash:
+        raise ValueError("Consistency inner audit hash mismatch")
+    return report
+
+
+class ConsistencyAuditSource(ClosedSource):
+    schema_version: Literal["consistency-audit.v3"]
+    run_id: str = Field(min_length=1, max_length=160)
+    role: ConsistencyRole
+    tick: int | None = Field(default=None, ge=1, le=6)
+    evaluator_version: str = Field(min_length=1, max_length=160)
+    agent_pack_id: str | None = Field(default=None, min_length=1, max_length=160)
+    agent_pack_hash: Digest | None = None
+    constraint_context_hash: Digest | None = None
+    proposal_ids: tuple[str, ...]
+    proposal_hashes: tuple[Digest, ...]
+    inner_audit: dict[str, object]
+    inner_audit_hash: Digest
+    audit_hash: Digest
+
+    @model_validator(mode="after")
+    def validate_complete_source(self) -> Self:
+        if (self.role == "final") != (self.tick is None):
+            raise ValueError("Consistency role/tick nullability mismatch")
+        context_nulls = (
+            self.agent_pack_id is None,
+            self.agent_pack_hash is None,
+            self.constraint_context_hash is None,
+        )
+        if any(context_nulls) and not all(context_nulls):
+            raise ValueError("Consistency context must be all-null or all-non-null")
+        if len(self.proposal_ids) != len(self.proposal_hashes) or tuple(
+            sorted(set(self.proposal_ids), key=lambda value: value.encode("utf-8"))
+        ) != self.proposal_ids:
+            raise ValueError("Consistency proposal vectors must align and be sorted")
+        report = _validate_inner_consistency_payload(self.inner_audit)
+        expected_inner_run_id = (
+            self.run_id
+            if self.role == "final"
+            else f"{self.run_id}:tick:{self.tick}"
+            if self.role == "admission"
+            else f"{self.run_id}:projection:{self.tick}"
+        )
+        if (
+            report.run_id != expected_inner_run_id
+            or report.evaluator_version != self.evaluator_version
+            or report.created_at != _synthetic_consistency_time(self.role, self.tick)
+            or report.audit_hash != self.inner_audit_hash
+        ):
+            raise ValueError("Consistency inner/outer identity binding mismatch")
+        expected_hash = stable_hash(
+            self.model_dump(mode="json", exclude={"audit_hash"})
+        )
+        if self.audit_hash != expected_hash:
+            raise ValueError("Consistency v3 wrapper audit hash mismatch")
+        return self
+
+    def inner_report(self) -> ConsistencyAuditReport:
+        return _validate_inner_consistency_payload(self.inner_audit)
+
+
+class HybridModifierBundleSource(ClosedSource):
+    schema_version: Literal["hybrid-modifier-bundle.v2"]
+    run_id: str = Field(min_length=1, max_length=160)
+    tick: int | None = Field(default=None, ge=1, le=6)
+    consistency_audit_hash: Digest
+    inner_bundle: dict[str, object]
+    inner_bundle_hash: Digest
+    accepted_proposal_ids: tuple[str, ...]
+    modifiers: tuple[dict[str, object], ...]
+    scenario_patch: dict[str, object]
+    modifier_tuples: tuple[ModifierReference, ...]
+    modifier_count: int = Field(ge=0)
+    bundle_hash: Digest
+
+    @model_validator(mode="after")
+    def validate_complete_source(self) -> Self:
+        inner = HybridModifierBundle.model_validate(
+            _restore_lists(self.inner_bundle), strict=True
+        )
+        verify_modifier_bundle(inner)
+        if (
+            inner.schema_version != "hybrid-modifier-bundle.v1"
+            or inner.bundle_hash != self.inner_bundle_hash
+            or inner.scenario_patch != _restore_lists(self.scenario_patch)
+        ):
+            raise ValueError("MB inner bundle/hash/scenario patch mismatch")
+        if tuple(
+            sorted(set(self.accepted_proposal_ids), key=lambda value: value.encode("utf-8"))
+        ) != self.accepted_proposal_ids:
+            raise ValueError("MB accepted proposal ids must be unique and ascending")
+        outer_modifiers = tuple(
+            DeterministicActionModifier.model_validate(
+                _restore_lists(item), strict=True
+            )
+            for item in self.modifiers
+        )
+        for modifier in outer_modifiers:
+            modifier_payload = modifier.model_dump(
+                mode="json", exclude={"modifier_hash", "modifier_id"}
+            )
+            expected_modifier_hash = stable_hash(modifier_payload)
+            if (
+                expected_modifier_hash != modifier.modifier_hash
+                or modifier.modifier_id != f"modifier_{expected_modifier_hash[:16]}"
+            ):
+                raise ValueError("MB outer modifier hash mismatch")
+        inner_by_id = {
+            item.proposal_id: item.model_dump(mode="json") for item in inner.modifiers
+        }
+        outer_by_id = {
+            item.proposal_id: item.model_dump(mode="json") for item in outer_modifiers
+        }
+        if (
+            set(inner.accepted_proposal_ids) != set(self.accepted_proposal_ids)
+            or len(set(inner.accepted_proposal_ids)) != len(inner.accepted_proposal_ids)
+            or inner_by_id != outer_by_id
+            or len(inner_by_id) != len(inner.modifiers)
+            or len(outer_by_id) != len(outer_modifiers)
+        ):
+            raise ValueError("MB inner/outer accepted proposal or modifier mapping mismatch")
+        expected_modifiers = tuple(
+            sorted(
+                (
+                    ModifierReference(
+                        proposal_id=item.proposal_id,
+                        modifier_id=item.modifier_id,
+                        modifier_hash=item.modifier_hash,
+                    )
+                    for item in outer_modifiers
+                ),
+                key=lambda item: (
+                    item.proposal_id.encode("utf-8"),
+                    item.modifier_id.encode("utf-8"),
+                    item.modifier_hash.encode("utf-8"),
+                ),
+            )
+        )
+        if (
+            self.modifier_tuples != expected_modifiers
+            or self.modifier_count != len(expected_modifiers)
+        ):
+            raise ValueError("MB modifier tuple/count mismatch")
+        expected_hash = stable_hash(
+            self.model_dump(mode="json", exclude={"bundle_hash"})
+        )
+        if self.bundle_hash != expected_hash:
+            raise ValueError("MB bundle_hash mismatch")
+        self.extract_claims()
+        return self
+
+    def extract_claims(self) -> MBClaims:
+        return MBClaims(
+            run_id=self.run_id,
+            tick=self.tick,
+            bundle_hash=self.bundle_hash,
+            inner_bundle_hash=self.inner_bundle_hash,
+            consistency_audit_hash=self.consistency_audit_hash,
+            accepted_proposal_ids=self.accepted_proposal_ids,
+            modifier_tuples=self.modifier_tuples,
+            modifier_count=self.modifier_count,
+        )
+
+
+class ProjectionAuditRecordSource(ClosedSource):
+    proposal_id: str = Field(min_length=1, max_length=160)
+    proposal_hash: Digest
+    input_hash: Digest
+    decision: Literal["accepted", "rejected", "needs_revision", "not_evaluated"]
+    rule_version: str = Field(min_length=1, max_length=160)
+    outcome: Literal["accepted", "rejected", "constrained", "expired"]
+    rejection_reason: str | None = Field(default=None, min_length=1, max_length=800)
+    projection_status: Literal[
+        "not_projected", "projected", "constrained", "blocked", "expired"
+    ]
+    projection_hash: Digest | None = None
+    modifier_id: str | None = Field(default=None, min_length=1, max_length=160)
+    final_result_hash: Digest
+
+    @model_validator(mode="after")
+    def validate_truth_table(self) -> Self:
+        expected_status = {
+            "rejected": "blocked",
+            "constrained": "constrained",
+            "expired": "expired",
+        }
+        if self.outcome == "accepted":
+            if self.projection_status == "projected":
+                if (
+                    self.projection_hash is None
+                    or self.modifier_id is None
+                    or self.rejection_reason is not None
+                ):
+                    raise ValueError("PA projected accepted record violates truth table")
+            elif self.projection_status == "not_projected":
+                if (
+                    self.projection_hash is not None
+                    or self.modifier_id is not None
+                    or self.rejection_reason is not None
+                ):
+                    raise ValueError("PA audit-only accepted record violates truth table")
+            else:
+                raise ValueError("PA accepted record has an illegal projection status")
+        elif (
+            self.projection_status != expected_status[self.outcome]
+            or self.projection_hash is not None
+            or self.modifier_id is not None
+            or self.rejection_reason is None
+        ):
+            raise ValueError("PA rejected/constrained/expired record violates truth table")
+        return self
+
+    def as_claim_tuple(self) -> ProjectionRecordClaimTuple:
+        return (
+            self.proposal_id,
+            self.proposal_hash,
+            self.input_hash,
+            self.decision,
+            self.rule_version,
+            self.outcome,
+            self.rejection_reason,
+            self.projection_status,
+            self.projection_hash,
+            self.modifier_id,
+            self.final_result_hash,
+        )
+
+
+class ProjectionAuditSource(ClosedSource):
+    schema_version: Literal[
+        "agent-action-projection-audit.v2",
+        "negotiation-projection-audit.v2",
+    ]
+    run_id: str = Field(min_length=1, max_length=160)
+    session_id: str | None = Field(default=None, min_length=1, max_length=160)
+    tick: int | None = Field(default=None, ge=1, le=6)
+    projection_mode: Literal["audit_only", "hybrid", "negotiation"]
+    consistency_audit_hash: Digest
+    modifier_bundle_hash: Digest | None = None
+    proposal_ids: tuple[str, ...]
+    proposal_hashes: tuple[Digest, ...]
+    proposal_count: int = Field(ge=0)
+    projected_proposal_ids: tuple[str, ...]
+    projected_semantic_key_hashes: tuple[Digest, ...]
+    projected_count: int = Field(ge=0)
+    modifier_tuples: tuple[ModifierReference, ...]
+    modifier_count: int = Field(ge=0)
+    records: tuple[ProjectionAuditRecordSource, ...]
+    record_count: int = Field(ge=0)
+    before_result_hash: Digest
+    final_result_hash: Digest
+    audit_hash: Digest
+
+    @model_validator(mode="after")
+    def validate_complete_source(self) -> Self:
+        if self.schema_version == "negotiation-projection-audit.v2":
+            if (
+                self.projection_mode != "negotiation"
+                or self.session_id is None
+                or self.tick is None
+                or self.modifier_bundle_hash is None
+            ):
+                raise ValueError("negotiation PA coordinates/mode are invalid")
+        elif self.session_id is not None or self.tick is not None:
+            raise ValueError("non-negotiation PA must have null session and tick")
+        elif self.projection_mode == "negotiation":
+            raise ValueError("agent-action PA may not use negotiation projection mode")
+        if self.projection_mode == "audit_only" and self.modifier_bundle_hash is not None:
+            raise ValueError("audit-only PA may not carry a modifier bundle")
+        if self.projection_mode == "hybrid" and self.modifier_bundle_hash is None:
+            raise ValueError("hybrid PA requires a modifier bundle")
+        if not (
+            self.proposal_count
+            == len(self.proposal_ids)
+            == len(self.proposal_hashes)
+            == len(self.records)
+            == self.record_count
+        ):
+            raise ValueError("PA proposal/record vectors and counts must align")
+        if not (
+            self.projected_count
+            == len(self.projected_proposal_ids)
+            == len(self.projected_semantic_key_hashes)
+        ):
+            raise ValueError("PA projected vectors and count must align")
+        if tuple(item.proposal_id for item in self.records) != self.proposal_ids:
+            raise ValueError("PA record order must equal proposal id order")
+        if tuple(item.proposal_hash for item in self.records) != self.proposal_hashes:
+            raise ValueError("PA record hashes must equal proposal hashes")
+        if any(
+            item.input_hash != item.proposal_hash
+            or item.final_result_hash != self.final_result_hash
+            for item in self.records
+        ):
+            raise ValueError("PA record input/final hashes are invalid")
+        projected_records = tuple(
+            item for item in self.records if item.projection_status == "projected"
+        )
+        if tuple(item.proposal_id for item in projected_records) != self.projected_proposal_ids:
+            raise ValueError("PA projected records and projected ids mismatch")
+        modifier_by_proposal = {
+            item.proposal_id: item for item in self.modifier_tuples
+        }
+        if len(modifier_by_proposal) != len(self.modifier_tuples):
+            raise ValueError("PA modifier proposal ids must be unique")
+        for record in projected_records:
+            modifier = modifier_by_proposal.get(record.proposal_id)
+            if (
+                modifier is None
+                or record.modifier_id != modifier.modifier_id
+                or record.projection_hash != modifier.modifier_hash
+            ):
+                raise ValueError("PA projected record/modifier binding mismatch")
+        claims = self.extract_claims()
+        if claims.modifier_count != len(self.modifier_tuples):
+            raise ValueError("PA modifier count mismatch")
+        expected_hash = stable_hash(
+            self.model_dump(mode="json", exclude={"audit_hash"})
+        )
+        if self.audit_hash != expected_hash:
+            raise ValueError("PA audit_hash mismatch")
+        return self
+
+    def extract_claims(self) -> PAClaims:
+        return PAClaims(
+            run_id=self.run_id,
+            session_id=self.session_id,
+            tick=self.tick,
+            projection_mode=self.projection_mode,
+            audit_hash=self.audit_hash,
+            consistency_audit_hash=self.consistency_audit_hash,
+            modifier_bundle_hash=self.modifier_bundle_hash,
+            proposal_ids=self.proposal_ids,
+            proposal_hashes=self.proposal_hashes,
+            proposal_count=self.proposal_count,
+            record_input_hashes=tuple(item.input_hash for item in self.records),
+            record_claim_tuples=tuple(item.as_claim_tuple() for item in self.records),
+            projected_proposal_ids=self.projected_proposal_ids,
+            projected_semantic_key_hashes=self.projected_semantic_key_hashes,
+            projected_count=self.projected_count,
+            modifier_tuples=self.modifier_tuples,
+            modifier_count=self.modifier_count,
+            record_count=self.record_count,
+            before_result_hash=self.before_result_hash,
+            final_result_hash=self.final_result_hash,
+        )
+
+
 class ToneDeltasSource(ClosedSource):
     firm: float
     informational: float
@@ -719,6 +1147,138 @@ def extract_np_claims(
     return source.extract_claims()
 
 
+def extract_consistency_claims(
+    payload: Mapping[str, object],
+    *,
+    run_id: str,
+    role: ConsistencyRole,
+    tick: int | None,
+    evaluator_version: str,
+    agent_pack_id: str | None,
+    agent_pack_hash: str | None,
+    constraint_context_hash: str | None,
+    complete_proposals: tuple[Mapping[str, object], ...],
+) -> FCClaims | ACClaims | PCClaims:
+    source = ConsistencyAuditSource.model_validate(dict(payload))
+    if (
+        source.run_id != run_id
+        or source.role != role
+        or source.tick != tick
+        or source.evaluator_version != evaluator_version
+        or source.agent_pack_id != agent_pack_id
+        or source.agent_pack_hash != agent_pack_hash
+        or source.constraint_context_hash != constraint_context_hash
+    ):
+        raise ValueError("Consistency authoritative coordinate/context binding mismatch")
+    proposals = tuple(
+        AgentActionProposal.model_validate(_restore_lists(dict(item)), strict=True)
+        for item in complete_proposals
+    )
+    for proposal in proposals:
+        target_ids = tuple(proposal.target_ids)
+        if (
+            proposal.schema_version != "agent-action-proposal.v1"
+            or proposal.run_id != run_id
+            or len(set(target_ids)) != len(target_ids)
+            or target_ids
+            != tuple(sorted(target_ids, key=lambda value: value.encode("utf-8")))
+        ):
+            raise ValueError("Consistency complete proposal coordinate/order mismatch")
+    proposal_ids = tuple(item.proposal_id for item in proposals)
+    proposal_hashes = tuple(
+        stable_hash(item.model_dump(mode="json")) for item in proposals
+    )
+    if source.proposal_ids != proposal_ids or source.proposal_hashes != proposal_hashes:
+        raise ValueError("Consistency complete proposal vector binding mismatch")
+    report = source.inner_report()
+    if tuple(item.proposal_id for item in report.proposal_decisions) != proposal_ids:
+        raise ValueError("Consistency inner decision order must equal proposal order")
+    decisions_by_id = {item.proposal_id: item for item in report.proposal_decisions}
+    if len(decisions_by_id) != len(report.proposal_decisions) or set(
+        decisions_by_id
+    ) != set(proposal_ids):
+        raise ValueError("Consistency inner decision/proposal membership mismatch")
+    decision_tuples: tuple[ConsistencyDecisionClaimTuple, ...] = tuple(
+        (
+            proposal_id,
+            proposal_hashes[index],
+            decisions_by_id[proposal_id].decision,
+            decisions_by_id[proposal_id].input_hash,
+            decisions_by_id[proposal_id].rule_version,
+            decisions_by_id[proposal_id].outcome,
+            decisions_by_id[proposal_id].rejection_reason,
+            decisions_by_id[proposal_id].projection_status,
+            decisions_by_id[proposal_id].projection_hash,
+        )
+        for index, proposal_id in enumerate(proposal_ids)
+    )
+    accepted_ids = tuple(item[0] for item in decision_tuples if item[2] == "accepted")
+    if role == "final":
+        return FCClaims.model_validate(
+            {
+                "run_id": run_id,
+                "evaluator_version": evaluator_version,
+                "agent_pack_id": agent_pack_id,
+                "agent_pack_hash": agent_pack_hash,
+                "constraint_context_hash": constraint_context_hash,
+                "inner_audit_hash": source.inner_audit_hash,
+                "deterministic_result_hash": report.deterministic_result_hash,
+                "audit_hash": source.audit_hash,
+                "proposal_ids": proposal_ids,
+                "proposal_hashes": proposal_hashes,
+                "accepted_proposal_ids": accepted_ids,
+                "decision_tuples": decision_tuples,
+                "decision_count": len(decision_tuples),
+            },
+            strict=True,
+        )
+    if agent_pack_id is None or agent_pack_hash is None or constraint_context_hash is None:
+        raise ValueError("admission/projection Consistency requires non-null context")
+    if tick is None:
+        raise ValueError("admission/projection Consistency requires a tick")
+    if role == "admission":
+        return ACClaims.model_validate(
+            {
+                "run_id": run_id,
+                "evaluator_version": evaluator_version,
+                "agent_pack_id": agent_pack_id,
+                "agent_pack_hash": agent_pack_hash,
+                "constraint_context_hash": constraint_context_hash,
+                "inner_audit_hash": source.inner_audit_hash,
+                "deterministic_result_hash": report.deterministic_result_hash,
+                "role": "admission",
+                "tick": tick,
+                "audit_hash": source.audit_hash,
+                "proposal_ids": proposal_ids,
+                "proposal_hashes": proposal_hashes,
+                "accepted_proposal_ids": accepted_ids,
+                "decision_tuples": decision_tuples,
+                "decision_count": len(decision_tuples),
+            },
+            strict=True,
+        )
+    return PCClaims.model_validate(
+        {
+            "run_id": run_id,
+            "evaluator_version": evaluator_version,
+            "agent_pack_id": agent_pack_id,
+            "agent_pack_hash": agent_pack_hash,
+            "constraint_context_hash": constraint_context_hash,
+            "inner_audit_hash": source.inner_audit_hash,
+            "deterministic_result_hash": report.deterministic_result_hash,
+            "role": "projection",
+            "tick": tick,
+            "audit_hash": source.audit_hash,
+            "candidate_proposal_ids": proposal_ids,
+            "proposal_hashes": proposal_hashes,
+            "accepted_proposal_ids": accepted_ids,
+            "decision_tuples": decision_tuples,
+            "decision_count": len(decision_tuples),
+        },
+        strict=True,
+    )
+
+
 def extract_el_claims(
     payload: Mapping[str, object],
     *,
@@ -756,6 +1316,91 @@ def extract_cl_claims(
         raise ValueError("CL authoritative coordinate binding mismatch")
     if (session_id is None) != (tick is None):
         raise ValueError("CL hybrid and negotiation coordinates may not be mixed")
+    return source.extract_claims()
+
+
+def extract_mb_claims(
+    payload: Mapping[str, object],
+    *,
+    run_id: str,
+    tick: int | None,
+    consistency_audit_hash: str,
+) -> MBClaims:
+    source = HybridModifierBundleSource.model_validate(dict(payload))
+    if (
+        source.run_id != run_id
+        or source.tick != tick
+        or source.consistency_audit_hash != consistency_audit_hash
+    ):
+        raise ValueError("MB authoritative coordinate/Consistency binding mismatch")
+    return source.extract_claims()
+
+
+def extract_pa_claims(
+    payload: Mapping[str, object],
+    *,
+    run_id: str,
+    session_id: str | None,
+    tick: int | None,
+    projection_mode: Literal["audit_only", "hybrid", "negotiation"],
+    consistency_audit_hash: str,
+    complete_proposals: tuple[Mapping[str, object], ...],
+    modifier_claims: MBClaims | None,
+) -> PAClaims:
+    source = ProjectionAuditSource.model_validate(dict(payload))
+    if (
+        source.run_id != run_id
+        or source.session_id != session_id
+        or source.tick != tick
+        or source.projection_mode != projection_mode
+        or source.consistency_audit_hash != consistency_audit_hash
+    ):
+        raise ValueError("PA authoritative coordinate/Consistency binding mismatch")
+    proposals = tuple(
+        AgentActionProposal.model_validate(_restore_lists(dict(item)), strict=True)
+        for item in complete_proposals
+    )
+    for proposal in proposals:
+        target_ids = tuple(proposal.target_ids)
+        if (
+            proposal.schema_version != "agent-action-proposal.v1"
+            or proposal.run_id != run_id
+            or len(set(target_ids)) != len(target_ids)
+            or target_ids
+            != tuple(sorted(target_ids, key=lambda value: value.encode("utf-8")))
+        ):
+            raise ValueError("PA complete proposal coordinate/order mismatch")
+    proposal_ids = tuple(item.proposal_id for item in proposals)
+    proposal_hashes = tuple(
+        stable_hash(item.model_dump(mode="json")) for item in proposals
+    )
+    if source.proposal_ids != proposal_ids or source.proposal_hashes != proposal_hashes:
+        raise ValueError("PA complete proposal vector binding mismatch")
+    proposal_by_id = {item.proposal_id: item for item in proposals}
+    if len(proposal_by_id) != len(proposals):
+        raise ValueError("PA complete proposal ids must be unique")
+    expected_semantics = tuple(
+        stable_hash(
+            {
+                "actor_id": proposal_by_id[proposal_id].actor_id,
+                "action_type": proposal_by_id[proposal_id].action_type,
+                "target_ids": tuple(proposal_by_id[proposal_id].target_ids),
+                "parameters": proposal_by_id[proposal_id].parameters,
+            }
+        )
+        for proposal_id in source.projected_proposal_ids
+    )
+    if source.projected_semantic_key_hashes != expected_semantics:
+        raise ValueError("PA projected semantic hash mismatch")
+    if modifier_claims is None:
+        if source.modifier_bundle_hash is not None or source.modifier_tuples:
+            raise ValueError("PA without MB claims may not carry modifier evidence")
+    elif (
+        source.modifier_bundle_hash != modifier_claims.bundle_hash
+        or source.modifier_tuples != modifier_claims.modifier_tuples
+        or source.projected_proposal_ids != modifier_claims.accepted_proposal_ids
+    ):
+        raise ValueError("PA/MB claims binding mismatch")
     return source.extract_claims()
 
 

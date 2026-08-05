@@ -66,7 +66,7 @@ class AgentActionProjectionAudit(BaseModel):
     run_id: str
     consistency_audit_hash: str
     final_result_hash: str
-    projection_mode: Literal["hybrid", "audit_only"]
+    projection_mode: Literal["hybrid", "audit_only", "negotiation"]
     records: list[AgentActionProjectionRecord] = Field(default_factory=list)
     projected_count: int = 0
     constrained_count: int = 0

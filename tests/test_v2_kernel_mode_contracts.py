@@ -52,14 +52,46 @@ def _projection():
     )
 
 
+def _consistency_fields(
+    proposal_ids: tuple[str, ...],
+    proposal_hashes: tuple[str, ...],
+    accepted_ids: tuple[str, ...] = (),
+    *,
+    agent_context: bool,
+) -> dict:
+    accepted = set(accepted_ids)
+    decisions = tuple(
+        (
+            proposal_id,
+            proposal_hashes[index],
+            "accepted" if proposal_id in accepted else "rejected",
+            proposal_hashes[index],
+            "worldpulse-consistency.v1.2",
+            "accepted" if proposal_id in accepted else "rejected",
+            None if proposal_id in accepted else "rejected-by-test",
+            "not_projected" if proposal_id in accepted else "blocked",
+            None,
+        )
+        for index, proposal_id in enumerate(proposal_ids)
+    )
+    return {
+        "evaluator_version": "worldpulse-consistency.v0.8",
+        "agent_pack_id": "agent-pack-test" if agent_context else None,
+        "agent_pack_hash": "d" * 64 if agent_context else None,
+        "constraint_context_hash": "e" * 64 if agent_context else None,
+        "inner_audit_hash": "f" * 64,
+        "decision_tuples": decisions,
+    }
 def _reference() -> KernelModeProofReference:
     claims = FCClaims(
         run_id="mode-contract-run",
         audit_hash="b" * 64,
         deterministic_result_hash="c" * 64,
         proposal_ids=(),
+        proposal_hashes=(),
         accepted_proposal_ids=(),
         decision_count=0,
+        **_consistency_fields((), (), agent_context=False),
     )
     claims_hash = stable_hash({"claims": claims.model_dump(mode="json"), "proof_schema": "kp.final-consistency.v1"})
     return KernelModeProofReference(
@@ -87,8 +119,10 @@ def test_mode_contracts_are_closed_and_deeply_immutable():
             audit_hash="b" * 64,
             deterministic_result_hash="c" * 64,
             proposal_ids=(),
+            proposal_hashes=(),
             accepted_proposal_ids=(),
             decision_count=0,
+            **_consistency_fields((), (), agent_context=False),
             unexpected=True,
         )
 
@@ -218,6 +252,9 @@ def _audit_references(engine_mode: str, proposal_ids: tuple[str, ...] = ()) -> t
         run_id="mode-contract-run", audit_hash="6" * 64, deterministic_result_hash="1" * 64,
         proposal_ids=proposal_ids, proposal_hashes=proposal_hashes,
         accepted_proposal_ids=(), decision_count=len(proposal_ids),
+        **_consistency_fields(
+            proposal_ids, proposal_hashes, agent_context=True
+        ),
     )
     fc = _mode_reference(
         proof_schema="kp.final-consistency.v1", artifact_type="consistency_audit", schema_version="consistency-audit.v3",
@@ -228,14 +265,15 @@ def _audit_references(engine_mode: str, proposal_ids: tuple[str, ...] = ()) -> t
     references.append(fc)
     if proposal_ids:
         pa_claims = PAClaims(
-            run_id="mode-contract-run", projection_mode="audit_only", audit_hash="7" * 64, consistency_audit_hash=fc_claims.audit_hash,
-            proposal_ids=proposal_ids, proposal_hashes=proposal_hashes,
+            run_id="mode-contract-run", session_id=None, projection_mode="audit_only", audit_hash="7" * 64, consistency_audit_hash=fc_claims.audit_hash,
+            proposal_ids=proposal_ids, proposal_hashes=proposal_hashes, proposal_count=len(proposal_ids),
             record_input_hashes=proposal_hashes,
             record_claim_tuples=tuple(
-                (item, proposal_hashes[index], proposal_hashes[index], "rejected", "test-rule", "rejected", "audit-only", "not_projected", None, None, "1" * 64)
+                (item, proposal_hashes[index], proposal_hashes[index], "rejected", "worldpulse-consistency.v1.2", "rejected", "rejected-by-test", "blocked", None, None, "1" * 64)
                 for index, item in enumerate(proposal_ids)
             ),
-            projected_proposal_ids=(), projected_semantic_key_hashes=(), modifier_tuples=(), modifier_count=0,
+            projected_proposal_ids=(), projected_semantic_key_hashes=(), projected_count=0,
+            modifier_tuples=(), modifier_count=0,
             record_count=len(proposal_ids), before_result_hash="1" * 64, final_result_hash="1" * 64,
         )
         references.append(_mode_reference(
@@ -292,6 +330,9 @@ def _hybrid_references(
             run_id="mode-contract-run", audit_hash=audit_hash, deterministic_result_hash="1" * 64,
             proposal_ids=proposal_ids, proposal_hashes=proposal_hashes,
             accepted_proposal_ids=accepted_ids, decision_count=len(proposal_ids),
+            **_consistency_fields(
+                proposal_ids, proposal_hashes, accepted_ids, agent_context=True
+            ),
         ),
         relationships=(
             KernelModeProofRelationship(relationship_type="evaluates", target_artifact_id=pb.artifact_id, target_content_hash=pb.content_hash),
@@ -301,7 +342,8 @@ def _hybrid_references(
         proof_schema="kp.action-modifier-bundle.v1", artifact_type="deterministic_action_modifiers",
         schema_version="hybrid-modifier-bundle.v2", artifact_id="mb", ordinal=3,
         claims=MBClaims(
-            run_id="mode-contract-run", bundle_hash=bundle_hash, consistency_audit_hash=audit_hash,
+            run_id="mode-contract-run", bundle_hash=bundle_hash, inner_bundle_hash="0" * 64,
+            consistency_audit_hash=audit_hash,
             accepted_proposal_ids=accepted_ids, modifier_tuples=modifiers, modifier_count=len(modifiers),
         ),
         relationships=(
@@ -322,19 +364,23 @@ def _hybrid_references(
         proof_schema="kp.projection-audit.v1", artifact_type="agent_action_projection_audit",
         schema_version="agent-action-projection-audit.v2", artifact_id="pa", ordinal=5,
         claims=PAClaims(
-            run_id="mode-contract-run", projection_mode="hybrid", audit_hash=projection_audit_hash,
+            run_id="mode-contract-run", session_id=None, projection_mode="hybrid", audit_hash=projection_audit_hash,
             consistency_audit_hash=audit_hash, modifier_bundle_hash=bundle_hash,
-            proposal_ids=proposal_ids, proposal_hashes=proposal_hashes,
+            proposal_ids=proposal_ids, proposal_hashes=proposal_hashes, proposal_count=len(proposal_ids),
             record_input_hashes=proposal_hashes,
             record_claim_tuples=tuple(
-                (item, proposal_hashes[index], proposal_hashes[index], "accepted", "test-rule", "accepted", None,
-                 ("projected" if item in accepted_ids else "not_projected"),
+                (item, proposal_hashes[index], proposal_hashes[index],
+                 ("accepted" if item in accepted_ids else "rejected"),
+                 "worldpulse-consistency.v1.2",
+                 ("accepted" if item in accepted_ids else "rejected"),
+                 (None if item in accepted_ids else "rejected-by-test"),
+                 ("projected" if item in accepted_ids else "blocked"),
                  ("a" * 64 if item in accepted_ids else None),
                  (f"modifier-{item}" if item in accepted_ids else None), final_result_hash)
                 for index, item in enumerate(proposal_ids)
             ),
             projected_proposal_ids=accepted_ids,
-            projected_semantic_key_hashes=tuple("c" * 64 for _ in accepted_ids),
+            projected_semantic_key_hashes=tuple("c" * 64 for _ in accepted_ids), projected_count=len(accepted_ids),
             modifier_tuples=modifiers, modifier_count=len(modifiers),
             record_count=len(proposal_ids), before_result_hash="1" * 64, final_result_hash=final_result_hash,
         ),
@@ -496,6 +542,12 @@ def _negotiation_references(
                 run_id="mode-contract-run", tick=tick, audit_hash=data["ac_hash"], deterministic_result_hash="1" * 64,
                 proposal_ids=data["proposal_ids"], proposal_hashes=data["proposal_hashes"],
                 accepted_proposal_ids=data["proposal_ids"], decision_count=len(data["proposal_ids"]),
+                **_consistency_fields(
+                    data["proposal_ids"],
+                    data["proposal_hashes"],
+                    data["proposal_ids"],
+                    agent_context=True,
+                ),
             ),
             relationships=(KernelModeProofRelationship(relationship_type="evaluates", target_artifact_id=np.artifact_id, target_content_hash=np.content_hash),),
         )
@@ -544,6 +596,12 @@ def _negotiation_references(
                     run_id="mode-contract-run", tick=tick, audit_hash=digest(f"pc-{tick}"), deterministic_result_hash="1" * 64,
                     candidate_proposal_ids=data["eligible_ids"], proposal_hashes=data["proposal_hashes"],
                     accepted_proposal_ids=data["proposal_ids"], decision_count=len(data["proposal_ids"]),
+                    **_consistency_fields(
+                        data["eligible_ids"],
+                        data["proposal_hashes"],
+                        data["proposal_ids"],
+                        agent_context=True,
+                    ),
                 ),
                 relationships=(KernelModeProofRelationship(relationship_type="filters", target_artifact_id=el.artifact_id, target_content_hash=el.content_hash),),
             )
@@ -553,6 +611,7 @@ def _negotiation_references(
                 schema_version="hybrid-modifier-bundle.v2", artifact_id=f"mb-{tick}", ordinal=modifier_ordinal[tick], tick=tick,
                 claims=MBClaims(
                     run_id="mode-contract-run", tick=tick, bundle_hash=digest(f"mb-{tick}"),
+                    inner_bundle_hash=digest(f"inner-mb-{tick}"),
                     consistency_audit_hash=digest(f"pc-{tick}"), accepted_proposal_ids=data["proposal_ids"],
                     modifier_tuples=(modifier,), modifier_count=1,
                 ),
@@ -594,17 +653,18 @@ def _negotiation_references(
                 proof_schema="kp.projection-audit.v1", artifact_type="negotiation_projection_audit",
                 schema_version="negotiation-projection-audit.v2", artifact_id=f"pa-{tick}", ordinal=audit_ordinal[tick], tick=tick,
                 claims=PAClaims(
-                    run_id="mode-contract-run", tick=tick, projection_mode="negotiation", audit_hash=digest(f"pa-{tick}"),
+                    run_id="mode-contract-run", session_id="session-1", tick=tick,
+                    projection_mode="negotiation", audit_hash=digest(f"pa-{tick}"),
                     consistency_audit_hash=digest(f"pc-{tick}"), modifier_bundle_hash=digest(f"mb-{tick}"),
-                    proposal_ids=data["proposal_ids"], proposal_hashes=data["proposal_hashes"],
+                    proposal_ids=data["proposal_ids"], proposal_hashes=data["proposal_hashes"], proposal_count=1,
                     record_input_hashes=data["proposal_hashes"],
                     record_claim_tuples=((
                         data["proposal_ids"][0], data["proposal_hashes"][0], data["proposal_hashes"][0],
-                        "accepted", "test-rule", "accepted", None, "projected", modifier.modifier_hash,
+                        "accepted", "worldpulse-consistency.v1.2", "accepted", None, "projected", modifier.modifier_hash,
                         modifier.modifier_id, "1" * 64,
                     ),),
                     projected_proposal_ids=data["proposal_ids"],
-                    projected_semantic_key_hashes=(data["source_tuples"][0][6],),
+                    projected_semantic_key_hashes=(data["source_tuples"][0][6],), projected_count=1,
                     modifier_tuples=(modifier,), modifier_count=1, record_count=1,
                     before_result_hash="1" * 64, final_result_hash="1" * 64,
                 ),
@@ -624,6 +684,7 @@ def _negotiation_references(
         claims=FCClaims(
             run_id="mode-contract-run", audit_hash=digest("fc"), deterministic_result_hash="1" * 64,
             proposal_ids=(), proposal_hashes=(), accepted_proposal_ids=(), decision_count=0,
+            **_consistency_fields((), (), agent_context=True),
         ),
         relationships=(KernelModeProofRelationship(relationship_type="evaluates", target_artifact_id=rounds[-1].artifact_id, target_content_hash=rounds[-1].content_hash),),
     )
@@ -675,7 +736,8 @@ def test_finalization_admits_exact_deterministic_mode_sequences_without_mutation
     if engine_mode == "deterministic":
         claims = FCClaims(
             run_id="mode-contract-run", audit_hash="6" * 64, deterministic_result_hash="1" * 64,
-            proposal_ids=(), accepted_proposal_ids=(), decision_count=0,
+            proposal_ids=(), proposal_hashes=(), accepted_proposal_ids=(), decision_count=0,
+            **_consistency_fields((), (), agent_context=False),
         )
         references = (_mode_reference(
             proof_schema="kp.final-consistency.v1", artifact_type="consistency_audit", schema_version="consistency-audit.v3",
@@ -798,6 +860,29 @@ def test_hybrid_finalization_rejects_nonempty_ledger_and_modifier_mismatch():
         references[5].claims.model_copy(update={"modifier_tuples": (), "modifier_count": 0})
 
 
+def test_projection_claims_and_finalizer_reject_truth_table_or_consistency_drift():
+    references = _hybrid_references()
+    pa_payload = references[5].claims.model_dump(mode="python")
+    invalid_record = list(pa_payload["record_claim_tuples"][0])
+    invalid_record[7] = "not_projected"
+    pa_payload["record_claim_tuples"] = (tuple(invalid_record),)
+    with pytest.raises(ValidationError, match="truth table"):
+        PAClaims.model_validate(pa_payload)
+
+    drifted_payload = references[5].claims.model_dump(mode="python")
+    drifted_record = list(drifted_payload["record_claim_tuples"][0])
+    drifted_record[4] = "different-rule-version"
+    drifted_payload["record_claim_tuples"] = (tuple(drifted_record),)
+    drifted_claims = PAClaims.model_validate(drifted_payload)
+    drifted_reference = _replace_mode_claims(references[5], drifted_claims)
+    with pytest.raises(KernelModeFinalizationError, match="pre-projection decisions"):
+        finalize_execution(
+            _execution_request(
+                "hybrid", (*references[:5], drifted_reference, references[6])
+            )
+        )
+
+
 def test_hybrid_finalization_rejects_bad_hash_relationship_cross_attempt_and_numeric_owner():
     references = _hybrid_references()
     bad_hr = _mode_reference(
@@ -897,7 +982,8 @@ def _proof_for(references: tuple[KernelModeProofReference, ...]) -> KernelModeEx
 def test_execution_record_requires_fixed_authority_path():
     claims = FCClaims(
         run_id="mode-contract-run", audit_hash="b" * 64, deterministic_result_hash="1" * 64,
-        proposal_ids=(), accepted_proposal_ids=(), decision_count=0,
+        proposal_ids=(), proposal_hashes=(), accepted_proposal_ids=(), decision_count=0,
+        **_consistency_fields((), (), agent_context=False),
     )
     reference = _mode_reference(
         proof_schema="kp.final-consistency.v1", artifact_type="consistency_audit", schema_version="consistency-audit.v3",
@@ -926,7 +1012,8 @@ def test_mode_proof_boundary_is_strict_without_coercion():
     with pytest.raises(ValidationError, match="int_type"):
         FCClaims(
             run_id="mode-contract-run", audit_hash=digest, deterministic_result_hash=digest,
-            decision_count=0.0,
+            proposal_ids=(), proposal_hashes=(), accepted_proposal_ids=(), decision_count=0.0,
+            **_consistency_fields((), (), agent_context=False),
         )
     with pytest.raises(ValidationError, match="bool_type"):
         NDClaims(
