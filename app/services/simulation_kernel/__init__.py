@@ -59,6 +59,11 @@ from .mode_finalization import (
     empty_commitment_ledger_hash,
 )
 from .replay import ReplayIntegrityError, replay_state
+from .resolver_contracts import (
+    ResolverArtifactReference,
+    parse_resolver_artifact_ref,
+    resolver_artifact_ref_tuple,
+)
 from .transitions import (
     CompiledTransition,
     TransitionIntegrityError,
@@ -143,4 +148,7 @@ __all__ = [
     "HybridReplayClaims",
     "NegotiationReplayClaims",
     "ModifierReference",
+    "ResolverArtifactReference",
+    "parse_resolver_artifact_ref",
+    "resolver_artifact_ref_tuple",
 ]
