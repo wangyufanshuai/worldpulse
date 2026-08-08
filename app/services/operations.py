@@ -19,6 +19,13 @@ from app.core.trust_models import UserIdentity
 from app.db.postgres import is_postgres_url
 from app.services.organizations import require_organization_role
 from app.services.project_store import connect, dumps, init_db, loads
+from app.services.run_lifecycle.execution_contract import (
+    WORKER_EXECUTION_IDENTITY_METADATA_KEY,
+    WorkerExecutionCapability,
+    WorkerExecutionRegistration,
+    build_worker_execution_registration,
+    retire_worker_execution_registration,
+)
 from app.version import WORLDPULSE_VERSION
 
 
@@ -32,13 +39,63 @@ DEFAULT_QUOTA = {
 }
 
 
-def register_worker(worker_id: str, worker_kind: str, *, lease_seconds: int = 30, metadata: dict | None = None) -> WorkerNode:
+def register_worker(
+    worker_id: str,
+    worker_kind: str,
+    *,
+    lease_seconds: int = 30,
+    metadata: dict | None = None,
+    execution_capability: WorkerExecutionCapability | None = None,
+) -> WorkerNode:
     if worker_kind not in {"lifecycle", "ingestion"}:
         raise ValueError(f"Unsupported worker kind: {worker_kind}")
     init_db()
     now = _now()
     expires = _after(lease_seconds)
+    stored_metadata = dict(metadata or {})
+    if WORKER_EXECUTION_IDENTITY_METADATA_KEY in stored_metadata:
+        raise ValueError("worker execution identity metadata is control-plane owned")
+    if execution_capability is not None:
+        if worker_kind != "lifecycle":
+            raise ValueError("only lifecycle workers may advertise V2 execution")
+        if execution_capability.worker_id != worker_id:
+            raise ValueError("worker capability identity mismatch")
     with connect() as conn:
+        if not is_postgres_url():
+            conn.execute("BEGIN IMMEDIATE")
+        lock_clause = " FOR UPDATE" if is_postgres_url() else ""
+        existing = conn.execute(
+            f"SELECT * FROM worker_nodes WHERE worker_id = ?{lock_clause}",
+            (worker_id,),
+        ).fetchone()
+        existing_registration = (
+            _execution_registration(loads(existing["metadata_json"], {}))
+            if existing is not None
+            else None
+        )
+        if existing_registration is not None:
+            if existing_registration.identity_status == "retired":
+                raise ValueError("retired worker identity cannot be reactivated")
+            if existing["status"] in {"draining", "stopped", "failed"}:
+                raise ValueError("inactive V2 worker identity cannot be reactivated")
+            if execution_capability is None:
+                raise ValueError("V2 worker identity cannot re-register as legacy")
+            if execution_capability != existing_registration.capability:
+                raise ValueError("worker execution capability is immutable")
+            registration = existing_registration
+        elif existing is not None and execution_capability is not None:
+            raise ValueError("legacy worker identity cannot be upgraded in place")
+        elif execution_capability is not None:
+            registration = build_worker_execution_registration(
+                execution_capability,
+                registered_at=now,
+            )
+        else:
+            registration = None
+        if registration is not None:
+            stored_metadata[WORKER_EXECUTION_IDENTITY_METADATA_KEY] = (
+                registration.model_dump(mode="json")
+            )
         conn.execute(
             """
             INSERT INTO worker_nodes
@@ -53,7 +110,7 @@ def register_worker(worker_id: str, worker_kind: str, *, lease_seconds: int = 30
                 metadata_json = excluded.metadata_json
             """,
             (worker_id, worker_kind, socket.gethostname()[:160], os.getpid(), WORLDPULSE_VERSION,
-             now, now, expires, dumps(metadata or {})),
+             now, now, expires, dumps(stored_metadata)),
         )
     return get_worker(worker_id)
 
@@ -71,9 +128,20 @@ def heartbeat_worker(
         raise ValueError(f"Unsupported heartbeat status: {status}")
     now = _now()
     with connect() as conn:
-        row = conn.execute("SELECT status FROM worker_nodes WHERE worker_id = ?", (worker_id,)).fetchone()
+        if not is_postgres_url():
+            conn.execute("BEGIN IMMEDIATE")
+        lock_clause = " FOR UPDATE" if is_postgres_url() else ""
+        row = conn.execute(
+            f"SELECT status, metadata_json FROM worker_nodes WHERE worker_id = ?{lock_clause}",
+            (worker_id,),
+        ).fetchone()
         if row is None:
             raise RuntimeError(f"Worker is not registered: {worker_id}")
+        registration = _execution_registration(loads(row["metadata_json"], {}))
+        if registration is not None and registration.identity_status == "retired":
+            raise ValueError("retired worker identity cannot heartbeat")
+        if registration is not None and row["status"] in {"stopped", "failed"}:
+            raise ValueError("inactive V2 worker identity cannot heartbeat")
         next_status = "draining" if row["status"] == "draining" and status in {"ready", "busy"} else status
         conn.execute(
             """
@@ -83,6 +151,57 @@ def heartbeat_worker(
             WHERE worker_id = ?
             """,
             (next_status, now, _after(lease_seconds), current_job_id, max(0, completed_increment), error_code, worker_id),
+        )
+    return get_worker(worker_id)
+
+
+def retire_worker_identity(worker_id: str) -> WorkerNode:
+    """Permanently retire one stopped V2 worker identity in the control plane."""
+
+    init_db()
+    now = _now()
+    with connect() as conn:
+        if not is_postgres_url():
+            conn.execute("BEGIN IMMEDIATE")
+        lock_clause = " FOR UPDATE" if is_postgres_url() else ""
+        row = conn.execute(
+            f"SELECT * FROM worker_nodes WHERE worker_id = ?{lock_clause}",
+            (worker_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"Unknown worker: {worker_id}")
+        registration = _execution_registration(loads(row["metadata_json"], {}))
+        if registration is None:
+            raise ValueError("legacy worker identity has no V2 registration to retire")
+        if registration.identity_status == "retired":
+            return _worker(row)
+        if row["status"] != "stopped" or row["current_job_id"] is not None:
+            raise ValueError("worker must be stopped and drained before retirement")
+        active_job = conn.execute(
+            """
+            SELECT run_id FROM run_jobs
+            WHERE worker_id = ? AND status IN ('preparing','running','pausing','cancelling')
+            LIMIT 1
+            """,
+            (worker_id,),
+        ).fetchone()
+        if active_job is not None:
+            raise ValueError("worker still owns an active lifecycle job")
+        metadata = loads(row["metadata_json"], {})
+        metadata[WORKER_EXECUTION_IDENTITY_METADATA_KEY] = (
+            retire_worker_execution_registration(
+                registration,
+                retired_at=now,
+            ).model_dump(mode="json")
+        )
+        conn.execute(
+            """
+            UPDATE worker_nodes
+            SET status = 'stopped', heartbeat_at = ?, lease_expires_at = ?,
+                current_job_id = NULL, metadata_json = ?
+            WHERE worker_id = ?
+            """,
+            (now, now, dumps(metadata), worker_id),
         )
     return get_worker(worker_id)
 
@@ -452,6 +571,17 @@ def _worker(row) -> WorkerNode:
         current_job_id=row["current_job_id"], jobs_completed=int(row["jobs_completed"] or 0),
         last_error_code=row["last_error_code"], metadata=loads(row["metadata_json"], {}), fresh=fresh,
     )
+
+
+def _execution_registration(
+    metadata: dict,
+) -> WorkerExecutionRegistration | None:
+    raw = metadata.get(WORKER_EXECUTION_IDENTITY_METADATA_KEY)
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("worker execution identity metadata is malformed")
+    return WorkerExecutionRegistration.model_validate(raw)
 
 
 def _quota(row) -> OrganizationQuota:

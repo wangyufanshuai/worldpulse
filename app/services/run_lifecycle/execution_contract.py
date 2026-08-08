@@ -40,6 +40,7 @@ ExecutionContractVersion = Annotated[str, Field(min_length=1, max_length=120)]
 SUPPORTED_WORKER_EXECUTION_CONTRACT_VERSIONS = frozenset(
     {KERNEL_MODE_EXECUTION_V2}
 )
+WORKER_EXECUTION_IDENTITY_METADATA_KEY = "execution_identity"
 
 
 class V2ExecutionPathNotEnabledError(RuntimeError):
@@ -134,6 +135,24 @@ class KernelModeFencingEpoch(BaseModel):
         return self
 
 
+class WorkerExecutionRegistration(BaseModel):
+    """Monotonic control-plane wrapper stored in worker metadata."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    schema_version: Literal["worker-execution-registration.v1"]
+    capability: WorkerExecutionCapability
+    identity_status: Literal["active", "retired"]
+    registered_at: str = Field(min_length=1, max_length=80)
+    retired_at: str | None = Field(min_length=1, max_length=80)
+
+    @model_validator(mode="after")
+    def validate_retirement_state(self) -> Self:
+        if (self.identity_status == "retired") != (self.retired_at is not None):
+            raise ValueError("worker retirement status/timestamp mismatch")
+        return self
+
+
 def build_worker_execution_capability(
     *,
     worker_id: str,
@@ -156,6 +175,40 @@ def build_worker_execution_capability(
                 }
             ),
         }
+    )
+
+
+def build_worker_execution_registration(
+    capability: WorkerExecutionCapability,
+    *,
+    registered_at: str,
+) -> WorkerExecutionRegistration:
+    """Create the one active registration allowed for a new worker identity."""
+
+    return WorkerExecutionRegistration(
+        schema_version="worker-execution-registration.v1",
+        capability=capability,
+        identity_status="active",
+        registered_at=registered_at,
+        retired_at=None,
+    )
+
+
+def retire_worker_execution_registration(
+    registration: WorkerExecutionRegistration,
+    *,
+    retired_at: str,
+) -> WorkerExecutionRegistration:
+    """Apply the only permitted registration-state transition."""
+
+    if registration.identity_status == "retired":
+        return registration
+    return WorkerExecutionRegistration(
+        schema_version=registration.schema_version,
+        capability=registration.capability,
+        identity_status="retired",
+        registered_at=registration.registered_at,
+        retired_at=retired_at,
     )
 
 
