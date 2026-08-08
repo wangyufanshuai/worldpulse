@@ -1111,6 +1111,96 @@ class ConsistencyAuditSource(ClosedSource):
         return _validate_inner_consistency_payload(self.inner_audit)
 
 
+def build_consistency_audit_source(
+    report: ConsistencyAuditReport,
+    *,
+    run_id: str,
+    role: ConsistencyRole,
+    tick: int | None,
+    evaluator_version: str,
+    agent_pack_id: str | None,
+    agent_pack_hash: str | None,
+    constraint_context_hash: str | None,
+    complete_proposals: tuple[AgentActionProposal, ...] = (),
+) -> ConsistencyAuditSource:
+    """Canonicalize one evaluated report into the closed V2 proof source."""
+
+    report_core = report.model_dump(
+        mode="json",
+        exclude={"run_id", "audit_hash", "created_at"},
+    )
+    if stable_hash(report_core) != report.audit_hash:
+        raise ValueError("Consistency source report audit hash mismatch")
+    if report.evaluator_version != evaluator_version:
+        raise ValueError("Consistency source evaluator version mismatch")
+    proposals = tuple(
+        sorted(complete_proposals, key=lambda item: item.proposal_id.encode("utf-8"))
+    )
+    proposal_ids = tuple(item.proposal_id for item in proposals)
+    if len(set(proposal_ids)) != len(proposal_ids):
+        raise ValueError("Consistency source proposals must have unique IDs")
+    for proposal in proposals:
+        if proposal.schema_version != "agent-action-proposal.v1" or proposal.run_id != run_id:
+            raise ValueError("Consistency source proposal identity mismatch")
+        target_ids = tuple(proposal.target_ids)
+        if target_ids != tuple(
+            sorted(set(target_ids), key=lambda value: value.encode("utf-8"))
+        ):
+            raise ValueError("Consistency source proposal targets are not canonical")
+    decisions_by_id = {
+        item.proposal_id: item for item in report.proposal_decisions
+    }
+    if len(decisions_by_id) != len(report.proposal_decisions) or set(
+        decisions_by_id
+    ) != set(proposal_ids):
+        raise ValueError("Consistency source decisions must equal proposal membership")
+    inner_core = {
+        **report_core,
+        "schema_version": "consistency-audit.v2",
+        "evaluator_version": evaluator_version,
+        "proposal_decisions": [
+            decisions_by_id[proposal_id].model_dump(mode="json")
+            for proposal_id in proposal_ids
+        ],
+    }
+    expected_inner_run_id = (
+        run_id
+        if role == "final"
+        else f"{run_id}:tick:{tick}"
+        if role == "admission"
+        else f"{run_id}:projection:{tick}"
+    )
+    inner_audit_hash = stable_hash(inner_core)
+    inner_report = ConsistencyAuditReport.model_validate(
+        {
+            **inner_core,
+            "run_id": expected_inner_run_id,
+            "audit_hash": inner_audit_hash,
+            "created_at": _synthetic_consistency_time(role, tick),
+        }
+    )
+    proposal_hashes = tuple(
+        stable_hash(item.model_dump(mode="json")) for item in proposals
+    )
+    outer = {
+        "schema_version": "consistency-audit.v3",
+        "run_id": run_id,
+        "role": role,
+        "tick": tick,
+        "evaluator_version": evaluator_version,
+        "agent_pack_id": agent_pack_id,
+        "agent_pack_hash": agent_pack_hash,
+        "constraint_context_hash": constraint_context_hash,
+        "proposal_ids": proposal_ids,
+        "proposal_hashes": proposal_hashes,
+        "inner_audit": inner_report.model_dump(mode="json"),
+        "inner_audit_hash": inner_audit_hash,
+    }
+    return ConsistencyAuditSource.model_validate(
+        {**outer, "audit_hash": stable_hash(outer)}
+    )
+
+
 class HybridModifierBundleSource(ClosedSource):
     schema_version: Literal["hybrid-modifier-bundle.v2"]
     run_id: str = Field(min_length=1, max_length=160)

@@ -465,10 +465,11 @@ def process_job(run_id: str) -> RunJobStatus:
             )
         lifecycle_fault_hook(phase, "after")
         phase_durations_ms[phase] = max(0, int((perf_counter() - phase_started) * 1000))
-        new_artifacts = [
-            item.artifact_id for item in repository.get_artifacts(run_id)
+        new_artifact_summaries = [
+            item for item in repository.get_artifacts(run_id)
             if item.artifact_id not in artifacts_before
         ]
+        new_artifacts = [item.artifact_id for item in new_artifact_summaries]
         step_output = {
             "phase": phase,
             "progress": progress,
@@ -478,6 +479,23 @@ def process_job(run_id: str) -> RunJobStatus:
             "result_run_id": result_run_id,
             "artifact_refs": new_artifacts,
         }
+        if execution_contract.is_v2:
+            step_output["artifact_bindings"] = [
+                {
+                    "artifact_id": item.artifact_id,
+                    "artifact_type": item.artifact_type,
+                    "schema_version": item.schema_version,
+                    "sha256": item.sha256,
+                    "attempt_id": item.attempt_id,
+                    "step_id": item.step_id,
+                    "artifact_version": item.artifact_version,
+                    "supersedes_artifact_id": item.supersedes_artifact_id,
+                }
+                for item in sorted(
+                    new_artifact_summaries,
+                    key=lambda value: value.artifact_id.encode("utf-8"),
+                )
+            ]
         previous_step = steps.complete_step(step.step_id, step_output, new_artifacts)
 
     if result is None:

@@ -2284,14 +2284,14 @@ exactly one job/attempt pair:
   recomputed fencing epoch equals `E` and the `fencing_epoch_hash` in both the
   candidate request and record.
 
-SQLite adapters use `BEGIN IMMEDIATE`, then perform both locked rereads and the
-predicate-bearing conditional update on that same connection. PostgreSQL
-adapters lock the job and attempt in the repository's fixed order with
-`SELECT ... FOR UPDATE` and perform the guarded update in that transaction;
-other adapters must provide an equivalent write-excluding primitive. The
-attempt predicate must participate in the CAS, for example through a guarded
-`EXISTS`, rather than being a stale application-side observation. Locks are
-held through commit.
+The V2.0 first-enablement PostgreSQL adapter locks the job, attempt and worker
+in the repository's fixed order with `SELECT ... FOR UPDATE` and performs the
+guarded update in that transaction. Direct SQLite is rejected by the rollout
+gate and has no production V2 finalization path. SQLite may be used only as a
+test double for transaction fault and ordering tests, where `BEGIN IMMEDIATE`
+provides the write-excluding primitive. The attempt predicate must participate
+in the CAS, for example through a guarded `EXISTS`, rather than being a stale
+application-side observation. Locks are held through commit.
 
 If the rows or CAS do not satisfy every predicate or its affected-row count is
 not exactly one, the transaction rolls back with zero writes. This includes
@@ -3409,8 +3409,9 @@ matrix**. The acceptance text does not redefine either contract.
     `replay_archive.v2` synchronously rebuilds and revalidates v2, and its one
     Run Control Unit of Work atomically owns research/projection writes,
     replay-step completion, lifecycle metrics, job completion and attempt
-    completion. SQLite and PostgreSQL concurrency tests exercise
-    GOV-FINALIZE-FENCE-1 for both phases: after A captures its stable fencing
+    completion. SQLite transaction-test doubles and PostgreSQL integration
+    tests exercise GOV-FINALIZE-FENCE-1 for both phases; SQLite never becomes a
+    production V2 backend. After A captures its stable fencing
     epoch and begins
     a long reconstruction, A's lease expires, B creates a new current attempt,
     and A's final CAS fails with zero writes, including when B uses the same
