@@ -318,6 +318,35 @@ def test_server_creation_gate_pins_complete_v2_profile_and_seed(
     assert created.runtime_profile_hash == stable_hash(created.runtime_profile)
 
 
+def test_v2_creation_rejects_agent_modes_until_their_adapter_is_enabled(
+    monkeypatch,
+    tmp_path,
+):
+    project_id = _setup(monkeypatch, tmp_path)
+    capability = _capability()
+    _simulate_postgres_session(monkeypatch, _identity_for(capability))
+    operations.register_worker(
+        capability.worker_id,
+        "lifecycle",
+        execution_capability=capability,
+    )
+    monkeypatch.setenv(worker_trust.V2_CREATION_ENABLED_ENV, "1")
+    monkeypatch.setenv(worker_trust.V2_MINIMUM_WORKER_GENERATION_ENV, "4")
+
+    with pytest.raises(V2ExecutionPathNotEnabledError, match="deterministic"):
+        repository.create_job(
+            project_id,
+            RunJobCreateRequest(engine_mode="hybrid", seed=11),
+        )
+
+    with project_store.connect() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) AS count FROM run_jobs WHERE project_id = ?",
+            (project_id,),
+        ).fetchone()
+    assert int(count["count"]) == 0
+
+
 def test_idempotent_v2_retry_does_not_reopen_worker_availability_gate(
     monkeypatch,
     tmp_path,

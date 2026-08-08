@@ -18,6 +18,7 @@ from app.services.simulation_kernel import KERNEL_SHADOW_ARTIFACT_SCHEMA
 from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
 from app.services.reviews import create_review_case
 from app.services.negotiation import run_negotiation
+from app.services.negotiation import build_consistency_audit_source
 
 from . import checkpoints, repository, steps
 from .execution_contract import (
@@ -30,6 +31,11 @@ from .kernel_shadow import (
     prepare_kernel_shadow_artifact,
     verify_persisted_kernel_shadow_artifact,
 )
+from .finalization_uow import (
+    commit_replay_archive_v2,
+    commit_report_generate_v2,
+)
+from .mode_execution_adapter import StoredModeExecutionAdapter
 
 
 simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
@@ -67,6 +73,9 @@ def process_one_queued_job(worker_id: str | None = None, *, prefer_evaluation: b
     try:
         return process_job(job.run_id)
     except Exception as exc:  # pragma: no cover - defensive audit path
+        current = repository.get_job(job.run_id)
+        if current.status == "completed":
+            return current
         steps.fail_active_step(job.run_id, exc)
         safe_error = redact_secrets(str(exc)) or "Lifecycle execution failed"
         current = repository.get_job(job.run_id)
@@ -87,14 +96,20 @@ def process_job(run_id: str) -> RunJobStatus:
         from app.services.calibration import process_calibration_job
         return process_calibration_job(run_id)
     execution_contract = select_job_execution_contract(job)
-    if execution_contract.is_v2:
+    if execution_contract.is_v2 and execution_contract.profile is None:
+        raise V2ExecutionPathNotEnabledError("V2 execution profile is incomplete")
+    if execution_contract.is_v2 and job.engine_mode != "deterministic":
         raise V2ExecutionPathNotEnabledError(
-            "kernel-mode-execution.v2 report/replay execution is not enabled on this worker"
+            "kernel-mode-execution.v2 Agent-capable execution is not enabled on this worker"
         )
     kernel_shadow_policy = kernel_shadow_policy_for_job(job)
     worker_id = job.worker_id
     projected_run_id = repository.get_projected_result_run_id(run_id)
     if projected_run_id:
+        if execution_contract.is_v2:
+            raise V2ExecutionPathNotEnabledError(
+                "terminal V2 duplicate verification is not enabled in this slice"
+            )
         if kernel_shadow_policy is not None:
             shadow_payload = repository.get_latest_artifact_content(
                 run_id, KERNEL_SHADOW_ARTIFACT_TYPE
@@ -175,6 +190,7 @@ def process_job(run_id: str) -> RunJobStatus:
 
     for index, (phase, progress, event_type, title, detail) in enumerate(PHASES[start_index:], start=start_index):
         phase_started = perf_counter()
+        step_committed_by_uow = False
         repository.heartbeat_job(run_id, worker_id)
         if worker_id:
             from app.services.operations import heartbeat_registered_worker
@@ -352,6 +368,23 @@ def process_job(run_id: str) -> RunJobStatus:
                 constraint_context=constraint_context,
             )
             project_consistency_audit(run_id, report, repository)
+            if execution_contract.is_v2:
+                consistency_source = build_consistency_audit_source(
+                    report,
+                    run_id=run_id,
+                    role="final",
+                    tick=None,
+                    evaluator_version=execution_contract.profile.evaluator_version,
+                    agent_pack_id=None,
+                    agent_pack_hash=None,
+                    constraint_context_hash=None,
+                )
+                repository.add_artifact(
+                    run_id,
+                    "consistency_audit",
+                    consistency_source.schema_version,
+                    consistency_source.model_dump(mode="json"),
+                )
             for decision in report.proposal_decisions:
                 if decision.outcome in {"constrained", "rejected", "expired"}:
                     create_review_case(
@@ -432,29 +465,53 @@ def process_job(run_id: str) -> RunJobStatus:
         elif phase == "report_generate":
             if result is None:
                 raise HTTPException(status_code=500, detail="Report projection requires a deterministic War Room result")
-            repository.add_artifact(
-                run_id,
-                "report_projection_manifest",
-                "report-projection-manifest.v1",
-                {
-                    "result_hash": stable_hash(result.model_dump(mode="json")),
-                    "workspace_compatible": True,
-                    "run_diff_compatible": True,
-                    "replay_pack_compatible": True,
-                },
-            )
+            if execution_contract.is_v2:
+                fencing_epoch = repository.capture_v2_fencing_epoch(run_id)
+                reconstruction = StoredModeExecutionAdapter().reconstruct(
+                    run_id,
+                    fencing_epoch=fencing_epoch,
+                )
+                commit_report_generate_v2(
+                    run_id,
+                    step_id=step.step_id,
+                    reconstruction=reconstruction,
+                )
+                step_committed_by_uow = True
+            else:
+                repository.add_artifact(
+                    run_id,
+                    "report_projection_manifest",
+                    "report-projection-manifest.v1",
+                    {
+                        "result_hash": stable_hash(result.model_dump(mode="json")),
+                        "workspace_compatible": True,
+                        "run_diff_compatible": True,
+                        "replay_pack_compatible": True,
+                    },
+                )
         elif phase == "replay_archive":
             if result is None:
                 raise HTTPException(status_code=500, detail="Replay archive requires a deterministic War Room result")
-            started = repository.get_job(run_id).started_at
-            persisted = persist_war_room_result(job.project_id, result, started=started, lifecycle_job_id=run_id)
-            result_run_id = persisted.latest_run.run_id if persisted.latest_run else None
-            repository.add_artifact(
-                run_id,
-                "projection",
-                "research-run-projection.v1",
-                {"project_id": job.project_id, "result_run_id": result_run_id, "workspace_compatible": True},
-            )
+            if execution_contract.is_v2:
+                fencing_epoch = repository.capture_v2_fencing_epoch(run_id)
+                finalized = commit_replay_archive_v2(
+                    run_id,
+                    step_id=step.step_id,
+                    fencing_epoch=fencing_epoch,
+                    phase_durations_ms=phase_durations_ms,
+                )
+                result_run_id = finalized.result_run_id
+                step_committed_by_uow = True
+            else:
+                started = repository.get_job(run_id).started_at
+                persisted = persist_war_room_result(job.project_id, result, started=started, lifecycle_job_id=run_id)
+                result_run_id = persisted.latest_run.run_id if persisted.latest_run else None
+                repository.add_artifact(
+                    run_id,
+                    "projection",
+                    "research-run-projection.v1",
+                    {"project_id": job.project_id, "result_run_id": result_run_id, "workspace_compatible": True},
+                )
             repository.append_event(
                 run_id,
                 "SNAPSHOT",
@@ -465,6 +522,9 @@ def process_job(run_id: str) -> RunJobStatus:
             )
         lifecycle_fault_hook(phase, "after")
         phase_durations_ms[phase] = max(0, int((perf_counter() - phase_started) * 1000))
+        if step_committed_by_uow:
+            previous_step = steps.get_step(step.step_id)
+            continue
         new_artifact_summaries = [
             item for item in repository.get_artifacts(run_id)
             if item.artifact_id not in artifacts_before
@@ -500,6 +560,13 @@ def process_job(run_id: str) -> RunJobStatus:
 
     if result is None:
         raise HTTPException(status_code=500, detail="Lifecycle executor did not produce a War Room result")
+    if execution_contract.is_v2:
+        completed = repository.get_job(run_id)
+        if completed.status != "completed" or not completed.result_run_id:
+            raise V2ExecutionPathNotEnabledError(
+                "V2 replay finalization did not reach its atomic terminal state"
+            )
+        return completed
     repository.add_artifact(
         run_id,
         "lifecycle_metrics",

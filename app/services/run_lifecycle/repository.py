@@ -127,6 +127,10 @@ def create_job(
                 now=now,
             )
             execution_contract = select_execution_contract(effective_runtime_profile)
+            if execution_contract.is_v2 and engine_mode != "deterministic":
+                raise V2ExecutionPathNotEnabledError(
+                    "V2 creation currently admits deterministic engine mode only"
+                )
             stored_seed = effective_seed if execution_contract.is_v2 else request.seed
             if execution_contract.is_v2:
                 scenario = _scenario_payload(request.scenario, effective_seed)

@@ -2534,6 +2534,9 @@ The rollout switch `WORLDPULSE_V2_CREATION_ENABLED` defaults to false and the
 strict positive `WORLDPULSE_V2_MINIMUM_WORKER_GENERATION` supplies `G`; both
 are deployment-owned process settings. Caller-supplied V2 profile keys and
 derived resolver outputs are removed before this server-owned pin is built.
+The first executable slice admits deterministic jobs only. Agent-capable modes
+fail creation until their complete production proof matrices and replay paths
+use the same finalization fence; they are never silently downgraded to V1.
 An idempotent retry of an already-created job validates and returns that exact
 stored job without reopening the time-varying worker-availability gate.
 

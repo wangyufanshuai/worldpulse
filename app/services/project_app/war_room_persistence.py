@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import uuid4
 
@@ -8,6 +9,7 @@ from app.core.models import (
     CausalGraphSnapshot,
     CompositeRisk,
     ProjectDetail,
+    ProjectAIReport,
     ResearchProject,
     ResearchRun,
     RiskComponent,
@@ -22,6 +24,14 @@ from app.services.rule_packs import trust_manifest_for_job
 from app.services.world_model import WORLD_MODEL_DISCLAIMER as WAR_ROOM_DISCLAIMER
 
 
+@dataclass(frozen=True)
+class PreparedWarRoomResult:
+    project: ResearchProject
+    run: ResearchRun
+    graph: CausalGraphSnapshot
+    report: ProjectAIReport
+
+
 def persist_war_room_result(
     project_id: str,
     result: WarRoomRun,
@@ -34,6 +44,34 @@ def persist_war_room_result(
     completed: str | None = None,
     lifecycle_job_id: str | None = None,
 ) -> ProjectDetail:
+    prepared = prepare_war_room_result(
+        project_id,
+        result,
+        project_loader=project_loader,
+        now_factory=now_factory,
+        run_id=run_id,
+        started=started,
+        completed=completed,
+        lifecycle_job_id=lifecycle_job_id,
+    )
+    with connect() as conn:
+        write_prepared_war_room_result(conn, prepared)
+    return detail_loader(project_id, run_id=prepared.run.run_id)
+
+
+def prepare_war_room_result(
+    project_id: str,
+    result: WarRoomRun,
+    *,
+    project_loader: Callable[[str], ResearchProject],
+    now_factory: Callable[[], str],
+    run_id: str | None = None,
+    started: str | None = None,
+    completed: str | None = None,
+    lifecycle_job_id: str | None = None,
+) -> PreparedWarRoomResult:
+    """Build the complete legacy-compatible research projection without writes."""
+
     project = project_loader(project_id)
     started = started or now_factory()
     completed = completed or now_factory()
@@ -71,9 +109,22 @@ def persist_war_room_result(
     )
     graph = build_war_room_graph_snapshot(project.project_id, run_id, result, now_factory)
     report = report_service.build_war_room(project, run, graph, result)
+    return PreparedWarRoomResult(
+        project=project,
+        run=run,
+        graph=graph,
+        report=report,
+    )
 
-    with connect() as conn:
-        conn.execute(
+
+def write_prepared_war_room_result(connection, prepared: PreparedWarRoomResult) -> None:
+    """Write one prepared projection using the caller-owned transaction."""
+
+    project = prepared.project
+    run = prepared.run
+    graph = prepared.graph
+    report = prepared.report
+    connection.execute(
             """
             INSERT INTO research_runs
             (run_id, project_id, status, started_at, completed_at, summary, data_snapshot, risk_snapshot, event_snapshot, simulation_snapshot, backtest_snapshot)
@@ -85,7 +136,7 @@ def persist_war_room_result(
                 dumps(run.simulation_snapshot), dumps(run.backtest_snapshot),
             ),
         )
-        conn.execute(
+    connection.execute(
             """
             INSERT INTO causal_graph_snapshots
             (graph_id, project_id, run_id, generated_at, nodes, edges, confidence, evidence_sources)
@@ -96,7 +147,7 @@ def persist_war_room_result(
                 dumps(graph.nodes), dumps(graph.edges), graph.confidence, dumps(graph.evidence_sources),
             ),
         )
-        conn.execute(
+    connection.execute(
             """
             INSERT INTO ai_reports
             (report_id, project_id, run_id, generated_at, mode, title, summary, key_findings, evidence, uncertainties, watch_signals, scenario_suggestions, citations, markdown, disclaimer)
@@ -111,11 +162,15 @@ def persist_war_room_result(
                 dumps([item.model_dump() for item in report.citations]), report.markdown, report.disclaimer,
             ),
         )
-        conn.execute(
+    connection.execute(
             "UPDATE research_projects SET status = ?, updated_at = ?, scenario_config = ? WHERE project_id = ?",
-            ("completed", completed, dumps(result.scenario.model_dump()), project.project_id),
+            (
+                "completed",
+                run.completed_at,
+                dumps(run.data_snapshot["scenario_config"]),
+                project.project_id,
+            ),
         )
-    return detail_loader(project.project_id, run_id=run_id)
 
 
 def _war_room_workflow_events(result: WarRoomRun, now_factory: Callable[[], str]) -> list[dict]:

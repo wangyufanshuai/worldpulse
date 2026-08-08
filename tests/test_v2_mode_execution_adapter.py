@@ -24,12 +24,18 @@ from app.services.run_lifecycle import finalization_uow
 from app.services.run_lifecycle.finalization_uow import (
     FinalizationFenceError,
     commit_report_generate_v2,
+    commit_replay_archive_v2,
 )
 from app.services.run_lifecycle.mode_execution_adapter import (
     ModeExecutionAdapterError,
     StoredModeExecutionAdapter,
 )
+from app.services.run_lifecycle.executor import process_job
 from app.services.simulation_runtime import simulation_runtime_service
+from app.services.project_app.service import (
+    war_room_replay_pack,
+    war_room_workspace,
+)
 
 
 def _setup(monkeypatch, tmp_path):
@@ -214,6 +220,50 @@ def _prepare_deterministic_sources(monkeypatch, tmp_path):
     return job, epoch, baseline_artifact, consistency_artifact, report_step
 
 
+def _commit_report_and_begin_replay(monkeypatch, tmp_path):
+    job, epoch, baseline, consistency, report_step = _prepare_deterministic_sources(
+        monkeypatch,
+        tmp_path,
+    )
+    reconstruction = StoredModeExecutionAdapter().reconstruct(
+        job.run_id,
+        fencing_epoch=epoch,
+    )
+    report = commit_report_generate_v2(
+        job.run_id,
+        step_id=report_step.step_id,
+        reconstruction=reconstruction,
+    )
+    repository.mark_phase(
+        job.run_id,
+        "replay_archive",
+        100,
+        "SNAPSHOT",
+        "Replay finalization",
+        "Test replay finalization boundary.",
+    )
+    repository.heartbeat_job(job.run_id, epoch.worker_id)
+    operations.heartbeat_worker(
+        epoch.worker_id,
+        status="busy",
+        current_job_id=job.run_id,
+    )
+    replay_epoch = repository.capture_v2_fencing_epoch(job.run_id)
+    assert replay_epoch == epoch
+    replay_step = steps.begin_step(
+        job.run_id,
+        "replay_archive",
+        job.current_attempt_id,
+        {
+            "run_id": job.run_id,
+            "phase": "replay_archive",
+            "fencing_epoch": replay_epoch.model_dump(mode="json"),
+        },
+        runtime_profile=job.runtime_profile,
+    )
+    return job, replay_epoch, baseline, consistency, report, replay_step
+
+
 def test_deterministic_stored_proof_reconstructs_authoritative_record(
     monkeypatch,
     tmp_path,
@@ -244,6 +294,35 @@ def test_deterministic_stored_proof_reconstructs_authoritative_record(
         fencing_epoch=epoch,
         caller_record=reconstructed.record,
     ) == reconstructed
+
+
+def test_deterministic_v2_lifecycle_completes_end_to_end(monkeypatch, tmp_path):
+    job, _capability = _setup(monkeypatch, tmp_path)
+
+    completed = process_job(job.run_id)
+
+    assert completed.status == "completed"
+    assert completed.result_run_id is not None
+    versions = {
+        item.step_key: item.step_version for item in steps.get_steps(job.run_id)
+    }
+    assert versions["report_generate"] == "report-generate.v2"
+    assert versions["replay_archive"] == "replay-archive.v2"
+    artifacts = repository.get_artifacts(job.run_id)
+    assert any(
+        item.artifact_type == "report_projection_manifest"
+        and item.schema_version == "report-projection-manifest.v2"
+        for item in artifacts
+    )
+    assert any(
+        item.artifact_type == "projection"
+        and item.schema_version == "research-run-projection.v1"
+        for item in artifacts
+    )
+    workspace = war_room_workspace(job.project_id, completed.result_run_id)
+    replay = war_room_replay_pack(job.project_id, completed.result_run_id)
+    assert workspace.run_id == completed.result_run_id
+    assert replay.run_id == completed.result_run_id
 
 
 def test_caller_record_is_comparison_only(monkeypatch, tmp_path):
@@ -540,3 +619,97 @@ def test_completed_report_is_not_recovered_from_a_new_current_attempt(
             (job.run_id,),
         ).fetchall()
     assert [item["artifact_id"] for item in manifests] == [committed.artifact_id]
+
+
+def test_replay_archive_v2_atomically_projects_and_completes_lifecycle(
+    monkeypatch,
+    tmp_path,
+):
+    job, epoch, _baseline, _consistency, _report, replay_step = (
+        _commit_report_and_begin_replay(monkeypatch, tmp_path)
+    )
+
+    completed = commit_replay_archive_v2(
+        job.run_id,
+        step_id=replay_step.step_id,
+        fencing_epoch=epoch,
+        phase_durations_ms={"report_generate": 3, "replay_archive": 5},
+    )
+
+    terminal = repository.get_job(job.run_id)
+    assert terminal.status == "completed"
+    assert terminal.result_run_id == completed.result_run_id
+    assert terminal.worker_id is None
+    stored_step = steps.get_step(replay_step.step_id)
+    assert stored_step.status == "completed"
+    assert set(stored_step.artifact_refs) == {
+        completed.projection_artifact_id,
+        completed.metrics_artifact_id,
+    }
+    with project_store.connect() as connection:
+        attempt = connection.execute(
+            "SELECT status FROM run_attempts WHERE attempt_id = ?",
+            (job.current_attempt_id,),
+        ).fetchone()
+        counts = connection.execute(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM research_runs WHERE run_id = ?) AS runs,
+              (SELECT COUNT(*) FROM causal_graph_snapshots WHERE run_id = ?) AS graphs,
+              (SELECT COUNT(*) FROM ai_reports WHERE run_id = ?) AS reports
+            """,
+            (completed.result_run_id, completed.result_run_id, completed.result_run_id),
+        ).fetchone()
+    assert attempt["status"] == "completed"
+    assert (int(counts["runs"]), int(counts["graphs"]), int(counts["reports"])) == (
+        1,
+        1,
+        1,
+    )
+    assert war_room_workspace(job.project_id, completed.result_run_id).run_id == completed.result_run_id
+    assert war_room_replay_pack(job.project_id, completed.result_run_id).run_id == completed.result_run_id
+
+
+def test_replay_fault_rolls_back_research_artifacts_and_terminal_states(
+    monkeypatch,
+    tmp_path,
+):
+    job, epoch, _baseline, _consistency, _report, replay_step = (
+        _commit_report_and_begin_replay(monkeypatch, tmp_path)
+    )
+
+    def fail_after_projection(moment: str) -> None:
+        if moment == "after_research_projection":
+            raise RuntimeError("fault after research projection")
+
+    monkeypatch.setattr(
+        finalization_uow,
+        "finalization_fault_hook",
+        fail_after_projection,
+    )
+    with pytest.raises(RuntimeError, match="fault after research projection"):
+        commit_replay_archive_v2(
+            job.run_id,
+            step_id=replay_step.step_id,
+            fencing_epoch=epoch,
+        )
+
+    assert repository.get_job(job.run_id).status == "running"
+    assert steps.get_step(replay_step.step_id).status == "running"
+    with project_store.connect() as connection:
+        counts = connection.execute(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM research_runs) AS runs,
+              (SELECT COUNT(*) FROM run_artifacts
+                WHERE run_id = ? AND artifact_type IN ('projection','lifecycle_metrics')) AS artifacts
+            """,
+            (job.run_id,),
+        ).fetchone()
+        attempt = connection.execute(
+            "SELECT status FROM run_attempts WHERE attempt_id = ?",
+            (job.current_attempt_id,),
+        ).fetchone()
+    assert int(counts["runs"]) == 0
+    assert int(counts["artifacts"]) == 0
+    assert attempt["status"] == "running"
