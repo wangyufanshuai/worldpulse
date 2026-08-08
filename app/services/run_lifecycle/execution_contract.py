@@ -8,7 +8,7 @@ retirement, credential and direct-SQLite hard fences are implemented.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -34,6 +34,12 @@ FORBIDDEN_DERIVED_PROFILE_KEYS = frozenset(
     {"agent_pack_id", "agent_pack_hash", "constraint_context_hash"}
 )
 ExecutionContractKind = Literal["legacy-v1", "kernel-mode-execution.v2"]
+SHA256_PATTERN = r"^[0-9a-f]{64}$"
+Digest = Annotated[str, Field(pattern=SHA256_PATTERN)]
+ExecutionContractVersion = Annotated[str, Field(min_length=1, max_length=120)]
+SUPPORTED_WORKER_EXECUTION_CONTRACT_VERSIONS = frozenset(
+    {KERNEL_MODE_EXECUTION_V2}
+)
 
 
 class V2ExecutionPathNotEnabledError(RuntimeError):
@@ -55,6 +61,128 @@ class KernelModeExecutionProfile(BaseModel):
         if type(self.effective_seed) is not int:
             raise ValueError("effective_seed must be a strict integer")
         return self
+
+
+class WorkerExecutionCapability(BaseModel):
+    """Immutable worker-generation and execution-contract registration facts."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    worker_id: str = Field(min_length=1, max_length=160)
+    worker_generation: int = Field(gt=0)
+    execution_contract_versions: tuple[ExecutionContractVersion, ...]
+    worker_capability_hash: Digest
+
+    @model_validator(mode="before")
+    @classmethod
+    def restore_json_version_tuple(cls, value: object) -> object:
+        if isinstance(value, dict) and isinstance(
+            value.get("execution_contract_versions"), list
+        ):
+            restored = dict(value)
+            restored["execution_contract_versions"] = tuple(
+                restored["execution_contract_versions"]
+            )
+            return restored
+        return value
+
+    @model_validator(mode="after")
+    def validate_capability(self) -> Self:
+        versions = self.execution_contract_versions
+        if not versions:
+            raise ValueError("execution_contract_versions must be non-empty")
+        expected_order = tuple(
+            sorted(set(versions), key=lambda value: value.encode("utf-8"))
+        )
+        if versions != expected_order:
+            raise ValueError(
+                "execution_contract_versions must be unique and UTF-8 sorted"
+            )
+        unknown = set(versions) - SUPPORTED_WORKER_EXECUTION_CONTRACT_VERSIONS
+        if unknown:
+            raise ValueError("worker advertises an unknown execution contract")
+        expected_hash = stable_hash({"execution_contract_versions": versions})
+        if self.worker_capability_hash != expected_hash:
+            raise ValueError("worker_capability_hash mismatch")
+        return self
+
+    @property
+    def supports_v2(self) -> bool:
+        return KERNEL_MODE_EXECUTION_V2 in self.execution_contract_versions
+
+
+class KernelModeFencingEpoch(BaseModel):
+    """Stable attempt/worker epoch captured by both V2 finalization phases."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    schema_version: Literal["kernel-mode-fencing-epoch.v1"]
+    current_attempt_id: str = Field(min_length=1, max_length=160)
+    attempt_number: int = Field(gt=0)
+    worker_id: str = Field(min_length=1, max_length=160)
+    minimum_worker_generation: int = Field(gt=0)
+    worker_capability_hash: Digest
+    fencing_epoch_hash: Digest
+
+    @model_validator(mode="after")
+    def validate_epoch_hash(self) -> Self:
+        expected_hash = stable_hash(
+            self.model_dump(mode="json", exclude={"fencing_epoch_hash"})
+        )
+        if self.fencing_epoch_hash != expected_hash:
+            raise ValueError("fencing_epoch_hash mismatch")
+        return self
+
+
+def build_worker_execution_capability(
+    *,
+    worker_id: str,
+    worker_generation: int,
+    execution_contract_versions: tuple[str, ...],
+) -> WorkerExecutionCapability:
+    """Build one canonical immutable worker capability snapshot."""
+
+    payload = {
+        "worker_id": worker_id,
+        "worker_generation": worker_generation,
+        "execution_contract_versions": execution_contract_versions,
+    }
+    return WorkerExecutionCapability.model_validate(
+        {
+            **payload,
+            "worker_capability_hash": stable_hash(
+                {
+                    "execution_contract_versions": execution_contract_versions,
+                }
+            ),
+        }
+    )
+
+
+def build_kernel_mode_fencing_epoch(
+    *,
+    current_attempt_id: str,
+    attempt_number: int,
+    worker: WorkerExecutionCapability,
+    minimum_worker_generation: int,
+) -> KernelModeFencingEpoch:
+    """Derive the stable V2 fencing epoch after claim eligibility checks."""
+
+    if worker.worker_generation < minimum_worker_generation:
+        raise ValueError("worker generation is below the pinned minimum")
+    if not worker.supports_v2:
+        raise ValueError("worker does not advertise kernel-mode-execution.v2")
+    payload = {
+        "schema_version": "kernel-mode-fencing-epoch.v1",
+        "current_attempt_id": current_attempt_id,
+        "attempt_number": attempt_number,
+        "worker_id": worker.worker_id,
+        "minimum_worker_generation": minimum_worker_generation,
+        "worker_capability_hash": worker.worker_capability_hash,
+    }
+    return KernelModeFencingEpoch.model_validate(
+        {**payload, "fencing_epoch_hash": stable_hash(payload)}
+    )
 
 
 @dataclass(frozen=True)
