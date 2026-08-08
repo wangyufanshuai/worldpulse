@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_EVEN
 from typing import Annotated, Literal, Self, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.negotiation_models import NegotiationMessage
 from app.services.agent_contract.models import AgentActionProposal, AgentConstraintContext
@@ -35,9 +35,11 @@ from app.services.simulation_kernel.mode_contracts import (
     ACClaims,
     ELClaims,
     FCClaims,
+    HRClaims,
     MBClaims,
     NDClaims,
     NPClaims,
+    NRClaims,
     PBClaims,
     PAClaims,
     PCClaims,
@@ -1646,6 +1648,120 @@ class NarrativeDiffusionSource(ClosedSource):
         )
 
 
+class HybridReplaySource(ClosedSource):
+    """Complete provider-free hybrid-replay-record.v2 source."""
+
+    schema_version: Literal["hybrid-replay-record.v2"]
+    run_id: str = Field(min_length=1, max_length=160)
+    engine_mode: Literal["hybrid", "hybrid_recorded"]
+    replay_source_kind: Literal["stored_only"]
+    provider_calls_required: Literal[0]
+    replay_hash: Digest
+    baseline_result_hash: Digest
+    final_result_hash: Digest
+    full_source_run_hash: Digest
+    proposal_batch_hash: Digest
+    consistency_audit_hash: Digest
+    modifier_bundle_hash: Digest
+    projection_audit_hash: Digest
+    ledger_hash: Digest
+    accepted_proposal_ids: tuple[str, ...]
+
+    @field_validator("provider_calls_required", mode="before")
+    @classmethod
+    def require_exact_zero_provider_calls(cls, value: object) -> object:
+        if type(value) is not int or value != 0:
+            raise ValueError("HR provider_calls_required must be the integer 0")
+        return value
+
+    @model_validator(mode="after")
+    def validate_complete_source(self) -> Self:
+        self.extract_claims()
+        expected_replay_hash = stable_hash(
+            self.model_dump(mode="json", exclude={"replay_hash"})
+        )
+        if self.replay_hash != expected_replay_hash:
+            raise ValueError("HR replay_hash mismatch")
+        return self
+
+    def extract_claims(self) -> HRClaims:
+        return HRClaims(
+            run_id=self.run_id,
+            engine_mode=self.engine_mode,
+            replay_source_kind=self.replay_source_kind,
+            provider_calls_required=self.provider_calls_required,
+            replay_hash=self.replay_hash,
+            baseline_result_hash=self.baseline_result_hash,
+            final_result_hash=self.final_result_hash,
+            full_source_run_hash=self.full_source_run_hash,
+            proposal_batch_hash=self.proposal_batch_hash,
+            consistency_audit_hash=self.consistency_audit_hash,
+            modifier_bundle_hash=self.modifier_bundle_hash,
+            projection_audit_hash=self.projection_audit_hash,
+            ledger_hash=self.ledger_hash,
+            accepted_proposal_ids=self.accepted_proposal_ids,
+        )
+
+
+class NegotiationReplaySource(ClosedSource):
+    """Complete provider-free negotiation-replay.v2 source."""
+
+    schema_version: Literal["negotiation-replay.v2"]
+    run_id: str = Field(min_length=1, max_length=160)
+    session_id: str = Field(min_length=1, max_length=160)
+    baseline_result_hash: Digest
+    final_result_hash: Digest
+    round_hashes: tuple[Digest, ...]
+    proposal_batch_hashes: tuple[Digest, ...]
+    admission_audit_hashes: tuple[Digest, ...]
+    ledger_hashes: tuple[Digest, ...]
+    eligibility_hashes: tuple[Digest, ...]
+    projection_consistency_hashes: tuple[Digest | None, ...]
+    modifier_bundle_hashes: tuple[Digest | None, ...]
+    diffusion_evidence_hashes: tuple[Digest, ...]
+    projection_audit_hashes: tuple[Digest | None, ...]
+    message_chain_head: Digest | None
+    provider_calls_required: Literal[0]
+    replay_hash: Digest
+
+    @field_validator("provider_calls_required", mode="before")
+    @classmethod
+    def require_exact_zero_provider_calls(cls, value: object) -> object:
+        if type(value) is not int or value != 0:
+            raise ValueError("NR provider_calls_required must be the integer 0")
+        return value
+
+    @model_validator(mode="after")
+    def validate_complete_source(self) -> Self:
+        self.extract_claims()
+        expected_replay_hash = stable_hash(
+            self.model_dump(mode="json", exclude={"replay_hash"})
+        )
+        if self.replay_hash != expected_replay_hash:
+            raise ValueError("NR replay_hash mismatch")
+        return self
+
+    def extract_claims(self) -> NRClaims:
+        return NRClaims(
+            run_id=self.run_id,
+            session_id=self.session_id,
+            replay_hash=self.replay_hash,
+            baseline_result_hash=self.baseline_result_hash,
+            final_result_hash=self.final_result_hash,
+            round_hashes=self.round_hashes,
+            proposal_batch_hashes=self.proposal_batch_hashes,
+            admission_audit_hashes=self.admission_audit_hashes,
+            ledger_hashes=self.ledger_hashes,
+            eligibility_hashes=self.eligibility_hashes,
+            projection_consistency_hashes=self.projection_consistency_hashes,
+            modifier_bundle_hashes=self.modifier_bundle_hashes,
+            diffusion_evidence_hashes=self.diffusion_evidence_hashes,
+            projection_audit_hashes=self.projection_audit_hashes,
+            message_chain_head=self.message_chain_head,
+            provider_calls_required=self.provider_calls_required,
+        )
+
+
 def extract_ar_claims(
     payload: Mapping[str, object],
     *,
@@ -2100,4 +2216,32 @@ def extract_nd_claims(
         or source.diffusion_request.seed != effective_seed
     ):
         raise ValueError("ND authoritative coordinate/seed binding mismatch")
+    return source.extract_claims()
+
+
+def extract_hr_claims(
+    payload: Mapping[str, object],
+    *,
+    run_id: str,
+    engine_mode: Literal["hybrid", "hybrid_recorded"],
+) -> HRClaims:
+    """Verify the complete hybrid replay manifest and authoritative mode."""
+
+    source = HybridReplaySource.model_validate(dict(payload))
+    if source.run_id != run_id or source.engine_mode != engine_mode:
+        raise ValueError("HR authoritative run/mode binding mismatch")
+    return source.extract_claims()
+
+
+def extract_nr_claims(
+    payload: Mapping[str, object],
+    *,
+    run_id: str,
+    session_id: str,
+) -> NRClaims:
+    """Verify the complete negotiation replay manifest and coordinates."""
+
+    source = NegotiationReplaySource.model_validate(dict(payload))
+    if source.run_id != run_id or source.session_id != session_id:
+        raise ValueError("NR authoritative run/session binding mismatch")
     return source.extract_claims()
