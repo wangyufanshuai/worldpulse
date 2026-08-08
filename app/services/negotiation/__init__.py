@@ -12,6 +12,7 @@ from .proof_sources import (
     NegotiationEligibilitySource,
     NegotiationProposalBatchSource,
     NarrativeDiffusionSource,
+    NegotiationRoundSource,
     ProjectionAuditSource,
     extract_ar_claims,
     extract_cl_claims,
@@ -22,6 +23,7 @@ from .proof_sources import (
     extract_np_claims,
     extract_pa_claims,
     extract_pb_claims,
+    extract_rr_claims,
     mock_agent_batch_source_hash,
 )
 from .repository import NegotiationRepository
@@ -53,6 +55,7 @@ __all__ = [
     "NegotiationEligibilitySource",
     "NegotiationProposalBatchSource",
     "NarrativeDiffusionSource",
+    "NegotiationRoundSource",
     "ProjectionAuditSource",
     "extract_ar_claims",
     "extract_cl_claims",
@@ -63,6 +66,7 @@ __all__ = [
     "extract_np_claims",
     "extract_pa_claims",
     "extract_pb_claims",
+    "extract_rr_claims",
     "mock_agent_batch_source_hash",
     "negotiation_read_service",
     "replay_negotiation_from_storage",

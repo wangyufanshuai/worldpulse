@@ -15,6 +15,7 @@ from typing import Annotated, Literal, Self, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.negotiation_models import NegotiationMessage
 from app.services.agent_contract.models import AgentActionProposal, AgentConstraintContext
 from app.services.agent_runtime.models import AgentInvocationAudit
 from app.services.consistency.hashing import stable_hash
@@ -48,6 +49,7 @@ from app.services.simulation_kernel.mode_contracts import (
     NegotiationProposalSourceTuple,
     ModifierReference,
     ProjectionRecordClaimTuple,
+    RRClaims,
     ToneDeltaTuple,
 )
 
@@ -415,6 +417,249 @@ def _validated_kernel_proposal_batch_vectors(
             )
         )
     return tuple(item[0] for item in pairs), tuple(item[1] for item in pairs)
+
+
+class NegotiationRoundSource(ClosedSource):
+    """Complete negotiation-round.v2 source admitted by the RR extractor."""
+
+    schema_version: Literal["negotiation-round.v2"]
+    run_id: str = Field(min_length=1, max_length=160)
+    session_id: str = Field(min_length=1, max_length=160)
+    round_id: str = Field(min_length=1, max_length=160)
+    tick: int = Field(ge=1, le=6)
+    input: dict[str, object]
+    input_hash: Digest
+    output: dict[str, object]
+    output_hash: Digest
+    round_hash: Digest
+
+    @model_validator(mode="after")
+    def validate_complete_source(self) -> Self:
+        input_payload, messages = _validated_round_input(self)
+        output_payload = _validated_round_output(self)
+        expected_round_id = (
+            "round_"
+            + stable_hash({"session": self.session_id, "tick": self.tick})[:20]
+        )
+        if self.round_id != expected_round_id:
+            raise ValueError("RR round_id is not the canonical session/tick ID")
+        expected_input_hash = stable_hash(
+            {
+                "schema_version": self.schema_version,
+                "run_id": self.run_id,
+                "session_id": self.session_id,
+                "round_id": self.round_id,
+                "tick": self.tick,
+                "input": input_payload,
+            }
+        )
+        expected_output_hash = stable_hash(
+            {
+                "schema_version": self.schema_version,
+                "run_id": self.run_id,
+                "session_id": self.session_id,
+                "round_id": self.round_id,
+                "tick": self.tick,
+                "output": output_payload,
+            }
+        )
+        if self.input_hash != expected_input_hash:
+            raise ValueError("RR input_hash mismatch")
+        if self.output_hash != expected_output_hash:
+            raise ValueError("RR output_hash mismatch")
+        expected_round_hash = stable_hash(
+            {
+                "schema_version": self.schema_version,
+                "run_id": self.run_id,
+                "session_id": self.session_id,
+                "round_id": self.round_id,
+                "tick": self.tick,
+                "input_hash": self.input_hash,
+                "output_hash": self.output_hash,
+            }
+        )
+        if self.round_hash != expected_round_hash:
+            raise ValueError("RR round_hash mismatch")
+        if len(messages) > 1:
+            for previous, current in zip(messages, messages[1:], strict=True):
+                if current.previous_hash != previous.message_hash:
+                    raise ValueError("RR local message predecessor chain mismatch")
+        return self
+
+
+def _validated_round_message(
+    raw: Mapping[str, object], *, source: NegotiationRoundSource
+) -> tuple[NegotiationMessage, dict[str, object], AgentActionProposal | None]:
+    message_payload = dict(raw)
+    _require_exact_keys(
+        message_payload,
+        set(NegotiationMessage.model_fields),
+        "RR message",
+    )
+    restored = _restore_lists(message_payload)
+    message = NegotiationMessage.model_validate(restored, strict=True)
+    canonical = message.model_dump(mode="json")
+    if stable_hash({"message": restored}) != stable_hash({"message": canonical}):
+        raise ValueError("RR message must already be canonical")
+    if message.session_id != source.session_id or message.round_id != source.round_id:
+        raise ValueError("RR message session/round coordinate mismatch")
+    if message.tick != source.tick:
+        raise ValueError("RR message tick mismatch")
+    if type(message.seq) is not int or message.seq < 1:
+        raise ValueError("RR message seq must be a strict positive integer")
+    if message.latency_ms < 0 or message.estimated_tokens < 0:
+        raise ValueError("RR message runtime counters must be non-negative")
+    payload = message.payload
+    proposal: AgentActionProposal | None = None
+    if message.proposal_id is None:
+        if payload != {}:
+            raise ValueError("RR message without proposal must have empty payload")
+    else:
+        if set(payload) != {"proposal"} or not isinstance(payload["proposal"], dict):
+            raise ValueError("RR proposal message must have one complete proposal")
+        proposal, canonical_proposal = _validated_complete_proposal(
+            payload["proposal"],
+            run_id=source.run_id,
+            field_name="RR message proposal",
+        )
+        if proposal.proposal_id != message.proposal_id:
+            raise ValueError("RR message proposal_id mismatch")
+        if payload["proposal"] != canonical_proposal:
+            raise ValueError("RR message proposal payload mismatch")
+    expected_hash = stable_hash(
+        {
+            "tick": message.tick,
+            "seq": message.seq,
+            "sender_agent_id": message.sender_agent_id,
+            "recipient_agent_ids": message.recipient_agent_ids,
+            "message_type": message.message_type,
+            "visibility": message.visibility,
+            "parent_message_id": message.parent_message_id,
+            "proposal": proposal.model_dump(mode="json") if proposal is not None else None,
+            "narrative": message.narrative,
+            "previous_hash": message.previous_hash,
+        }
+    )
+    if message.message_hash != expected_hash:
+        raise ValueError("RR message_hash mismatch")
+    if message.message_id != f"msg_{expected_hash[:20]}":
+        raise ValueError("RR message_id mismatch")
+    return message, canonical, proposal
+
+
+def _validated_round_input(
+    source: NegotiationRoundSource,
+) -> tuple[dict[str, object], tuple[NegotiationMessage, ...]]:
+    expected_keys = {
+        "before_result_hash",
+        "message_tuples",
+        "messages",
+        "messages_hash",
+        "message_count",
+        "proposal_ids",
+        "accepted_proposal_ids",
+        "proposal_batch_hash",
+        "admission_audit_hash",
+        "ledger_hash",
+        "eligibility_hash",
+        "eligible_proposal_ids",
+    }
+    raw = dict(source.input)
+    _require_exact_keys(raw, expected_keys, "RR input")
+    restored = _restore_lists(raw)
+    if not isinstance(restored, dict):
+        raise ValueError("RR input must be an object")
+    messages_raw = restored["messages"]
+    tuples_raw = restored["message_tuples"]
+    if not isinstance(messages_raw, list) or not isinstance(tuples_raw, list):
+        raise ValueError("RR message vectors must be arrays")
+    parsed = tuple(
+        _validated_round_message(item, source=source)
+        for item in messages_raw
+        if isinstance(item, dict)
+    )
+    if len(parsed) != len(messages_raw):
+        raise ValueError("RR messages must be complete objects")
+    messages = tuple(item[0] for item in parsed)
+    canonical_messages = [item[1] for item in parsed]
+    message_tuples = [
+        [item.seq, item.message_id, item.message_hash] for item in messages
+    ]
+    if tuples_raw != message_tuples:
+        raise ValueError("RR message tuples must align with complete messages")
+    if (
+        type(restored["message_count"]) is not int
+        or restored["message_count"] < 0
+        or restored["message_count"] != len(messages)
+    ):
+        raise ValueError("RR message_count mismatch")
+    sequences = tuple(item.seq for item in messages)
+    if sequences and sequences != tuple(range(sequences[0], sequences[0] + len(sequences))):
+        raise ValueError("RR local message seq must be contiguous")
+    proposal_ids = tuple(
+        sorted(
+            (item[2].proposal_id for item in parsed if item[2] is not None),
+            key=lambda value: value.encode("utf-8"),
+        )
+    )
+    for name in ("proposal_ids", "accepted_proposal_ids", "eligible_proposal_ids"):
+        raw_values = restored[name]
+        if not isinstance(raw_values, list) or any(
+            not isinstance(value, str) for value in raw_values
+        ):
+            raise ValueError(f"RR {name} must be an array of strings")
+    stored_proposal_ids = tuple(restored["proposal_ids"])
+    if stored_proposal_ids != proposal_ids or len(
+        set(stored_proposal_ids)
+    ) != len(stored_proposal_ids):
+        raise ValueError("RR proposal_ids must equal current-message proposals")
+    for name in ("accepted_proposal_ids", "eligible_proposal_ids"):
+        values = tuple(restored[name])
+        if values != tuple(sorted(set(values), key=lambda value: value.encode("utf-8"))):
+            raise ValueError(f"RR {name} must be unique and ascending")
+    expected_messages_hash = stable_hash(
+        {
+            "schema_version": source.schema_version,
+            "run_id": source.run_id,
+            "session_id": source.session_id,
+            "tick": source.tick,
+            "message_tuples": message_tuples,
+        }
+    )
+    if restored["messages_hash"] != expected_messages_hash:
+        raise ValueError("RR messages_hash mismatch")
+    canonical = dict(restored)
+    canonical["messages"] = canonical_messages
+    canonical["message_tuples"] = message_tuples
+    return canonical, messages
+
+
+def _validated_round_output(source: NegotiationRoundSource) -> dict[str, object]:
+    expected_keys = {
+        "projection_consistency_hash",
+        "modifier_bundle_hash",
+        "diffusion_evidence_hash",
+        "projection_audit_hash",
+        "no_projection_reason",
+        "after_result_hash",
+    }
+    raw = dict(source.output)
+    _require_exact_keys(raw, expected_keys, "RR output")
+    restored = _restore_lists(raw)
+    if not isinstance(restored, dict):
+        raise ValueError("RR output must be an object")
+    projected = restored["projection_consistency_hash"] is not None
+    conditional = (
+        restored["projection_consistency_hash"],
+        restored["modifier_bundle_hash"],
+        restored["projection_audit_hash"],
+    )
+    if projected:
+        if any(value is None for value in conditional) or restored["no_projection_reason"] is not None:
+            raise ValueError("RR projected output binding is incomplete")
+    elif any(value is not None for value in conditional) or restored["no_projection_reason"] != "no_projection":
+        raise ValueError("RR no-projection output binding is invalid")
+    return restored
 
 
 class NegotiationProposalBatchSource(ClosedSource):
@@ -1477,6 +1722,86 @@ def extract_pb_claims(
         if source.source_mock_batch_hash != mock_agent_batch_source_hash(mock_source):
             raise ValueError("PB mock_batch source binding mismatch")
     return source.extract_claims()
+
+
+def extract_rr_claims(
+    payload: Mapping[str, object],
+    *,
+    run_id: str,
+    session_id: str,
+    tick: int,
+    expected_first_seq: int,
+    expected_previous_hash: str | None,
+) -> RRClaims:
+    """Verify a complete round and bind its first message to the prior RR."""
+
+    if type(expected_first_seq) is not int or expected_first_seq < 1:
+        raise ValueError("RR expected_first_seq must be a strict positive integer")
+    if expected_previous_hash is not None and (
+        not isinstance(expected_previous_hash, str)
+        or len(expected_previous_hash) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in expected_previous_hash
+        )
+    ):
+        raise ValueError("RR expected_previous_hash must be a lowercase SHA-256 digest")
+    if (expected_first_seq == 1) != (expected_previous_hash is None):
+        raise ValueError("RR authoritative message boundary is inconsistent")
+    if type(tick) is not int or tick < 1 or tick > 6:
+        raise ValueError("RR authoritative tick must be a strict integer in 1..6")
+    if tick == 1 and (
+        expected_first_seq != 1 or expected_previous_hash is not None
+    ):
+        raise ValueError("RR first tick must begin at the message-chain origin")
+
+    source = NegotiationRoundSource.model_validate(dict(payload))
+    if (
+        source.run_id != run_id
+        or source.session_id != session_id
+        or source.tick != tick
+    ):
+        raise ValueError("RR authoritative coordinate binding mismatch")
+
+    input_payload, messages = _validated_round_input(source)
+    output_payload = _validated_round_output(source)
+    if messages and (
+        messages[0].seq != expected_first_seq
+        or messages[0].previous_hash != expected_previous_hash
+    ):
+        raise ValueError("RR first message does not extend the authenticated chain")
+
+    return RRClaims.model_validate(
+        {
+            "run_id": source.run_id,
+            "session_id": source.session_id,
+            "round_id": source.round_id,
+            "tick": source.tick,
+            "input_hash": source.input_hash,
+            "output_hash": source.output_hash,
+            "round_hash": source.round_hash,
+            "before_result_hash": input_payload["before_result_hash"],
+            "after_result_hash": output_payload["after_result_hash"],
+            "message_tuples": input_payload["message_tuples"],
+            "messages_hash": input_payload["messages_hash"],
+            "message_count": input_payload["message_count"],
+            "proposal_ids": input_payload["proposal_ids"],
+            "accepted_proposal_ids": input_payload["accepted_proposal_ids"],
+            "proposal_batch_hash": input_payload["proposal_batch_hash"],
+            "admission_audit_hash": input_payload["admission_audit_hash"],
+            "ledger_hash": input_payload["ledger_hash"],
+            "eligibility_hash": input_payload["eligibility_hash"],
+            "eligible_proposal_ids": input_payload["eligible_proposal_ids"],
+            "projection_consistency_hash": output_payload[
+                "projection_consistency_hash"
+            ],
+            "modifier_bundle_hash": output_payload["modifier_bundle_hash"],
+            "diffusion_evidence_hash": output_payload["diffusion_evidence_hash"],
+            "projection_audit_hash": output_payload["projection_audit_hash"],
+            "no_projection_reason": output_payload["no_projection_reason"],
+        },
+        strict=True,
+    )
 
 
 def extract_np_claims(
