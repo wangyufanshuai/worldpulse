@@ -194,7 +194,16 @@ def process_job(run_id: str) -> RunJobStatus:
             "rule_pack_id": job.rule_pack_id,
             "rule_pack_hash": job.rule_pack_hash,
         }
-        step = steps.begin_step(run_id, phase, attempt_id, step_input)
+        if execution_contract.is_v2 and phase in {"report_generate", "replay_archive"}:
+            fencing_epoch = repository.capture_v2_fencing_epoch(run_id)
+            step_input["fencing_epoch"] = fencing_epoch.model_dump(mode="json")
+        step = steps.begin_step(
+            run_id,
+            phase,
+            attempt_id,
+            step_input,
+            runtime_profile=job.runtime_profile,
+        )
         artifacts_before = {item.artifact_id for item in repository.get_artifacts(run_id)}
         lifecycle_fault_hook(phase, "before")
         repository.mark_phase(run_id, phase, progress, event_type, title, detail, payload={"phase_index": index, "progress": progress})

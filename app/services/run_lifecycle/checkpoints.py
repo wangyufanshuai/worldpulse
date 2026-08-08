@@ -10,6 +10,7 @@ from app.services.consistency.models import AgentActionProjectionAudit
 from app.services.consistency.projection import verify_action_projection_audit
 
 from . import repository, steps
+from .execution_contract import select_job_execution_contract
 from .kernel_shadow import (
     KERNEL_SHADOW_ARTIFACT_TYPE,
     kernel_shadow_policy_for_job,
@@ -42,15 +43,20 @@ class CheckpointState:
 def load_verified_checkpoint(job: RunJobStatus) -> CheckpointState:
     scenario_hash = stable_hash(job.scenario)
     all_steps = steps.get_steps(job.run_id)
+    execution_contract = select_job_execution_contract(job)
     state = CheckpointState()
     previous: RunStepRecord | None = None
 
-    for definition in steps.STEP_DEFINITIONS:
+    for definition in steps.step_definitions_for_runtime_profile(job.runtime_profile):
         candidates = [
             item for item in all_steps
             if item.step_key == definition.key
             and item.step_version == definition.version
             and item.status == "completed"
+            and (
+                not execution_contract.is_v2
+                or item.attempt_id == job.current_attempt_id
+            )
         ]
         selected = next(
             (

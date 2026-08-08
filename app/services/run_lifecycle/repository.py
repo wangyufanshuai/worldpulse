@@ -23,7 +23,9 @@ from . import artifacts as artifact_store
 from . import read_models
 from .integrity import artifact_digest as _artifact_digest
 from .execution_contract import (
+    KernelModeFencingEpoch,
     V2ExecutionPathNotEnabledError,
+    build_kernel_mode_fencing_epoch,
     pin_legacy_execution_contract,
     select_execution_contract,
 )
@@ -314,6 +316,16 @@ def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300, pr
         )
         attempt_number = int(row["attempt_count"] or 0) + 1
         attempt_id = f"attempt_{uuid4().hex}"
+        fencing_epoch = (
+            build_kernel_mode_fencing_epoch(
+                current_attempt_id=attempt_id,
+                attempt_number=attempt_number,
+                worker=worker_capability,
+                minimum_worker_generation=execution_contract.profile.minimum_worker_generation,
+            )
+            if worker_capability is not None and execution_contract.profile is not None
+            else None
+        )
         updated = conn.execute(
             """
             UPDATE run_jobs
@@ -356,13 +368,32 @@ def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300, pr
                 {
                     "worker_generation": worker_capability.worker_generation,
                     "worker_capability_hash": worker_capability.worker_capability_hash,
+                    "fencing_epoch": fencing_epoch.model_dump(mode="json"),
                 }
-                if worker_capability is not None
+                if worker_capability is not None and fencing_epoch is not None
                 else {}
             ),
         },
     )
     return get_job(row["run_id"])
+
+
+def capture_v2_fencing_epoch(
+    run_id: str,
+    *,
+    expected_fencing_epoch_hash: str | None = None,
+) -> KernelModeFencingEpoch:
+    """Capture the current authenticated V2 epoch before long reconstruction."""
+
+    init_db()
+    with connect() as conn:
+        return worker_trust.capture_v2_fencing_epoch(
+            conn,
+            run_id=run_id,
+            now=now_iso(),
+            lock_rows=False,
+            expected_fencing_epoch_hash=expected_fencing_epoch_hash,
+        )
 
 
 def heartbeat_job(run_id: str, worker_id: str | None, *, lease_seconds: int = 300) -> RunJobStatus:

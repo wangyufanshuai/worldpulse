@@ -7,7 +7,7 @@ from app.core.models import RunJobCreateRequest, WarRoomScenarioRequest
 from app.main import app
 from app.services import project_store
 from app.services.consistency.hashing import stable_hash
-from app.services.run_lifecycle import repository
+from app.services.run_lifecycle import checkpoints, repository
 from app.services.run_lifecycle.execution_contract import (
     KERNEL_MODE_EXECUTION_V2,
     V2ExecutionPathNotEnabledError,
@@ -15,7 +15,11 @@ from app.services.run_lifecycle.execution_contract import (
     report_replay_step_versions,
     select_execution_contract,
 )
-from app.services.run_lifecycle.steps import step_definitions_for_runtime_profile
+from app.services.run_lifecycle.steps import (
+    begin_step,
+    complete_step,
+    step_definitions_for_runtime_profile,
+)
 
 
 def _v2_profile(*, seed: int = 0) -> dict:
@@ -90,6 +94,73 @@ def test_step_selection_never_mixes_v1_and_v2_report_replay_versions():
         for key, version in treatment.items()
         if key not in {"report_generate", "replay_archive"}
     }
+
+
+def test_persisted_step_uses_runtime_profile_selected_version(monkeypatch, tmp_path):
+    project_id = _setup_project(monkeypatch, tmp_path)
+    created = repository.create_job(project_id, RunJobCreateRequest(seed=23))
+    legacy = begin_step(
+        created.run_id,
+        "report_generate",
+        "attempt-legacy-version",
+        {"kind": "legacy"},
+    )
+    treatment = begin_step(
+        created.run_id,
+        "report_generate",
+        "attempt-v2-version",
+        {"kind": "v2"},
+        runtime_profile=_v2_profile(seed=23),
+    )
+
+    assert legacy.step_version == "report-generate.v1"
+    assert treatment.step_version == "report-generate.v2"
+
+
+def test_v2_checkpoint_never_restores_a_prior_attempt_step(monkeypatch, tmp_path):
+    project_id = _setup_project(monkeypatch, tmp_path)
+    created = repository.create_job(project_id, RunJobCreateRequest(seed=29))
+    profile = _v2_profile(seed=29)
+    with project_store.connect() as connection:
+        connection.execute(
+            """
+            UPDATE run_jobs
+            SET runtime_profile_json = ?, runtime_profile_hash = ?,
+                current_attempt_id = 'attempt-current'
+            WHERE run_id = ?
+            """,
+            (project_store.dumps(profile), stable_hash(profile), created.run_id),
+        )
+    step_input = {
+        "run_id": created.run_id,
+        "engine_mode": created.engine_mode,
+        "scenario_hash": stable_hash(created.scenario),
+        "previous_step_id": None,
+        "previous_output_hash": None,
+        "previous_artifact_refs": [],
+    }
+    prior = begin_step(
+        created.run_id,
+        "scenario_compile",
+        "attempt-prior",
+        step_input,
+        runtime_profile=profile,
+    )
+    complete_step(prior.step_id, {"artifact_refs": []}, [])
+
+    job = repository.get_job(created.run_id)
+    assert checkpoints.load_verified_checkpoint(job).completed_steps == []
+
+    current = begin_step(
+        created.run_id,
+        "scenario_compile",
+        "attempt-current",
+        step_input,
+        runtime_profile=profile,
+    )
+    complete_step(current.step_id, {"artifact_refs": []}, [])
+    restored = checkpoints.load_verified_checkpoint(job)
+    assert [item.step_id for item in restored.completed_steps] == [current.step_id]
 
 
 def test_normal_creation_strips_caller_v2_and_derived_profile_keys(monkeypatch, tmp_path):

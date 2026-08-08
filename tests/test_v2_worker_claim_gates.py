@@ -163,6 +163,38 @@ def test_authenticated_postgres_worker_claims_v2_atomically(monkeypatch, tmp_pat
     assert worker.status == "busy"
     assert worker.current_job_id == queued.run_id
 
+    repository.mark_phase(
+        queued.run_id,
+        "report_generate",
+        88,
+        "SNAPSHOT",
+        "V2 fencing capture",
+        "Test-only transition to the running report boundary.",
+    )
+    captured = repository.capture_v2_fencing_epoch(queued.run_id)
+    claim_event = next(
+        item
+        for item in repository.get_events(queued.run_id)
+        if item.title == "Worker claimed run"
+    )
+    assert claim_event.payload["fencing_epoch"] == captured.model_dump(mode="json")
+
+    repository.heartbeat_job(queued.run_id, capability.worker_id)
+    operations.heartbeat_worker(
+        capability.worker_id,
+        status="busy",
+        current_job_id=queued.run_id,
+    )
+    assert repository.capture_v2_fencing_epoch(
+        queued.run_id,
+        expected_fencing_epoch_hash=captured.fencing_epoch_hash,
+    ) == captured
+    with pytest.raises(V2ExecutionPathNotEnabledError, match="epoch changed"):
+        repository.capture_v2_fencing_epoch(
+            queued.run_id,
+            expected_fencing_epoch_hash="f" * 64,
+        )
+
 
 def test_wrong_postgres_principal_refuses_v2_claim_with_zero_writes(
     monkeypatch,

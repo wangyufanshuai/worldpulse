@@ -6,6 +6,7 @@ from collections.abc import Mapping
 import os
 
 from app.db import postgres as postgres_db
+from app.services.consistency.hashing import stable_hash
 from app.services.consistency.models import CONSISTENCY_EVALUATOR_VERSION
 from app.services.project_store import loads
 from app.services.simulation_kernel.resolver_contracts import (
@@ -17,14 +18,17 @@ from .execution_contract import (
     KERNEL_MODE_EXECUTION_V2,
     WORKER_EXECUTION_IDENTITY_METADATA_KEY,
     ExecutionContractSelection,
+    KernelModeFencingEpoch,
     UncredentialedWorkerExecutionRegistration,
     V2ExecutionPathNotEnabledError,
     WorkerExecutionCapability,
     WorkerExecutionRegistration,
     build_worker_execution_capability,
+    build_kernel_mode_fencing_epoch,
     expected_postgres_worker_principal,
     parse_worker_execution_registration,
     pin_legacy_execution_contract,
+    select_execution_contract,
 )
 
 
@@ -255,6 +259,104 @@ def require_v2_claim_eligibility(
     return capability
 
 
+def capture_v2_fencing_epoch(
+    connection,
+    *,
+    run_id: str,
+    now: str,
+    lock_rows: bool,
+    expected_fencing_epoch_hash: str | None = None,
+) -> KernelModeFencingEpoch:
+    """Rebuild one live V2 epoch from the authoritative ownership rows."""
+
+    if not postgres_db.is_postgres_url():
+        raise V2ExecutionPathNotEnabledError(
+            "kernel-mode-execution.v2 fencing requires PostgreSQL"
+        )
+    lock_clause = " FOR UPDATE OF job, attempt, worker" if lock_rows else ""
+    row = connection.execute(
+        f"""
+        SELECT job.current_attempt_id,
+               job.worker_id AS job_worker_id,
+               job.status AS job_status,
+               job.lease_expires_at AS job_lease_expires_at,
+               job.runtime_profile_json,
+               job.runtime_profile_hash,
+               attempt.attempt_id,
+               attempt.attempt_number,
+               attempt.worker_id AS attempt_worker_id,
+               attempt.status AS attempt_status,
+               worker.worker_kind,
+               worker.status AS worker_status,
+               worker.current_job_id,
+               worker.lease_expires_at AS worker_lease_expires_at,
+               worker.metadata_json
+        FROM run_jobs AS job
+        JOIN run_attempts AS attempt
+          ON attempt.attempt_id = job.current_attempt_id
+         AND attempt.run_id = job.run_id
+        JOIN worker_nodes AS worker
+          ON worker.worker_id = job.worker_id
+        WHERE job.run_id = ?{lock_clause}
+        """,
+        (run_id,),
+    ).fetchone()
+    if row is None:
+        raise V2ExecutionPathNotEnabledError(
+            "V2 fencing ownership tuple is missing or incomplete"
+        )
+    if row["job_status"] != "running" or row["attempt_status"] != "running":
+        raise V2ExecutionPathNotEnabledError(
+            "V2 fencing requires a running job and current attempt"
+        )
+    if not row["job_lease_expires_at"] or row["job_lease_expires_at"] <= now:
+        raise V2ExecutionPathNotEnabledError("V2 job lease is not fresh")
+    if row["worker_kind"] != "lifecycle":
+        raise V2ExecutionPathNotEnabledError("V2 fencing worker is not lifecycle")
+    if (
+        row["worker_status"] != "busy"
+        or row["current_job_id"] != run_id
+        or row["worker_lease_expires_at"] <= now
+    ):
+        raise V2ExecutionPathNotEnabledError(
+            "V2 fencing worker is not fresh and busy on the current job"
+        )
+    worker_id = row["job_worker_id"]
+    if not worker_id or worker_id != row["attempt_worker_id"]:
+        raise V2ExecutionPathNotEnabledError(
+            "V2 job and attempt worker ownership do not match"
+        )
+    profile = loads(row["runtime_profile_json"], {})
+    profile_hash = row["runtime_profile_hash"]
+    selection = _verified_v2_selection(profile, profile_hash)
+    assert selection.profile is not None
+    registration = _credential_bound_registration(row["metadata_json"])
+    if registration.identity_status != "active":
+        raise V2ExecutionPathNotEnabledError("V2 fencing worker identity is retired")
+    capability = registration.capability
+    if capability.worker_id != worker_id:
+        raise V2ExecutionPathNotEnabledError(
+            "V2 fencing registration identity mismatch"
+        )
+    principal = authenticate_v2_worker_connection(connection, capability)
+    if principal != registration.database_principal:
+        raise V2ExecutionPathNotEnabledError(
+            "V2 fencing database principal does not match registration"
+        )
+    epoch = build_kernel_mode_fencing_epoch(
+        current_attempt_id=row["current_attempt_id"],
+        attempt_number=int(row["attempt_number"]),
+        worker=capability,
+        minimum_worker_generation=selection.profile.minimum_worker_generation,
+    )
+    if (
+        expected_fencing_epoch_hash is not None
+        and epoch.fencing_epoch_hash != expected_fencing_epoch_hash
+    ):
+        raise V2ExecutionPathNotEnabledError("V2 fencing epoch changed")
+    return epoch
+
+
 def _credential_bound_registration(raw_metadata: object) -> WorkerExecutionRegistration:
     metadata = loads(raw_metadata, {}) if isinstance(raw_metadata, str) else raw_metadata
     if not isinstance(metadata, dict):
@@ -270,6 +372,25 @@ def _credential_bound_registration(raw_metadata: object) -> WorkerExecutionRegis
             "worker has an uncredentialed pre-enablement V2 registration"
         )
     return registration
+
+
+def _verified_v2_selection(
+    profile: object,
+    profile_hash: object,
+) -> ExecutionContractSelection:
+    if not isinstance(profile, dict):
+        raise V2ExecutionPathNotEnabledError("V2 runtime profile is malformed")
+    try:
+        selected = select_execution_contract(profile)
+    except ValueError as error:
+        raise V2ExecutionPathNotEnabledError(
+            f"V2 runtime profile selection failed: {error}"
+        ) from error
+    if not selected.is_v2 or selected.profile is None:
+        raise V2ExecutionPathNotEnabledError("fencing is only valid for exact V2 jobs")
+    if not isinstance(profile_hash, str) or stable_hash(profile) != profile_hash:
+        raise V2ExecutionPathNotEnabledError("V2 runtime profile hash mismatch")
+    return selected
 
 
 def _strict_boolean_setting(name: str, *, default: bool) -> bool:

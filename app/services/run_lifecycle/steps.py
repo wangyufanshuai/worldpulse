@@ -61,9 +61,16 @@ def step_definition_for_runtime_profile(
     )
 
 
-def begin_step(run_id: str, step_key: str, attempt_id: str, input_payload: dict) -> RunStepRecord:
+def begin_step(
+    run_id: str,
+    step_key: str,
+    attempt_id: str,
+    input_payload: dict,
+    *,
+    runtime_profile: dict | None = None,
+) -> RunStepRecord:
     init_db()
-    definition = STEP_BY_KEY[step_key]
+    definition = step_definition_for_runtime_profile(step_key, runtime_profile)
     started_at = _now()
     input_hash = stable_hash(input_payload)
     step_id = f"step_{stable_hash({'run_id': run_id, 'step_key': step_key, 'attempt_id': attempt_id})[:20]}"
