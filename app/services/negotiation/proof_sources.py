@@ -15,7 +15,8 @@ from typing import Annotated, Literal, Self, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.services.agent_contract.models import AgentActionProposal
+from app.services.agent_contract.models import AgentActionProposal, AgentConstraintContext
+from app.services.agent_runtime.models import AgentInvocationAudit
 from app.services.consistency.hashing import stable_hash
 from app.services.consistency.models import (
     AgentActionDecision,
@@ -28,6 +29,7 @@ from app.services.hybrid_simulation.models import (
     HybridModifierBundle,
 )
 from app.services.simulation_kernel.mode_contracts import (
+    ARClaims,
     CLClaims,
     ACClaims,
     ELClaims,
@@ -139,6 +141,115 @@ class ClosedSource(BaseModel):
             return item
 
         return restore(value)
+
+
+class AgentRuntimeResultSource(ClosedSource):
+    """Complete legacy runtime result admitted by the V2 AR extractor."""
+
+    schema_version: Literal["agent-runtime-result.v1"]
+    run_id: str = Field(min_length=1, max_length=160)
+    provider: str = Field(min_length=1, max_length=160)
+    model: str = Field(min_length=1, max_length=240)
+    mode: Literal["live", "mock", "skipped"]
+    fallback_reason: str | None
+    runtime_config: dict[str, object]
+    proposals: tuple[dict[str, object], ...]
+    constraint_context: dict[str, object]
+    invocations: tuple[dict[str, object], ...]
+    total_calls: int = Field(ge=0)
+    total_estimated_tokens: int = Field(ge=0)
+    failed_calls: int = Field(ge=0)
+    runtime_hash: Digest
+
+    @model_validator(mode="after")
+    def validate_complete_source(self) -> Self:
+        proposals, invocations = _validated_agent_runtime_vectors(self)
+        if len({item.proposal_id for item in proposals}) != len(proposals):
+            raise ValueError("AR proposal IDs must be unique")
+        if len({item.invocation_id for item in invocations}) != len(invocations):
+            raise ValueError("AR invocation IDs must be unique")
+        expected_runtime_hash = stable_hash(
+            {
+                "provider": self.provider,
+                "model": self.model,
+                "mode": self.mode,
+                "proposal_ids": [item.proposal_id for item in proposals],
+                "invocations": [
+                    {
+                        "turn": item.turn,
+                        "actor_id": item.actor_id,
+                        "role_id": item.role_id,
+                        "provider": item.provider,
+                        "model": item.model,
+                        "prompt_version": item.prompt_version,
+                        "prompt_hash": item.prompt_hash,
+                        "response_hash": item.response_hash,
+                        "status": item.status,
+                        "error_code": item.error_code,
+                    }
+                    for item in invocations
+                ],
+            }
+        )
+        if self.runtime_hash != expected_runtime_hash:
+            raise ValueError("AR runtime_hash mismatch")
+        return self
+
+
+def _require_exact_keys(
+    payload: Mapping[str, object], expected: set[str], field_name: str
+) -> None:
+    if set(payload) != expected:
+        raise ValueError(f"{field_name} must contain exactly its v1 fields")
+
+
+def _validated_agent_runtime_vectors(
+    source: AgentRuntimeResultSource,
+) -> tuple[tuple[AgentActionProposal, ...], tuple[AgentInvocationAudit, ...]]:
+    context_payload = dict(source.constraint_context)
+    _require_exact_keys(
+        context_payload,
+        set(AgentConstraintContext.model_fields),
+        "AR constraint context",
+    )
+    if context_payload.get("schema_version") != "agent-constraint-context.v1":
+        raise ValueError("AR constraint context schema mismatch")
+    AgentConstraintContext.model_validate(_restore_lists(context_payload), strict=True)
+
+    proposals: list[AgentActionProposal] = []
+    for raw in source.proposals:
+        proposal_payload = dict(raw)
+        _require_exact_keys(
+            proposal_payload,
+            set(AgentActionProposal.model_fields),
+            "AR proposal",
+        )
+        proposal = AgentActionProposal.model_validate(
+            _restore_lists(proposal_payload), strict=True
+        )
+        if proposal.schema_version != "agent-action-proposal.v1":
+            raise ValueError("AR proposal schema mismatch")
+        if proposal.run_id != source.run_id:
+            raise ValueError("AR proposal run_id mismatch")
+        proposals.append(proposal)
+
+    invocations: list[AgentInvocationAudit] = []
+    for raw in source.invocations:
+        invocation_payload = dict(raw)
+        _require_exact_keys(
+            invocation_payload,
+            set(AgentInvocationAudit.model_fields),
+            "AR invocation",
+        )
+        invocation = AgentInvocationAudit.model_validate(
+            _restore_lists(invocation_payload), strict=True
+        )
+        if invocation.schema_version != "agent-invocation-audit.v1":
+            raise ValueError("AR invocation schema mismatch")
+        if invocation.run_id != source.run_id:
+            raise ValueError("AR invocation run_id mismatch")
+        invocations.append(invocation)
+    return tuple(proposals), tuple(invocations)
 
 
 class NegotiationProposalBatchSource(ClosedSource):
@@ -1123,6 +1234,47 @@ class NarrativeDiffusionSource(ClosedSource):
             application_count=self.application_count,
             diffusion_evidence_hash=self.diffusion_evidence_hash,
         )
+
+
+def extract_ar_claims(
+    payload: Mapping[str, object],
+    *,
+    run_id: str,
+) -> ARClaims:
+    """Verify a complete runtime source and derive immutable AR claims."""
+
+    source = AgentRuntimeResultSource.model_validate(dict(payload))
+    if source.run_id != run_id:
+        raise ValueError("AR source run_id mismatch")
+    proposals, invocations = _validated_agent_runtime_vectors(source)
+    proposal_pairs = tuple(
+        sorted(
+            (
+                (item.proposal_id, stable_hash(item.model_dump(mode="json")))
+                for item in proposals
+            ),
+            key=lambda item: item[0].encode("utf-8"),
+        )
+    )
+    invocation_pairs = tuple(
+        sorted(
+            (
+                (item.invocation_id, stable_hash(item.model_dump(mode="json")))
+                for item in invocations
+            ),
+            key=lambda item: item[0].encode("utf-8"),
+        )
+    )
+    return ARClaims(
+        run_id=source.run_id,
+        runtime_hash=source.runtime_hash,
+        proposal_ids=tuple(item[0] for item in proposal_pairs),
+        proposal_hashes=tuple(item[1] for item in proposal_pairs),
+        proposal_count=len(proposal_pairs),
+        invocation_ids=tuple(item[0] for item in invocation_pairs),
+        invocation_hashes=tuple(item[1] for item in invocation_pairs),
+        invocation_count=len(invocation_pairs),
+    )
 
 
 def extract_np_claims(
