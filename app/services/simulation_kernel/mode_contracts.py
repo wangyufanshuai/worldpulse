@@ -959,14 +959,15 @@ class KernelModeProofReference(KernelModeContract):
     schema_version: str = Field(min_length=1, max_length=120)
     artifact_id: str = Field(min_length=1, max_length=160)
     run_id: str = Field(min_length=1, max_length=160)
+    session_id: str | None = Field(min_length=1, max_length=160)
     attempt: str = Field(min_length=1, max_length=160)
-    ordinal: int | None = Field(default=None, ge=0)
-    tick: int | None = Field(default=None, ge=1, le=6)
+    ordinal: int | None = Field(ge=0)
+    tick: int | None = Field(ge=1, le=6)
     artifact_sha256: Digest
     content_hash: Digest
     claims: ModeClaims
     claims_hash: Digest
-    relationships: tuple[KernelModeProofRelationship, ...] = ()
+    relationships: tuple[KernelModeProofRelationship, ...]
 
     @model_validator(mode="before")
     @classmethod
@@ -1006,7 +1007,7 @@ class KernelModeProofReference(KernelModeContract):
 
 
 class KernelModeExecutionProof(KernelModeContract):
-    schema_version: Literal["kernel-mode-execution-proof.v1"] = "kernel-mode-execution-proof.v1"
+    schema_version: Literal["kernel-mode-execution-proof.v1"]
     references: tuple[KernelModeProofReference, ...]
     proof_hash: Digest
 
@@ -1021,25 +1022,50 @@ class KernelModeExecutionProof(KernelModeContract):
 
 
 class KernelModeExecutionRequest(KernelModeContract):
-    schema_version: Literal["kernel-mode-execution-request.v1"] = "kernel-mode-execution-request.v1"
-    execution_contract_version: Literal["kernel-mode-execution.v2"] = "kernel-mode-execution.v2"
+    schema_version: Literal["kernel-mode-execution-request.v1"]
+    execution_contract_version: Literal["kernel-mode-execution.v2"]
+    organization_id: str = Field(min_length=1, max_length=160)
+    project_id: str = Field(min_length=1, max_length=160)
+    lifecycle_job_id: str = Field(min_length=1, max_length=160)
+    run_id: str = Field(min_length=1, max_length=160)
+    session_id: str | None = Field(min_length=1, max_length=160)
+    attempt: str = Field(min_length=1, max_length=160)
     engine_mode: EngineMode
     kernel_mode: KernelMode
-    run_id: str = Field(min_length=1, max_length=160)
-    attempt: str = Field(min_length=1, max_length=160)
     effective_seed: int
+    rule_pack_id: str = Field(min_length=1, max_length=160)
     rule_pack_hash: Digest
-    baseline: WarRoomProjection
-    final: WarRoomProjection
+    agent_pack_id: str | None = Field(min_length=1, max_length=160)
+    agent_pack_hash: Digest | None
+    constraint_context_hash: Digest | None
+    evaluator_version: str = Field(min_length=1, max_length=120)
+    runtime_profile_hash: Digest
+    fencing_epoch_hash: Digest
+    baseline_projection: WarRoomProjection
+    final_projection: WarRoomProjection
     proof: KernelModeExecutionProof
-    retry_origin_attempt_ids: tuple[str, ...] = ()
-    retry_completed_ticks: tuple[int, ...] = ()
+    proof_hash: Digest
+    request_hash: Digest
 
     @model_validator(mode="after")
     def validate_request_identity(self) -> Self:
         if self.kernel_mode != normalize_kernel_mode(self.engine_mode):
             raise ValueError("kernel_mode does not match engine_mode")
-        for projection in (self.baseline, self.final):
+        if (self.engine_mode == "negotiation") != (self.session_id is not None):
+            raise ValueError("session_id must be non-null only for negotiation")
+        context = (
+            self.agent_pack_id,
+            self.agent_pack_hash,
+            self.constraint_context_hash,
+        )
+        if self.engine_mode == "deterministic":
+            if any(value is not None for value in context):
+                raise ValueError("deterministic execution requires null Agent context")
+        elif any(value is None for value in context):
+            raise ValueError("Agent-capable execution requires complete Agent context")
+        if self.proof_hash != self.proof.proof_hash:
+            raise ValueError("request proof_hash must equal complete proof")
+        for projection in (self.baseline_projection, self.final_projection):
             state = projection.world_state
             if state.run_id != self.run_id:
                 raise ValueError("projection run_id must match request")
@@ -1047,40 +1073,54 @@ class KernelModeExecutionRequest(KernelModeContract):
                 raise ValueError("projection seed must match effective_seed")
             if state.rule_pack_hash != self.rule_pack_hash:
                 raise ValueError("projection Rule Pack hash must match request")
-        _validate_ascending_unique(self.retry_origin_attempt_ids, "retry_origin_attempt_ids")
-        if tuple(sorted(set(self.retry_completed_ticks))) != self.retry_completed_ticks:
-            raise ValueError("retry_completed_ticks must be unique and ascending")
-        if self.retry_completed_ticks and (
-            self.retry_completed_ticks[0] < 1 or self.retry_completed_ticks[-1] > 6
-        ):
-            raise ValueError("retry_completed_ticks must be in 1..6")
-        if self.retry_completed_ticks != tuple(range(1, len(self.retry_completed_ticks) + 1)):
-            raise ValueError("retry_completed_ticks must be a contiguous prefix beginning at 1")
-        if bool(self.retry_origin_attempt_ids) != bool(self.retry_completed_ticks):
-            raise ValueError("retry origins and completed ticks must be supplied together")
-        if self.engine_mode != "negotiation" and (self.retry_origin_attempt_ids or self.retry_completed_ticks):
-            raise ValueError("retry context is only allowed for negotiation")
-        if self.attempt in self.retry_origin_attempt_ids:
-            raise ValueError("retry origin attempts must differ from the current attempt")
+        expected_hash = stable_hash(
+            self.model_dump(mode="json", exclude={"request_hash"})
+        )
+        if self.request_hash != expected_hash:
+            raise ValueError("Kernel mode execution request_hash mismatch")
         return self
+
+    @property
+    def baseline(self) -> WarRoomProjection:
+        """Compatibility accessor for pure finalization internals."""
+
+        return self.baseline_projection
+
+    @property
+    def final(self) -> WarRoomProjection:
+        """Compatibility accessor for pure finalization internals."""
+
+        return self.final_projection
 
 
 class KernelModeExecutionRecord(KernelModeContract):
-    schema_version: Literal["kernel-mode-execution-record.v1"] = "kernel-mode-execution-record.v1"
-    execution_contract_version: Literal["kernel-mode-execution.v2"] = "kernel-mode-execution.v2"
+    schema_version: Literal["kernel-mode-execution-record.v1"]
+    execution_contract_version: Literal["kernel-mode-execution.v2"]
+    request_hash: Digest
+    organization_id: str = Field(min_length=1, max_length=160)
+    project_id: str = Field(min_length=1, max_length=160)
+    lifecycle_job_id: str = Field(min_length=1, max_length=160)
+    run_id: str = Field(min_length=1, max_length=160)
+    session_id: str | None = Field(min_length=1, max_length=160)
+    attempt: str = Field(min_length=1, max_length=160)
     engine_mode: EngineMode
     kernel_mode: KernelMode
-    run_id: str = Field(min_length=1, max_length=160)
-    attempt: str = Field(min_length=1, max_length=160)
     effective_seed: int
+    rule_pack_id: str = Field(min_length=1, max_length=160)
     rule_pack_hash: Digest
-    authority_path: str
+    agent_pack_id: str | None = Field(min_length=1, max_length=160)
+    agent_pack_hash: Digest | None
+    constraint_context_hash: Digest | None
+    evaluator_version: str = Field(min_length=1, max_length=120)
+    runtime_profile_hash: Digest
     baseline_source_run_hash: Digest
     baseline_deterministic_source_hash: Digest
     baseline_world_state_hash: Digest
     final_source_run_hash: Digest
     final_deterministic_source_hash: Digest
     final_world_state_hash: Digest
+    fencing_epoch_hash: Digest
+    authority_path: str
     proof_hash: Digest
     record_hash: Digest
 
@@ -1088,6 +1128,18 @@ class KernelModeExecutionRecord(KernelModeContract):
     def validate_record_hash(self) -> Self:
         if self.kernel_mode != normalize_kernel_mode(self.engine_mode):
             raise ValueError("kernel_mode does not match engine_mode")
+        if (self.engine_mode == "negotiation") != (self.session_id is not None):
+            raise ValueError("session_id must be non-null only for negotiation")
+        context = (
+            self.agent_pack_id,
+            self.agent_pack_hash,
+            self.constraint_context_hash,
+        )
+        if self.engine_mode == "deterministic":
+            if any(value is not None for value in context):
+                raise ValueError("deterministic execution requires null Agent context")
+        elif any(value is None for value in context):
+            raise ValueError("Agent-capable execution requires complete Agent context")
         if self.authority_path != AUTHORITY_PATH_BY_ENGINE_MODE[self.engine_mode]:
             raise ValueError("authority_path must match the fixed engine-mode authority path")
         expected_hash = stable_hash(self.model_dump(mode="json", exclude={"record_hash"}))

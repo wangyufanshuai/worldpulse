@@ -79,10 +79,11 @@ def finalize_execution(request: KernelModeExecutionRequest) -> KernelModeExecuti
     if request.kernel_mode not in {"deterministic", "hybrid", "negotiation"}:
         _fail("this finalization slice only admits deterministic, hybrid, or negotiation Kernel modes")
 
-    _validate_retry_context(request)
+    _validate_request_contract(request)
     _validate_projection_pair(request)
     references = request.proof.references
     _validate_reference_identities(request, references)
+    _validate_consistency_request_bindings(request, references)
 
     if request.engine_mode == "deterministic":
         _finalize_deterministic(request, references)
@@ -99,12 +100,23 @@ def _build_record(request: KernelModeExecutionRequest) -> KernelModeExecutionRec
     """Construct the record from a fixed deterministic authority path."""
 
     values = {
+        "request_hash": request.request_hash,
+        "organization_id": request.organization_id,
+        "project_id": request.project_id,
+        "lifecycle_job_id": request.lifecycle_job_id,
         "engine_mode": request.engine_mode,
         "kernel_mode": request.kernel_mode,
         "run_id": request.run_id,
+        "session_id": request.session_id,
         "attempt": request.attempt,
         "effective_seed": request.effective_seed,
+        "rule_pack_id": request.rule_pack_id,
         "rule_pack_hash": request.rule_pack_hash,
+        "agent_pack_id": request.agent_pack_id,
+        "agent_pack_hash": request.agent_pack_hash,
+        "constraint_context_hash": request.constraint_context_hash,
+        "evaluator_version": request.evaluator_version,
+        "runtime_profile_hash": request.runtime_profile_hash,
         "authority_path": AUTHORITY_PATH_BY_ENGINE_MODE[request.engine_mode],
         "baseline_source_run_hash": request.baseline.source_run_hash,
         "baseline_deterministic_source_hash": request.baseline.deterministic_source_hash,
@@ -112,14 +124,45 @@ def _build_record(request: KernelModeExecutionRequest) -> KernelModeExecutionRec
         "final_source_run_hash": request.final.source_run_hash,
         "final_deterministic_source_hash": request.final.deterministic_source_hash,
         "final_world_state_hash": request.final.world_state_hash,
-        "proof_hash": request.proof.proof_hash,
+        "fencing_epoch_hash": request.fencing_epoch_hash,
+        "proof_hash": request.proof_hash,
     }
     record_payload = {
         "schema_version": "kernel-mode-execution-record.v1",
         "execution_contract_version": "kernel-mode-execution.v2",
         **values,
     }
-    return KernelModeExecutionRecord.model_validate({**values, "record_hash": stable_hash(record_payload)})
+    return KernelModeExecutionRecord.model_validate(
+        {**record_payload, "record_hash": stable_hash(record_payload)}
+    )
+
+
+def _validate_request_contract(request: KernelModeExecutionRequest) -> None:
+    """Recheck closed request identity when callers used unchecked model_copy."""
+
+    try:
+        KernelModeExecutionRequest.model_validate(request.model_dump(mode="python"))
+    except ValueError as error:
+        _fail(f"request contract validation failed: {error}")
+    if request.proof_hash != request.proof.proof_hash:
+        _fail("request proof_hash mismatch")
+    expected_hash = stable_hash(
+        request.model_dump(mode="json", exclude={"request_hash"})
+    )
+    if request.request_hash != expected_hash:
+        _fail("request_hash mismatch")
+    if (request.engine_mode == "negotiation") != (request.session_id is not None):
+        _fail("request session_id does not match engine mode")
+    context = (
+        request.agent_pack_id,
+        request.agent_pack_hash,
+        request.constraint_context_hash,
+    )
+    if request.engine_mode == "deterministic":
+        if any(value is not None for value in context):
+            _fail("deterministic request Agent context must be null")
+    elif any(value is None for value in context):
+        _fail("Agent-capable request context must be complete")
 
 
 def _validate_projection_pair(request: KernelModeExecutionRequest) -> None:
@@ -135,21 +178,6 @@ def _validate_projection_pair(request: KernelModeExecutionRequest) -> None:
         _validate_numeric_authority(projection)
     if _projection_topology(request.baseline) != _projection_topology(request.final):
         _fail("baseline/final entity topology mismatch")
-
-
-def _validate_retry_context(request: KernelModeExecutionRequest) -> None:
-    """Recheck retry shape for callers that bypass model validation via copy."""
-
-    origins = request.retry_origin_attempt_ids
-    completed_ticks = request.retry_completed_ticks
-    if bool(origins) != bool(completed_ticks):
-        _fail("retry origins and completed ticks must be supplied together")
-    if request.engine_mode != "negotiation" and (origins or completed_ticks):
-        _fail("retry context is only allowed for negotiation")
-    if completed_ticks != tuple(range(1, len(completed_ticks) + 1)):
-        _fail("retry_completed_ticks must be a contiguous prefix beginning at 1")
-    if request.attempt in origins:
-        _fail("retry origin attempts must differ from the current attempt")
 
 
 def _projection_topology(projection: WarRoomProjection) -> tuple[tuple[str, str], ...]:
@@ -192,6 +220,8 @@ def _validate_reference_identities(
             _fail("proof ordinals must be contiguous and match canonical order")
         if reference.run_id != request.run_id or reference.claims.run_id != request.run_id:
             _fail("proof reference run_id mismatch")
+        if reference.session_id != request.session_id:
+            _fail("proof reference session_id mismatch")
         if reference.attempt != request.attempt:
             _fail("proof reference attempt mismatch")
         if reference.artifact_id in artifact_ids:
@@ -202,6 +232,28 @@ def _validate_reference_identities(
         ):
             _fail("supersedes is only admitted by negotiation finalization")
         _validate_supersedes_relationships(request, reference)
+
+
+def _validate_consistency_request_bindings(
+    request: KernelModeExecutionRequest,
+    references: tuple[KernelModeProofReference, ...],
+) -> None:
+    expected = (
+        request.evaluator_version,
+        request.agent_pack_id,
+        request.agent_pack_hash,
+        request.constraint_context_hash,
+    )
+    for reference in references:
+        if isinstance(reference.claims, ConsistencyClaims):
+            actual = (
+                reference.claims.evaluator_version,
+                reference.claims.agent_pack_id,
+                reference.claims.agent_pack_hash,
+                reference.claims.constraint_context_hash,
+            )
+            if actual != expected:
+                _fail("Consistency claims do not match request resolver identity")
 
 
 def _finalize_deterministic(
@@ -1086,17 +1138,11 @@ def _validate_supersedes_relationships(
         return
     if request.engine_mode != "negotiation":
         _fail("supersedes is only admitted by negotiation finalization")
-    if not request.retry_origin_attempt_ids or not request.retry_completed_ticks:
-        _fail("supersedes requires closed negotiation retry context")
     if len(supersedes) != 1 or reference.relationships[-1] != supersedes[0]:
         _fail("supersedes must be the sole final retry relationship")
     if reference.token not in {"RR", "NP", "AC", "CL", "EL", "PC", "MB", "ND", "PA"} or reference.tick is None:
         _fail("supersedes is only allowed on ticked negotiation proof references")
-    if reference.tick not in request.retry_completed_ticks:
-        _fail("supersedes is only allowed for completed retry ticks")
     target_attempt = supersedes[0].target_attempt
-    if target_attempt not in request.retry_origin_attempt_ids:
-        _fail("supersedes target attempt is not a retry origin")
     if target_attempt == request.attempt:
         _fail("supersedes target attempt must differ from the current attempt")
 
@@ -1125,7 +1171,7 @@ def _require_retry_supersession_completeness(
     ):
         _fail("negotiation FC and NR references may not supersede retry evidence")
 
-    completed_ticks = set(request.retry_completed_ticks)
+    completed_ticks: set[int] = set()
     for tick in range(1, 7):
         index = tick - 1
         reemitted = [
@@ -1139,17 +1185,22 @@ def _require_retry_supersession_completeness(
         for references_by_tick in (projection_by_tick, modifier_by_tick, audit_by_tick):
             if tick in references_by_tick:
                 reemitted.append(references_by_tick[tick])
+        superseded = []
         for reference in reemitted:
             supersedes = tuple(
                 relationship
                 for relationship in reference.relationships
                 if relationship.relationship_type == "supersedes"
             )
-            if tick in completed_ticks:
-                if len(supersedes) != 1 or reference.relationships[-1] != supersedes[0]:
-                    _fail("every re-emitted completed retry proof must end with supersedes")
-            elif supersedes:
-                _fail("supersedes is forbidden after the completed retry prefix")
+            superseded.append(
+                len(supersedes) == 1 and reference.relationships[-1] == supersedes[0]
+            )
+        if any(superseded):
+            if not all(superseded):
+                _fail("every re-emitted completed retry proof must end with supersedes")
+            completed_ticks.add(tick)
+    if tuple(sorted(completed_ticks)) != tuple(range(1, len(completed_ticks) + 1)):
+        _fail("supersedes is only allowed on a contiguous retry prefix")
 
 
 def _fail(message: str) -> NoReturn:

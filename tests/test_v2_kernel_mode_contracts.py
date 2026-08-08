@@ -100,12 +100,15 @@ def _reference() -> KernelModeProofReference:
         schema_version="consistency-audit.v3",
         artifact_id="artifact-final-consistency",
         run_id="mode-contract-run",
+        session_id=None,
         attempt="attempt-1",
         ordinal=0,
+        tick=None,
         artifact_sha256="d" * 64,
         content_hash="e" * 64,
         claims=claims,
         claims_hash=claims_hash,
+        relationships=(),
     )
 
 
@@ -143,35 +146,21 @@ def test_engine_mode_normalization_rejects_unknown_values():
 
 
 def test_request_requires_projection_identity_basics():
-    projection = _projection()
     reference = _reference()
-    proof_hash = stable_hash(
-        {"references": [reference.model_dump(mode="json")], "schema_version": "kernel-mode-execution-proof.v1"}
-    )
-    proof = KernelModeExecutionProof(references=(reference,), proof_hash=proof_hash)
-    request = KernelModeExecutionRequest(
-        engine_mode="deterministic",
-        kernel_mode="deterministic",
-        run_id="mode-contract-run",
-        attempt="attempt-1",
-        effective_seed=17,
-        rule_pack_hash="a" * 64,
-        baseline=projection,
-        final=projection,
-        proof=proof,
-    )
+    request = _execution_request("deterministic", (reference,))
     assert request.baseline.world_state_hash == request.final.world_state_hash
     with pytest.raises(ValidationError, match="projection seed"):
         request.model_copy(update={"effective_seed": 18})
 
 
-def _mode_reference(*, proof_schema: str, artifact_type: str, schema_version: str, artifact_id: str, claims, ordinal: int, relationships=(), tick=None):
+def _mode_reference(*, proof_schema: str, artifact_type: str, schema_version: str, artifact_id: str, claims, ordinal: int, relationships=(), tick=None, session_id=None):
     return KernelModeProofReference(
         proof_schema=proof_schema,
         artifact_type=artifact_type,
         schema_version=schema_version,
         artifact_id=artifact_id,
         run_id="mode-contract-run",
+        session_id=session_id,
         attempt="attempt-1",
         ordinal=ordinal,
         tick=tick,
@@ -194,25 +183,215 @@ def _execution_request(
     engine_mode: str,
     references: tuple[KernelModeProofReference, ...],
     *,
+    baseline: WarRoomProjection | None = None,
     final: WarRoomProjection | None = None,
 ) -> KernelModeExecutionRequest:
     proof = KernelModeExecutionProof(
+        schema_version="kernel-mode-execution-proof.v1",
         references=references,
         proof_hash=stable_hash(
             {"references": [reference.model_dump(mode="json") for reference in references], "schema_version": "kernel-mode-execution-proof.v1"}
         ),
     )
-    return KernelModeExecutionRequest(
-        engine_mode=engine_mode,
-        kernel_mode=normalize_kernel_mode(engine_mode),
-        run_id="mode-contract-run",
-        attempt="attempt-1",
-        effective_seed=17,
-        rule_pack_hash="a" * 64,
-        baseline=_projection(),
-        final=final or _projection(),
-        proof=proof,
+    agent_context = engine_mode != "deterministic"
+    values = {
+        "schema_version": "kernel-mode-execution-request.v1",
+        "execution_contract_version": "kernel-mode-execution.v2",
+        "organization_id": "organization-test",
+        "project_id": "project-test",
+        "lifecycle_job_id": "mode-contract-run",
+        "run_id": "mode-contract-run",
+        "session_id": "session-1" if engine_mode == "negotiation" else None,
+        "attempt": "attempt-1",
+        "engine_mode": engine_mode,
+        "kernel_mode": normalize_kernel_mode(engine_mode),
+        "effective_seed": 17,
+        "rule_pack_id": "rule-pack-test",
+        "rule_pack_hash": "a" * 64,
+        "agent_pack_id": "agent-pack-test" if agent_context else None,
+        "agent_pack_hash": "d" * 64 if agent_context else None,
+        "constraint_context_hash": "e" * 64 if agent_context else None,
+        "evaluator_version": "worldpulse-consistency.v0.8",
+        "runtime_profile_hash": "8" * 64,
+        "fencing_epoch_hash": "9" * 64,
+        "baseline_projection": (baseline or _projection()).model_dump(mode="json"),
+        "final_projection": (final or _projection()).model_dump(mode="json"),
+        "proof": proof.model_dump(mode="json"),
+        "proof_hash": proof.proof_hash,
+    }
+    return KernelModeExecutionRequest.model_validate(
+        {**values, "request_hash": stable_hash(values)}
     )
+
+
+def _rehash_request_payload(payload: dict) -> None:
+    payload["request_hash"] = stable_hash(
+        {key: value for key, value in payload.items() if key != "request_hash"}
+    )
+
+
+def test_request_and_record_use_the_exact_normative_identity_contract():
+    claims = FCClaims(
+        run_id="mode-contract-run",
+        audit_hash="6" * 64,
+        deterministic_result_hash="1" * 64,
+        proposal_ids=(),
+        proposal_hashes=(),
+        accepted_proposal_ids=(),
+        decision_count=0,
+        **_consistency_fields((), (), agent_context=False),
+    )
+    reference = _mode_reference(
+        proof_schema="kp.final-consistency.v1",
+        artifact_type="consistency_audit",
+        schema_version="consistency-audit.v3",
+        artifact_id="fc",
+        claims=claims,
+        ordinal=0,
+    )
+    request = _execution_request("deterministic", (reference,))
+    record = finalize_execution(request)
+
+    assert set(request.model_dump(mode="json")) == {
+        "schema_version",
+        "execution_contract_version",
+        "organization_id",
+        "project_id",
+        "lifecycle_job_id",
+        "run_id",
+        "session_id",
+        "attempt",
+        "engine_mode",
+        "kernel_mode",
+        "effective_seed",
+        "rule_pack_id",
+        "rule_pack_hash",
+        "agent_pack_id",
+        "agent_pack_hash",
+        "constraint_context_hash",
+        "evaluator_version",
+        "runtime_profile_hash",
+        "fencing_epoch_hash",
+        "baseline_projection",
+        "final_projection",
+        "proof",
+        "proof_hash",
+        "request_hash",
+    }
+    assert set(record.model_dump(mode="json")) == {
+        "schema_version",
+        "execution_contract_version",
+        "request_hash",
+        "organization_id",
+        "project_id",
+        "lifecycle_job_id",
+        "run_id",
+        "session_id",
+        "attempt",
+        "engine_mode",
+        "kernel_mode",
+        "effective_seed",
+        "rule_pack_id",
+        "rule_pack_hash",
+        "agent_pack_id",
+        "agent_pack_hash",
+        "constraint_context_hash",
+        "evaluator_version",
+        "runtime_profile_hash",
+        "baseline_source_run_hash",
+        "baseline_deterministic_source_hash",
+        "baseline_world_state_hash",
+        "final_source_run_hash",
+        "final_deterministic_source_hash",
+        "final_world_state_hash",
+        "fencing_epoch_hash",
+        "authority_path",
+        "proof_hash",
+        "record_hash",
+    }
+    for field in (
+        "organization_id",
+        "project_id",
+        "lifecycle_job_id",
+        "run_id",
+        "session_id",
+        "attempt",
+        "engine_mode",
+        "kernel_mode",
+        "effective_seed",
+        "rule_pack_id",
+        "rule_pack_hash",
+        "agent_pack_id",
+        "agent_pack_hash",
+        "constraint_context_hash",
+        "evaluator_version",
+        "runtime_profile_hash",
+        "fencing_epoch_hash",
+        "proof_hash",
+        "request_hash",
+    ):
+        assert getattr(record, field) == getattr(request, field)
+
+
+def test_request_rejects_hash_context_session_and_removed_retry_field_drift():
+    deterministic = _execution_request("deterministic", (_reference(),))
+
+    identity_drift = deterministic.model_dump(mode="json")
+    identity_drift["organization_id"] = "other-organization"
+    with pytest.raises(ValidationError, match="request_hash mismatch"):
+        KernelModeExecutionRequest.model_validate(identity_drift)
+
+    proof_drift = deterministic.model_dump(mode="json")
+    proof_drift["proof_hash"] = "f" * 64
+    _rehash_request_payload(proof_drift)
+    with pytest.raises(ValidationError, match="proof_hash"):
+        KernelModeExecutionRequest.model_validate(proof_drift)
+
+    deterministic_context = deterministic.model_dump(mode="json")
+    deterministic_context.update(
+        {
+            "agent_pack_id": "agent-pack-test",
+            "agent_pack_hash": "d" * 64,
+            "constraint_context_hash": "e" * 64,
+        }
+    )
+    _rehash_request_payload(deterministic_context)
+    with pytest.raises(ValidationError, match="null Agent context"):
+        KernelModeExecutionRequest.model_validate(deterministic_context)
+
+    hybrid = _execution_request("hybrid", _hybrid_references())
+    incomplete_context = hybrid.model_dump(mode="json")
+    incomplete_context["constraint_context_hash"] = None
+    _rehash_request_payload(incomplete_context)
+    with pytest.raises(ValidationError, match="complete Agent context"):
+        KernelModeExecutionRequest.model_validate(incomplete_context)
+
+    wrong_session = hybrid.model_dump(mode="json")
+    wrong_session["session_id"] = "session-not-allowed"
+    _rehash_request_payload(wrong_session)
+    with pytest.raises(ValidationError, match="non-null only for negotiation"):
+        KernelModeExecutionRequest.model_validate(wrong_session)
+
+    removed_retry_field = deterministic.model_dump(mode="json")
+    removed_retry_field["retry_completed_ticks"] = [1]
+    _rehash_request_payload(removed_retry_field)
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        KernelModeExecutionRequest.model_validate(removed_retry_field)
+
+
+def test_finalizer_binds_reference_session_and_consistency_to_request_identity():
+    negotiation = list(_negotiation_references())
+    negotiation[0] = negotiation[0].model_copy(update={"session_id": "other-session"})
+    with pytest.raises(KernelModeFinalizationError, match="session_id"):
+        finalize_execution(_execution_request("negotiation", tuple(negotiation)))
+
+    hybrid = list(_hybrid_references())
+    drifted_fc = hybrid[2].claims.model_copy(
+        update={"evaluator_version": "other-evaluator.v1"}
+    )
+    hybrid[2] = _replace_mode_claims(hybrid[2], drifted_fc)
+    with pytest.raises(KernelModeFinalizationError, match="resolver identity"):
+        finalize_execution(_execution_request("hybrid", tuple(hybrid)))
 
 
 def _audit_references(engine_mode: str, proposal_ids: tuple[str, ...] = ()) -> tuple[KernelModeProofReference, ...]:
@@ -723,11 +902,15 @@ def _negotiation_references(
             for kind, target in nr_targets
         ),
     )
-    return (
+    assembled = (
         *rounds, *proposals, *admissions, *ledgers, *eligibilities,
         *(projections[tick] for tick in projected_ticks), final_audit,
         *(modifiers[tick] for tick in projected_ticks), *diffusions,
         *(audits[tick] for tick in projected_ticks), nr,
+    )
+    return tuple(
+        reference.model_copy(update={"session_id": "session-1"})
+        for reference in assembled
     )
 
 
@@ -913,9 +1096,14 @@ def test_hybrid_finalization_rejects_bad_hash_relationship_cross_attempt_and_num
         world_state_hash=invalid_state.content_hash(), world_state=invalid_state,
     )
     with pytest.raises(KernelModeFinalizationError, match="numeric authority owner"):
-        finalize_execution(_execution_request("hybrid", _hybrid_references((), ()), final=invalid_projection).model_copy(
-            update={"baseline": invalid_projection}
-        ))
+        finalize_execution(
+            _execution_request(
+                "hybrid",
+                _hybrid_references((), ()),
+                baseline=invalid_projection,
+                final=invalid_projection,
+            )
+        )
 
 
 def test_finalization_rejects_wrong_audit_relationship_and_cross_attempt_reference():
@@ -933,10 +1121,10 @@ def test_finalization_rejects_empty_or_arbitrary_admitted_proof():
         finalize_execution(_execution_request("deterministic", ()))
 
     arbitrary_audit_proof = _audit_references("mock_agent")
-    deterministic_request = _execution_request("mock_agent", arbitrary_audit_proof).model_copy(
-        update={"engine_mode": "deterministic", "kernel_mode": "deterministic"}
+    deterministic_request = _execution_request(
+        "deterministic", arbitrary_audit_proof
     )
-    with pytest.raises(KernelModeFinalizationError, match="sequence"):
+    with pytest.raises(KernelModeFinalizationError, match="resolver identity|sequence"):
         finalize_execution(deterministic_request)
 
 
@@ -966,16 +1154,6 @@ def _supersede_retry_tick(
         if reference.tick == tick and reference.token in {"RR", "NP", "AC", "CL", "EL", "PC", "MB", "ND", "PA"}
         else reference
         for reference in references
-    )
-
-
-def _proof_for(references: tuple[KernelModeProofReference, ...]) -> KernelModeExecutionProof:
-    return KernelModeExecutionProof(
-        references=references,
-        proof_hash=stable_hash({
-            "references": [reference.model_dump(mode="json") for reference in references],
-            "schema_version": "kernel-mode-execution-proof.v1",
-        }),
     )
 
 
@@ -1132,69 +1310,44 @@ def test_np_cl_and_nd_claims_fail_closed_on_invalid_structural_evidence():
 def test_negotiation_rejects_supersedes_on_final_or_replay_proofs(reference_index):
     references = list(_negotiation_references())
     references[reference_index] = _append_supersedes(references[reference_index])
-    request = _execution_request("negotiation", tuple(references)).model_copy(update={
-        "retry_origin_attempt_ids": ("attempt-0",),
-        "retry_completed_ticks": (1,),
-    })
+    request = _execution_request("negotiation", tuple(references))
     with pytest.raises(KernelModeFinalizationError, match="ticked negotiation"):
         finalize_execution(request)
 
 
 def test_negotiation_retry_requires_complete_supersession_prefix():
-    no_supersedes = _execution_request("negotiation", _negotiation_references()).model_copy(update={
-        "retry_origin_attempt_ids": ("attempt-0",),
-        "retry_completed_ticks": (1,),
-    })
-    with pytest.raises(KernelModeFinalizationError, match="every re-emitted completed retry proof"):
-        finalize_execution(no_supersedes)
-
     references = list(_negotiation_references())
     references[0] = _append_supersedes(references[0])
-    with pytest.raises(KernelModeFinalizationError, match="closed negotiation retry context"):
+    with pytest.raises(KernelModeFinalizationError, match="every re-emitted completed retry proof"):
         finalize_execution(_execution_request("negotiation", tuple(references)))
 
-    partial = _execution_request("negotiation", tuple(references)).model_copy(update={
-        "retry_origin_attempt_ids": ("attempt-0",),
-        "retry_completed_ticks": (1,),
-    })
-    with pytest.raises(KernelModeFinalizationError, match="every re-emitted completed retry proof"):
-        finalize_execution(partial)
-
-    valid = _execution_request("negotiation", _supersede_retry_tick(_negotiation_references(), 1)).model_copy(update={
-        "retry_origin_attempt_ids": ("attempt-0",),
-        "retry_completed_ticks": (1,),
-    })
+    valid = _execution_request(
+        "negotiation", _supersede_retry_tick(_negotiation_references(), 1)
+    )
     assert finalize_execution(valid).kernel_mode == "negotiation"
 
     unlisted = list(_negotiation_references())
     unlisted[1] = _append_supersedes(unlisted[1])
-    unlisted_request = _execution_request("negotiation", tuple(unlisted)).model_copy(update={
-        "retry_origin_attempt_ids": ("attempt-0",),
-        "retry_completed_ticks": (1,),
-    })
-    with pytest.raises(KernelModeFinalizationError, match="completed retry ticks"):
-        finalize_execution(unlisted_request)
+    with pytest.raises(
+        KernelModeFinalizationError,
+        match="every re-emitted completed retry proof",
+    ):
+        finalize_execution(_execution_request("negotiation", tuple(unlisted)))
 
     same_attempt = list(_negotiation_references())
     same_attempt[0] = _append_supersedes(same_attempt[0], target_attempt="attempt-1")
-    same_attempt_request = _execution_request("negotiation", tuple(same_attempt)).model_copy(update={
-        "retry_origin_attempt_ids": ("attempt-0",),
-        "retry_completed_ticks": (1,),
-    })
-    with pytest.raises(KernelModeFinalizationError, match="not a retry origin"):
+    same_attempt_request = _execution_request("negotiation", tuple(same_attempt))
+    with pytest.raises(KernelModeFinalizationError, match="differ from the current"):
         finalize_execution(same_attempt_request)
     invalid_origin_payload = valid.model_dump(mode="json")
     invalid_origin_payload["retry_origin_attempt_ids"] = ("attempt-1",)
-    with pytest.raises(ValidationError, match="differ from the current attempt"):
+    with pytest.raises(ValidationError, match="Extra inputs"):
         KernelModeExecutionRequest.model_validate(invalid_origin_payload)
 
 
 def test_negotiation_retry_rejects_missing_projected_tick_supersedes_and_nonprefix_context():
     fully_superseded = _supersede_retry_tick(_negotiation_references((1,)), 1)
-    request = _execution_request("negotiation", fully_superseded).model_copy(update={
-        "retry_origin_attempt_ids": ("attempt-0",),
-        "retry_completed_ticks": (1,),
-    })
+    request = _execution_request("negotiation", fully_superseded)
     assert finalize_execution(request).kernel_mode == "negotiation"
 
     for token in ("PC", "CL", "PA"):
@@ -1205,9 +1358,11 @@ def test_negotiation_retry_rejects_missing_projected_tick_supersedes_and_nonpref
             for reference in fully_superseded
         )
         with pytest.raises(KernelModeFinalizationError, match="every re-emitted completed retry proof"):
-            finalize_execution(request.model_copy(update={"proof": _proof_for(incomplete)}))
+            finalize_execution(_execution_request("negotiation", incomplete))
 
-    payload = request.model_dump(mode="json")
-    payload["retry_completed_ticks"] = (1, 3)
-    with pytest.raises(ValidationError, match="contiguous prefix"):
-        KernelModeExecutionRequest.model_validate(payload)
+    nonprefix = _supersede_retry_tick(
+        _supersede_retry_tick(_negotiation_references(), 1),
+        3,
+    )
+    with pytest.raises(KernelModeFinalizationError, match="contiguous retry prefix"):
+        finalize_execution(_execution_request("negotiation", nonprefix))
