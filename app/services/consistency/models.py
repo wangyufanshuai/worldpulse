@@ -15,6 +15,7 @@ ActionOutcomeStatus = Literal["accepted", "rejected", "constrained", "expired"]
 ProjectionStatus = Literal["not_projected", "projected", "constrained", "blocked", "expired"]
 
 ACTION_AUDIT_RULE_VERSION = "worldpulse-consistency.v1.2"
+CONSISTENCY_EVALUATOR_VERSION = "worldpulse-consistency.v0.8"
 
 
 class ConsistencyFinding(BaseModel):
@@ -77,7 +78,7 @@ class AgentActionProjectionAudit(BaseModel):
 
 class ConsistencyAuditReport(BaseModel):
     schema_version: str = "consistency-audit.v1"
-    evaluator_version: str = "worldpulse-consistency.v0.8"
+    evaluator_version: str = CONSISTENCY_EVALUATOR_VERSION
     run_id: str
     overall_status: AuditStatus
     summary: dict[str, Any] = Field(default_factory=dict)

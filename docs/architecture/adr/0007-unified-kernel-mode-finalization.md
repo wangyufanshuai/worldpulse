@@ -2505,6 +2505,22 @@ old process is unauthenticated in any case. A retired or unknown identity may
 never claim any lifecycle job, and a missing or lower generation may never
 claim a v2 job.
 
+For the V2.0 first enablement, worker authentication is PostgreSQL-native. Each
+`(worker_id, worker_generation)` pair has exactly one deployment-provisioned
+login role named
+`worldpulse_v2_ + first40(H({"worker_id":worker_id,"worker_generation":worker_generation}))`.
+Registration stores that principal in the credential-bound
+`worker-execution-registration.v2` metadata wrapper. Registration, heartbeat
+and claim read `session_user` and `current_user` from PostgreSQL itself; both
+must equal the derived role. The role must be able to log in and must not be a
+superuser, create roles or databases, replicate, or bypass row-level security.
+One derived role cannot register a second worker identity. The application does
+not create, rotate or revoke the role password: PostgreSQL role provisioning
+and revocation remain deployment operations and are the credential trust root.
+The earlier uncredentialed `worker-execution-registration.v1` wrapper is
+retire-only and can never heartbeat, upgrade in place, enter the eligible set
+or claim V2.
+
 An eligible worker for the creation check is a non-retired, authenticated
 existing lifecycle worker whose lifecycle status is active and whose last
 heartbeat is within the existing configured worker-freshness interval.
@@ -2514,27 +2530,19 @@ when that eligible set is nonempty and every member advertises v2 and has
 `worker_generation >= G`; thus the gate observes at least one fresh active
 worker and all such workers meet the pinned minimum generation. An empty set
 fails the gate; universal quantification over an empty set is never support.
+The rollout switch `WORLDPULSE_V2_CREATION_ENABLED` defaults to false and the
+strict positive `WORLDPULSE_V2_MINIMUM_WORKER_GENERATION` supplies `G`; both
+are deployment-owned process settings. Caller-supplied V2 profile keys and
+derived resolver outputs are removed before this server-owned pin is built.
+An idempotent retry of an already-created job validates and returns that exact
+stored job without reopening the time-varying worker-availability gate.
 
-In a direct-SQLite deployment, every worker generation runs under a dedicated
-OS service account that is not shared with an older identity or an operator's
-interactive account. Before v2 creation can open, deployment achieves full
-old-process quiescence, permanently disables every old supervisor/autostart
-path, and removes the old service accounts' read, write, create, delete, list
-and directory-traverse rights from both the SQLite database file and its entire
-containing directory. The new-generation account receives the minimum required
-NTFS ACL independently; process identity is not treated as revocable unless the
-file and directory ACL actually enforce that separation.
-
-Deployment then acquires the existing exclusive v2 deployment lock and keeps
-both that lock and the generation-separated ACL continuously enforced until
-every v2-pinned job in that database is terminal, including queued or running
-jobs that are later completed, failed, abandoned or explicitly cancelled. The
-lock/ACL interval is therefore the complete v2-job lifetime, not merely the
-enablement transaction or creation-gate check. Rollback, restart, a late old
-process and a supervisor revival may not shorten it. If the deployment cannot
-maintain this hard OS-account/ACL isolation and exclusive lock for that whole
-interval, direct-SQLite v2 is permanently disabled in that deployment; an
-attestation, health check or temporary quiescence is no substitute.
+V2.0 first enablement does not support direct SQLite. SQLite remains a supported
+V1 backend, but V2 worker registration, V2 creation and V2 claim all fail
+closed before mutation regardless of application flags or stored metadata. An
+OS-account, ACL, supervisor or deployment-lock attestation cannot enable V2 on
+SQLite. Supporting direct-SQLite V2 would require a separate accepted ADR and
+is not an implicit fallback when PostgreSQL is unavailable.
 
 In the existing job-claim transaction, a v2 job's hashed runtime-profile
 marker and `minimum_worker_generation`, plus the claiming worker's
@@ -2544,17 +2552,18 @@ any lease/owner or attempt mutation. The worker must advertise exact v2 and its
 generation must be at least the profile minimum. A failed or unknown check does
 not claim the job, write or consume a lease, or create, increment or consume an
 attempt. A profile with no execution-contract marker is v1 under
-GOV-RECOVERY-1 and remains claimable only by a current authenticated,
-non-retired worker through the existing v1 compatibility path, without being
-rewritten or opportunistically upgraded. A present marker other than exact
-`kernel-mode-execution.v2`, or an exact v2 marker with an absent/invalid
+GOV-RECOVERY-1 and remains on the existing trusted-internal V1 compatibility
+claim path, without being rewritten or opportunistically upgraded. The
+PostgreSQL principal gate in this rollout is mandatory for V2 and does not
+retroactively change V1 worker identity semantics. A present marker other than
+exact `kernel-mode-execution.v2`, or an exact v2 marker with an absent/invalid
 minimum generation, fails the claim transaction before mutation and is never
 reinterpreted as v1.
 
-These generation, retirement, credential and direct-SQLite requirements are
+These generation, retirement, PostgreSQL-principal and backend requirements are
 the rollout hard fence. They reuse the existing runtime profile, worker
-metadata/control plane, credentials and deployment lock/attestation; they add
-no microservice or database table.
+metadata/control plane and database credentials; they add no microservice or
+database table.
 
 A job pinned to `kernel-mode-execution.v2` must never be processed by an old
 worker, including during rollback. Rollback first disables creation of new v2
@@ -2562,8 +2571,7 @@ pins, then lets v2-capable workers drain active and queued v2-pinned jobs to a
 terminal state or explicitly cancels the remaining jobs. Each cancellation is
 the permanent same-job terminal state defined above, not a pause. Only after
 every v2-pinned job is terminal may the worker/report implementation be
-reverted or a direct-SQLite deployment release its exclusive lock and
-generation-separated ACL. Claim refusal is a safety boundary, not a retryable
+reverted. Claim refusal is a safety boundary, not a retryable
 invitation to an older worker.
 
 ### Performance gates
@@ -3249,12 +3257,11 @@ matrix**. The acceptance text does not redefine either contract.
    v2 creation opens. A revived retired identity cannot authenticate a
    heartbeat, cannot become fresh again and cannot claim; unknown identities,
    missing/unknown capability metadata and old generations also fail closed.
-   Direct-SQLite tests keep creation permanently disabled unless old and new
-   generations use separate OS accounts, old file/directory rights are revoked,
-   and full process quiescence, old-supervisor disablement and the exclusive
-   deployment lock all hold continuously until every v2-pinned job is terminal.
-   Releasing the lock or ACL at enablement rather than terminal drain fails the
-   gate. Atomic claim refusal leaves owner, lease and attempt state unchanged.
+   Direct-SQLite tests keep V2 registration, creation and claiming permanently
+   disabled before mutation; metadata or an application attestation cannot open
+   the path. PostgreSQL tests bind each identity/generation to its exact derived
+   non-elevated login role and reject a changed, shared or assumed role. Atomic
+   claim refusal leaves owner, lease, worker-busy and attempt state unchanged.
    Recovery tests prove
    GOV-RECOVERY-1: only key-absent profiles select `report-generate.v1` and
    `replay-archive.v1` without mutation or a version-triggered rerun, exact-v2
@@ -3474,9 +3481,8 @@ matrix**. The acceptance text does not redefine either contract.
    remain deployed.
 2. Drain active and queued v2-pinned jobs to completion on those workers, or
    explicitly cancel the remainder. Confirm that every v2-pinned job is
-   terminal; an old worker is never allowed to consume one. A direct-SQLite
-   deployment retains its exclusive v2 lock and generation-separated ACL until
-   this assertion succeeds.
+   terminal; an old worker is never allowed to consume one. SQLite never stores
+   a newly created V2-pinned job under this rollout.
 3. Revert the worker, report-step and adapter commits. Permanently retired
    identities and revoked credentials remain retired/revoked; if an older
    compatible worker binary is redeployed, it receives a new authorized

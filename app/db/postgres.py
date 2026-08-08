@@ -44,6 +44,20 @@ class PostgresMigrationPlan:
     statement_count: int
 
 
+@dataclass(frozen=True)
+class PostgresSessionIdentity:
+    """Database-authenticated identity and privilege facts for one session."""
+
+    session_user: str
+    current_user: str
+    can_login: bool
+    is_superuser: bool
+    can_create_role: bool
+    can_create_database: bool
+    can_replicate: bool
+    can_bypass_rls: bool
+
+
 def migration_plan() -> list[PostgresMigrationPlan]:
     return [
         PostgresMigrationPlan(path.stem, hashlib.sha256(path.read_bytes()).hexdigest(), len(_statements(translate_migration(path.read_text(encoding="utf-8")))))
@@ -141,7 +155,41 @@ def connect_postgres(url: str | None = None) -> PostgresConnection:
         import psycopg
     except ImportError as exc:  # pragma: no cover - depends on optional runtime
         raise RuntimeError("PostgreSQL mode requires psycopg[binary]>=3.2") from exc
-    return PostgresConnection(psycopg.connect(url or database_url()))
+    effective_url = url or database_url()
+    if not effective_url:
+        raise RuntimeError("PostgreSQL mode requires WORLDPULSE_DATABASE_URL")
+    return PostgresConnection(psycopg.connect(effective_url))
+
+
+def postgres_session_identity(connection: PostgresConnection) -> PostgresSessionIdentity:
+    """Read identity from PostgreSQL itself, never from process configuration."""
+
+    row = connection.execute(
+        """
+        SELECT session_user::TEXT AS session_user,
+               current_user::TEXT AS current_user,
+               pg_role.rolcanlogin AS can_login,
+               pg_role.rolsuper AS is_superuser,
+               pg_role.rolcreaterole AS can_create_role,
+               pg_role.rolcreatedb AS can_create_database,
+               pg_role.rolreplication AS can_replicate,
+               pg_role.rolbypassrls AS can_bypass_rls
+        FROM pg_catalog.pg_roles AS pg_role
+        WHERE pg_role.rolname = session_user
+        """
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("PostgreSQL session role is missing from pg_roles")
+    return PostgresSessionIdentity(
+        session_user=str(row["session_user"]),
+        current_user=str(row["current_user"]),
+        can_login=bool(row["can_login"]),
+        is_superuser=bool(row["is_superuser"]),
+        can_create_role=bool(row["can_create_role"]),
+        can_create_database=bool(row["can_create_database"]),
+        can_replicate=bool(row["can_replicate"]),
+        can_bypass_rls=bool(row["can_bypass_rls"]),
+    )
 
 
 def apply_postgres_migrations(url: str | None = None) -> list[str]:
@@ -225,7 +273,7 @@ def portability_report() -> dict:
         "insert_or_replace": re.compile(r"INSERT\s+OR\s+REPLACE", re.IGNORECASE),
         "collate_nocase": re.compile(r"COLLATE\s+NOCASE", re.IGNORECASE),
     }
-    findings = {key: [] for key in patterns}
+    findings: dict[str, list[str]] = {key: [] for key in patterns}
     for path in (root / "app" / "services").rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         for key, pattern in patterns.items():

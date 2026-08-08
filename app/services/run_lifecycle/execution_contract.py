@@ -1,8 +1,8 @@
 """Pinned lifecycle execution-contract selection for ADR-0007 rollout.
 
-This slice makes recovery/version selection executable while intentionally
-keeping V2 creation and claiming disabled until the worker generation,
-retirement, credential and direct-SQLite hard fences are implemented.
+This module keeps recovery/version selection pure. PostgreSQL worker identity,
+creation and claiming gates live in ``worker_trust``; execution remains a
+separate fail-closed rollout stage.
 """
 
 from __future__ import annotations
@@ -135,8 +135,8 @@ class KernelModeFencingEpoch(BaseModel):
         return self
 
 
-class WorkerExecutionRegistration(BaseModel):
-    """Monotonic control-plane wrapper stored in worker metadata."""
+class UncredentialedWorkerExecutionRegistration(BaseModel):
+    """Pre-enablement registration retained only so it can be retired safely."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
@@ -151,6 +151,47 @@ class WorkerExecutionRegistration(BaseModel):
         if (self.identity_status == "retired") != (self.retired_at is not None):
             raise ValueError("worker retirement status/timestamp mismatch")
         return self
+
+
+def expected_postgres_worker_principal(
+    *, worker_id: str, worker_generation: int
+) -> str:
+    """Derive the one PostgreSQL login role authorized for this worker epoch."""
+
+    identity_hash = stable_hash(
+        {"worker_id": worker_id, "worker_generation": worker_generation}
+    )
+    return f"worldpulse_v2_{identity_hash[:40]}"
+
+
+class WorkerExecutionRegistration(BaseModel):
+    """Credential-bound monotonic control-plane worker registration."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    schema_version: Literal["worker-execution-registration.v2"]
+    capability: WorkerExecutionCapability
+    database_principal: str = Field(min_length=1, max_length=63)
+    identity_status: Literal["active", "retired"]
+    registered_at: str = Field(min_length=1, max_length=80)
+    retired_at: str | None = Field(min_length=1, max_length=80)
+
+    @model_validator(mode="after")
+    def validate_registration(self) -> Self:
+        if (self.identity_status == "retired") != (self.retired_at is not None):
+            raise ValueError("worker retirement status/timestamp mismatch")
+        expected_principal = expected_postgres_worker_principal(
+            worker_id=self.capability.worker_id,
+            worker_generation=self.capability.worker_generation,
+        )
+        if self.database_principal != expected_principal:
+            raise ValueError("worker database principal does not match capability")
+        return self
+
+
+WorkerExecutionRegistrationRecord = (
+    UncredentialedWorkerExecutionRegistration | WorkerExecutionRegistration
+)
 
 
 def build_worker_execution_capability(
@@ -182,12 +223,14 @@ def build_worker_execution_registration(
     capability: WorkerExecutionCapability,
     *,
     registered_at: str,
+    database_principal: str,
 ) -> WorkerExecutionRegistration:
     """Create the one active registration allowed for a new worker identity."""
 
     return WorkerExecutionRegistration(
-        schema_version="worker-execution-registration.v1",
+        schema_version="worker-execution-registration.v2",
         capability=capability,
+        database_principal=database_principal,
         identity_status="active",
         registered_at=registered_at,
         retired_at=None,
@@ -195,21 +238,32 @@ def build_worker_execution_registration(
 
 
 def retire_worker_execution_registration(
-    registration: WorkerExecutionRegistration,
+    registration: WorkerExecutionRegistrationRecord,
     *,
     retired_at: str,
-) -> WorkerExecutionRegistration:
+) -> WorkerExecutionRegistrationRecord:
     """Apply the only permitted registration-state transition."""
 
     if registration.identity_status == "retired":
         return registration
-    return WorkerExecutionRegistration(
-        schema_version=registration.schema_version,
-        capability=registration.capability,
-        identity_status="retired",
-        registered_at=registration.registered_at,
-        retired_at=retired_at,
-    )
+    payload = registration.model_dump(mode="json")
+    payload.update({"identity_status": "retired", "retired_at": retired_at})
+    return type(registration).model_validate(payload)
+
+
+def parse_worker_execution_registration(
+    raw: object,
+) -> WorkerExecutionRegistrationRecord:
+    """Parse both the retire-only pre-enablement record and credential-bound V2."""
+
+    if not isinstance(raw, dict):
+        raise ValueError("worker execution identity metadata is malformed")
+    schema_version = raw.get("schema_version")
+    if schema_version == "worker-execution-registration.v1":
+        return UncredentialedWorkerExecutionRegistration.model_validate(raw)
+    if schema_version == "worker-execution-registration.v2":
+        return WorkerExecutionRegistration.model_validate(raw)
+    raise ValueError("unknown worker execution registration schema")
 
 
 def build_kernel_mode_fencing_epoch(
@@ -307,15 +361,6 @@ def pin_legacy_execution_contract(runtime_profile: dict | None) -> dict:
     for key in V2_PROFILE_KEYS | FORBIDDEN_DERIVED_PROFILE_KEYS:
         profile.pop(key, None)
     return profile
-
-
-def require_claimable_execution_contract(runtime_profile: dict | None) -> None:
-    selection = select_execution_contract(runtime_profile)
-    if selection.is_v2:
-        raise V2ExecutionPathNotEnabledError(
-            "kernel-mode-execution.v2 claiming remains disabled until the worker "
-            "generation, retirement, credential and database-isolation fences are active"
-        )
 
 
 def report_replay_step_versions(runtime_profile: dict | None) -> tuple[str, str]:

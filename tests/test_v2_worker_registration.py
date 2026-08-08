@@ -6,11 +6,14 @@ import pytest
 
 from app.services import operations, project_store
 from app.services.auth import ensure_system_user
+from app.services.run_lifecycle import worker_trust
 from app.services.run_lifecycle.execution_contract import (
     KERNEL_MODE_EXECUTION_V2,
     WORKER_EXECUTION_IDENTITY_METADATA_KEY,
+    V2ExecutionPathNotEnabledError,
     WorkerExecutionRegistration,
     build_worker_execution_capability,
+    expected_postgres_worker_principal,
 )
 
 
@@ -21,6 +24,14 @@ def _setup(monkeypatch, tmp_path) -> None:
         tmp_path / "v2-worker-registration.db",
     )
     monkeypatch.delenv("WORLDPULSE_DATABASE_URL", raising=False)
+    monkeypatch.setattr(
+        worker_trust,
+        "authenticate_v2_worker_connection",
+        lambda _connection, capability: expected_postgres_worker_principal(
+            worker_id=capability.worker_id,
+            worker_generation=capability.worker_generation,
+        ),
+    )
     ensure_system_user()
 
 
@@ -41,6 +52,24 @@ def _registration(worker_id: str) -> WorkerExecutionRegistration:
     return WorkerExecutionRegistration.model_validate(
         worker.metadata[WORKER_EXECUTION_IDENTITY_METADATA_KEY]
     )
+
+
+def test_direct_sqlite_rejects_v2_worker_registration(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        project_store,
+        "DB_PATH",
+        tmp_path / "v2-worker-sqlite-disabled.db",
+    )
+    monkeypatch.delenv("WORLDPULSE_DATABASE_URL", raising=False)
+    ensure_system_user()
+    capability = _capability()
+
+    with pytest.raises(V2ExecutionPathNotEnabledError, match="require PostgreSQL"):
+        operations.register_worker(
+            capability.worker_id,
+            "lifecycle",
+            execution_capability=capability,
+        )
 
 
 def test_v2_worker_registration_persists_and_preserves_immutable_capability(

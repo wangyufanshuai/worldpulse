@@ -23,12 +23,13 @@ from . import artifacts as artifact_store
 from . import read_models
 from .integrity import artifact_digest as _artifact_digest
 from .execution_contract import (
+    V2ExecutionPathNotEnabledError,
     pin_legacy_execution_contract,
-    require_claimable_execution_contract,
     select_execution_contract,
 )
 from .kernel_shadow import pin_kernel_shadow_policy
 from .mappers import attempt_from_row, event_from_row as _event_from_row, job_from_row as _job_from_row
+from . import worker_trust
 
 add_artifact = artifact_store.add_artifact
 get_artifact_content_by_id = artifact_store.get_artifact_content_by_id
@@ -63,26 +64,11 @@ def create_job(
 ) -> RunJobStatus:
     init_db()
     scenario = _scenario_payload(request.scenario, request.seed)
+    effective_seed = _effective_seed(request)
     engine_mode = _engine_mode(request.engine_mode)
     normalized_key = _normalize_idempotency_key(idempotency_key)
-    effective_runtime_profile = pin_legacy_execution_contract(
-        pin_kernel_shadow_policy(runtime_profile)
-    )
+    requested_runtime_profile = pin_kernel_shadow_policy(runtime_profile)
     rule_pack = get_rule_pack(pinned_rule_pack_id) if pinned_rule_pack_id else active_rule_pack()
-    request_hash = stable_hash(
-        {
-            "project_id": project_id,
-            "engine_mode": engine_mode,
-            "scenario": scenario,
-            "seed": request.seed,
-            "parent_run_id": request.parent_run_id,
-            "max_attempts": request.max_attempts,
-            "rule_pack_hash": rule_pack.manifest_hash,
-            "evaluation_batch_id": evaluation_batch_id,
-            "evaluation_member_id": evaluation_member_id,
-            "runtime_profile": effective_runtime_profile,
-        }
-    )
     run_id = f"job_{uuid4().hex[:12]}"
     now = now_iso()
     existing_run_id: str | None = None
@@ -94,14 +80,65 @@ def create_job(
             raise HTTPException(status_code=404, detail=f"Unknown project: {project_id}")
         if normalized_key:
             existing = conn.execute(
-                "SELECT run_id, request_hash FROM run_jobs WHERE project_id = ? AND idempotency_key = ?",
+                "SELECT * FROM run_jobs WHERE project_id = ? AND idempotency_key = ?",
                 (project_id, normalized_key),
             ).fetchone()
             if existing is not None:
-                if existing["request_hash"] != request_hash:
+                existing_profile = loads(existing["runtime_profile_json"], {})
+                existing_profile_hash = existing["runtime_profile_hash"]
+                existing_contract = select_execution_contract(existing_profile)
+                if existing_contract.is_v2 and not existing_profile_hash:
+                    raise ValueError("idempotent V2 job runtime profile is missing its hash")
+                if (
+                    existing_profile_hash is not None
+                    and stable_hash(existing_profile) != existing_profile_hash
+                ):
+                    raise ValueError("idempotent job runtime profile hash mismatch")
+                if pin_legacy_execution_contract(
+                    existing_profile
+                ) != pin_legacy_execution_contract(requested_runtime_profile):
+                    raise HTTPException(status_code=409, detail="Idempotency-Key was already used with a different request")
+                existing_seed = effective_seed if existing_contract.is_v2 else request.seed
+                existing_scenario = _scenario_payload(
+                    request.scenario,
+                    existing_seed,
+                )
+                expected_hash = _creation_request_hash(
+                    project_id=project_id,
+                    engine_mode=engine_mode,
+                    scenario=existing_scenario,
+                    seed=existing_seed,
+                    request=request,
+                    rule_pack_hash=rule_pack.manifest_hash,
+                    evaluation_batch_id=evaluation_batch_id,
+                    evaluation_member_id=evaluation_member_id,
+                    runtime_profile=existing_profile,
+                )
+                if existing["request_hash"] != expected_hash:
                     raise HTTPException(status_code=409, detail="Idempotency-Key was already used with a different request")
                 existing_run_id = existing["run_id"]
         if existing_run_id is None:
+            effective_runtime_profile = worker_trust.pin_execution_contract_for_creation(
+                conn,
+                requested_runtime_profile,
+                effective_seed=effective_seed,
+                now=now,
+            )
+            execution_contract = select_execution_contract(effective_runtime_profile)
+            stored_seed = effective_seed if execution_contract.is_v2 else request.seed
+            if execution_contract.is_v2:
+                scenario = _scenario_payload(request.scenario, effective_seed)
+            request_hash = _creation_request_hash(
+                project_id=project_id,
+                engine_mode=engine_mode,
+                scenario=scenario,
+                seed=stored_seed,
+                request=request,
+                rule_pack_hash=rule_pack.manifest_hash,
+                evaluation_batch_id=evaluation_batch_id,
+                evaluation_member_id=evaluation_member_id,
+                runtime_profile=effective_runtime_profile,
+            )
             from app.services.operations import enforce_project_run_quota
 
             enforce_project_run_quota(project_id, connection=conn)
@@ -121,7 +158,7 @@ def create_job(
                 "queued",
                 "scenario_compile",
                 0,
-                request.seed,
+                stored_seed,
                 request.parent_run_id,
                 dumps(scenario),
                 now,
@@ -268,7 +305,13 @@ def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300, pr
             raise ValueError("queued V2 job runtime profile is missing its hash")
         if runtime_profile_hash is not None and stable_hash(runtime_profile) != runtime_profile_hash:
             raise ValueError("queued job runtime profile hash mismatch")
-        require_claimable_execution_contract(runtime_profile)
+        worker_capability = worker_trust.require_v2_claim_eligibility(
+            conn,
+            selection=execution_contract,
+            worker_id=worker_id,
+            now=now,
+            lock_worker=is_postgres_url(),
+        )
         attempt_number = int(row["attempt_count"] or 0) + 1
         attempt_id = f"attempt_{uuid4().hex}"
         updated = conn.execute(
@@ -283,6 +326,19 @@ def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300, pr
         )
         if updated.rowcount != 1:
             return None
+        if worker_capability is not None:
+            worker_updated = conn.execute(
+                """
+                UPDATE worker_nodes
+                SET status = 'busy', current_job_id = ?
+                WHERE worker_id = ? AND status = 'ready' AND current_job_id IS NULL
+                """,
+                (row["run_id"], worker_id),
+            )
+            if worker_updated.rowcount != 1:
+                raise V2ExecutionPathNotEnabledError(
+                    "V2 worker readiness changed during the claim transaction"
+                )
         conn.execute(
             """
             INSERT INTO run_attempts
@@ -296,6 +352,14 @@ def claim_next_job(worker_id: str | None = None, *, lease_seconds: int = 300, pr
         payload={
             "status": "preparing", "worker_id": worker_id, "lease_expires_at": lease_expires_at,
             "attempt_id": attempt_id, "attempt_number": attempt_number,
+            **(
+                {
+                    "worker_generation": worker_capability.worker_generation,
+                    "worker_capability_hash": worker_capability.worker_capability_hash,
+                }
+                if worker_capability is not None
+                else {}
+            ),
         },
     )
     return get_job(row["run_id"])
@@ -678,6 +742,42 @@ def _scenario_payload(raw: WarRoomScenarioRequest | dict, seed: int | None) -> d
     if seed is not None:
         payload["seed"] = seed
     return WarRoomScenarioRequest(**payload).model_dump()
+
+
+def _effective_seed(request: RunJobCreateRequest) -> int:
+    if request.seed is not None:
+        return request.seed
+    if request.scenario.seed is not None:
+        return request.scenario.seed
+    return 42
+
+
+def _creation_request_hash(
+    *,
+    project_id: str,
+    engine_mode: str,
+    scenario: dict,
+    seed: int | None,
+    request: RunJobCreateRequest,
+    rule_pack_hash: str,
+    evaluation_batch_id: str | None,
+    evaluation_member_id: str | None,
+    runtime_profile: dict,
+) -> str:
+    return stable_hash(
+        {
+            "project_id": project_id,
+            "engine_mode": engine_mode,
+            "scenario": scenario,
+            "seed": seed,
+            "parent_run_id": request.parent_run_id,
+            "max_attempts": request.max_attempts,
+            "rule_pack_hash": rule_pack_hash,
+            "evaluation_batch_id": evaluation_batch_id,
+            "evaluation_member_id": evaluation_member_id,
+            "runtime_profile": runtime_profile,
+        }
+    )
 
 
 def _engine_mode(value: str | None) -> str:

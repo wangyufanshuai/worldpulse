@@ -21,11 +21,15 @@ from app.services.organizations import require_organization_role
 from app.services.project_store import connect, dumps, init_db, loads
 from app.services.run_lifecycle.execution_contract import (
     WORKER_EXECUTION_IDENTITY_METADATA_KEY,
+    UncredentialedWorkerExecutionRegistration,
     WorkerExecutionCapability,
     WorkerExecutionRegistration,
+    WorkerExecutionRegistrationRecord,
     build_worker_execution_registration,
+    parse_worker_execution_registration,
     retire_worker_execution_registration,
 )
+from app.services.run_lifecycle import worker_trust
 from app.version import WORLDPULSE_VERSION
 
 
@@ -63,6 +67,8 @@ def register_worker(
     with connect() as conn:
         if not is_postgres_url():
             conn.execute("BEGIN IMMEDIATE")
+        if execution_capability is not None and is_postgres_url():
+            conn.execute("LOCK TABLE worker_nodes IN SHARE ROW EXCLUSIVE MODE")
         lock_clause = " FOR UPDATE" if is_postgres_url() else ""
         existing = conn.execute(
             f"SELECT * FROM worker_nodes WHERE worker_id = ?{lock_clause}",
@@ -73,22 +79,46 @@ def register_worker(
             if existing is not None
             else None
         )
+        database_principal = (
+            worker_trust.authenticate_v2_worker_connection(
+                conn,
+                execution_capability,
+            )
+            if execution_capability is not None
+            else None
+        )
         if existing_registration is not None:
             if existing_registration.identity_status == "retired":
                 raise ValueError("retired worker identity cannot be reactivated")
             if existing["status"] in {"draining", "stopped", "failed"}:
                 raise ValueError("inactive V2 worker identity cannot be reactivated")
+            if isinstance(
+                existing_registration,
+                UncredentialedWorkerExecutionRegistration,
+            ):
+                raise ValueError(
+                    "uncredentialed pre-enablement worker identity cannot be upgraded"
+                )
             if execution_capability is None:
                 raise ValueError("V2 worker identity cannot re-register as legacy")
             if execution_capability != existing_registration.capability:
                 raise ValueError("worker execution capability is immutable")
+            if database_principal != existing_registration.database_principal:
+                raise ValueError("worker database principal is immutable")
             registration = existing_registration
         elif existing is not None and execution_capability is not None:
             raise ValueError("legacy worker identity cannot be upgraded in place")
         elif execution_capability is not None:
+            assert database_principal is not None
+            _require_unique_worker_database_principal(
+                conn,
+                worker_id=worker_id,
+                database_principal=database_principal,
+            )
             registration = build_worker_execution_registration(
                 execution_capability,
                 registered_at=now,
+                database_principal=database_principal,
             )
         else:
             registration = None
@@ -140,8 +170,19 @@ def heartbeat_worker(
         registration = _execution_registration(loads(row["metadata_json"], {}))
         if registration is not None and registration.identity_status == "retired":
             raise ValueError("retired worker identity cannot heartbeat")
+        if isinstance(registration, UncredentialedWorkerExecutionRegistration):
+            raise ValueError(
+                "uncredentialed pre-enablement V2 worker identity cannot heartbeat"
+            )
         if registration is not None and row["status"] in {"stopped", "failed"}:
             raise ValueError("inactive V2 worker identity cannot heartbeat")
+        if isinstance(registration, WorkerExecutionRegistration):
+            principal = worker_trust.authenticate_v2_worker_connection(
+                conn,
+                registration.capability,
+            )
+            if principal != registration.database_principal:
+                raise ValueError("worker database principal is immutable")
         next_status = "draining" if row["status"] == "draining" and status in {"ready", "busy"} else status
         conn.execute(
             """
@@ -501,7 +542,8 @@ def platform_readiness() -> PlatformReadiness:
     if os.getenv("WORLDPULSE_DOCUMENTS_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}:
         try:
             from app.services.scenario_compiler.blob_store import upload_root
-            root = upload_root(); root.mkdir(parents=True, exist_ok=True)
+            root = upload_root()
+            root.mkdir(parents=True, exist_ok=True)
             blob_ok = os.access(root, os.W_OK)
             if not blob_ok:
                 reasons.append("blob_storage_not_writable")
@@ -575,13 +617,30 @@ def _worker(row) -> WorkerNode:
 
 def _execution_registration(
     metadata: dict,
-) -> WorkerExecutionRegistration | None:
+) -> WorkerExecutionRegistrationRecord | None:
     raw = metadata.get(WORKER_EXECUTION_IDENTITY_METADATA_KEY)
     if raw is None:
         return None
-    if not isinstance(raw, dict):
-        raise ValueError("worker execution identity metadata is malformed")
-    return WorkerExecutionRegistration.model_validate(raw)
+    return parse_worker_execution_registration(raw)
+
+
+def _require_unique_worker_database_principal(
+    connection,
+    *,
+    worker_id: str,
+    database_principal: str,
+) -> None:
+    rows = connection.execute(
+        "SELECT worker_id, metadata_json FROM worker_nodes WHERE worker_id <> ?",
+        (worker_id,),
+    ).fetchall()
+    for row in rows:
+        registration = _execution_registration(loads(row["metadata_json"], {}))
+        if (
+            isinstance(registration, WorkerExecutionRegistration)
+            and registration.database_principal == database_principal
+        ):
+            raise ValueError("worker database principal is already registered")
 
 
 def _quota(row) -> OrganizationQuota:
