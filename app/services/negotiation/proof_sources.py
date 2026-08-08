@@ -16,7 +16,11 @@ from typing import Annotated, Literal, Self, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.negotiation_models import NegotiationMessage
-from app.services.agent_contract.models import AgentActionProposal, AgentConstraintContext
+from app.services.agent_contract.models import (
+    AgentActionProposal,
+    AgentConstraintContext,
+    MockAgentBatch,
+)
 from app.services.agent_runtime.models import AgentInvocationAudit
 from app.services.consistency.hashing import stable_hash
 from app.services.consistency.models import (
@@ -404,6 +408,80 @@ class KernelProposalBatchSource(ClosedSource):
             proposal_hashes=self.proposal_hashes,
             proposal_count=self.proposal_count,
         )
+
+
+def build_kernel_proposal_batch_source(
+    *,
+    run_id: str,
+    proposals: tuple[AgentActionProposal, ...],
+    source_kind: Literal["mock_batch", "agent_runtime"],
+    mock_batch: MockAgentBatch | Mapping[str, object] | None = None,
+    runtime_hash: str | None = None,
+) -> KernelProposalBatchSource:
+    """Build the canonical V2 PB wrapper from one complete source transcript."""
+
+    ordered = tuple(
+        sorted(proposals, key=lambda item: item.proposal_id.encode("utf-8"))
+    )
+    proposal_ids = tuple(item.proposal_id for item in ordered)
+    if len(set(proposal_ids)) != len(proposal_ids):
+        raise ValueError("PB source proposals must have unique IDs")
+    for proposal in ordered:
+        if proposal.schema_version != "agent-action-proposal.v1" or proposal.run_id != run_id:
+            raise ValueError("PB source proposal identity mismatch")
+        target_ids = tuple(proposal.target_ids)
+        if target_ids != tuple(
+            sorted(set(target_ids), key=lambda value: value.encode("utf-8"))
+        ):
+            raise ValueError("PB source proposal targets are not canonical")
+
+    source_mock_batch_hash: str | None = None
+    source_runtime_hash: str | None = None
+    if source_kind == "mock_batch":
+        if mock_batch is None or runtime_hash is not None:
+            raise ValueError("mock PB requires exactly one complete mock source")
+        raw_mock = (
+            mock_batch.model_dump(mode="json")
+            if isinstance(mock_batch, MockAgentBatch)
+            else dict(mock_batch)
+        )
+        parsed_mock = MockAgentBatchSource.model_validate(raw_mock)
+        mock_proposals, _ = _validated_mock_agent_batch_proposals(
+            parsed_mock,
+            run_id=run_id,
+        )
+        mock_by_id = {
+            item.proposal_id: item.model_dump(mode="json")
+            for item in mock_proposals
+        }
+        ordered_by_id = {
+            item.proposal_id: item.model_dump(mode="json") for item in ordered
+        }
+        if mock_by_id != ordered_by_id:
+            raise ValueError("PB proposals drift from the complete mock source")
+        source_mock_batch_hash = mock_agent_batch_source_hash(parsed_mock)
+    else:
+        if mock_batch is not None or runtime_hash is None:
+            raise ValueError("runtime PB requires exactly one runtime hash")
+        source_runtime_hash = runtime_hash
+
+    proposal_hashes = tuple(
+        stable_hash(item.model_dump(mode="json")) for item in ordered
+    )
+    payload = {
+        "schema_version": "kernel-proposal-batch.v1",
+        "run_id": run_id,
+        "source_kind": source_kind,
+        "source_runtime_hash": source_runtime_hash,
+        "source_mock_batch_hash": source_mock_batch_hash,
+        "proposal_ids": proposal_ids,
+        "proposal_hashes": proposal_hashes,
+        "proposals": tuple(item.model_dump(mode="json") for item in ordered),
+        "proposal_count": len(ordered),
+    }
+    return KernelProposalBatchSource.model_validate(
+        {**payload, "batch_hash": stable_hash(payload)}
+    )
 
 
 def _validated_kernel_proposal_batch_vectors(
@@ -1147,9 +1225,12 @@ def build_consistency_audit_source(
             sorted(set(target_ids), key=lambda value: value.encode("utf-8"))
         ):
             raise ValueError("Consistency source proposal targets are not canonical")
-    decisions_by_id = {
-        item.proposal_id: item for item in report.proposal_decisions
-    }
+    decisions_by_id: dict[str, AgentActionDecision] = {}
+    for item in report.proposal_decisions:
+        decision_payload = item.model_dump(mode="json", exclude={"audit_hash"})
+        decisions_by_id[item.proposal_id] = AgentActionDecision.model_validate(
+            {**decision_payload, "audit_hash": stable_hash(decision_payload)}
+        )
     if len(decisions_by_id) != len(report.proposal_decisions) or set(
         decisions_by_id
     ) != set(proposal_ids):
@@ -1486,6 +1567,96 @@ class ProjectionAuditSource(ClosedSource):
             before_result_hash=self.before_result_hash,
             final_result_hash=self.final_result_hash,
         )
+
+
+def build_audit_only_projection_source(
+    *,
+    run_id: str,
+    consistency_audit_hash: str,
+    final_result_hash: str,
+    proposals: tuple[AgentActionProposal, ...],
+    decisions: tuple[AgentActionDecision, ...],
+) -> ProjectionAuditSource:
+    """Build a closed V2 PA proving that Agent output changed no numeric state."""
+
+    ordered = tuple(
+        sorted(proposals, key=lambda item: item.proposal_id.encode("utf-8"))
+    )
+    proposal_ids = tuple(item.proposal_id for item in ordered)
+    if len(set(proposal_ids)) != len(proposal_ids):
+        raise ValueError("audit-only PA proposals must have unique IDs")
+    decisions_by_id = {item.proposal_id: item for item in decisions}
+    if len(decisions_by_id) != len(decisions) or set(decisions_by_id) != set(
+        proposal_ids
+    ):
+        raise ValueError("audit-only PA decisions must equal proposal membership")
+
+    proposal_hashes = tuple(
+        stable_hash(item.model_dump(mode="json")) for item in ordered
+    )
+    records: list[dict[str, object]] = []
+    status_by_outcome = {
+        "rejected": "blocked",
+        "constrained": "constrained",
+        "expired": "expired",
+    }
+    for index, proposal in enumerate(ordered):
+        if proposal.schema_version != "agent-action-proposal.v1" or proposal.run_id != run_id:
+            raise ValueError("audit-only PA proposal identity mismatch")
+        target_ids = tuple(proposal.target_ids)
+        if target_ids != tuple(
+            sorted(set(target_ids), key=lambda value: value.encode("utf-8"))
+        ):
+            raise ValueError("audit-only PA proposal targets are not canonical")
+        decision = decisions_by_id[proposal.proposal_id]
+        proposal_hash = proposal_hashes[index]
+        if decision.input_hash != proposal_hash:
+            raise ValueError("audit-only PA decision input hash mismatch")
+        projection_status = (
+            "not_projected"
+            if decision.outcome == "accepted"
+            else status_by_outcome[decision.outcome]
+        )
+        records.append(
+            {
+                "proposal_id": proposal.proposal_id,
+                "proposal_hash": proposal_hash,
+                "input_hash": proposal_hash,
+                "decision": decision.decision,
+                "rule_version": decision.rule_version,
+                "outcome": decision.outcome,
+                "rejection_reason": decision.rejection_reason,
+                "projection_status": projection_status,
+                "projection_hash": None,
+                "modifier_id": None,
+                "final_result_hash": final_result_hash,
+            }
+        )
+
+    payload = {
+        "schema_version": "agent-action-projection-audit.v2",
+        "run_id": run_id,
+        "session_id": None,
+        "tick": None,
+        "projection_mode": "audit_only",
+        "consistency_audit_hash": consistency_audit_hash,
+        "modifier_bundle_hash": None,
+        "proposal_ids": proposal_ids,
+        "proposal_hashes": proposal_hashes,
+        "proposal_count": len(ordered),
+        "projected_proposal_ids": (),
+        "projected_semantic_key_hashes": (),
+        "projected_count": 0,
+        "modifier_tuples": (),
+        "modifier_count": 0,
+        "records": tuple(records),
+        "record_count": len(records),
+        "before_result_hash": final_result_hash,
+        "final_result_hash": final_result_hash,
+    }
+    return ProjectionAuditSource.model_validate(
+        {**payload, "audit_hash": stable_hash(payload)}
+    )
 
 
 class ToneDeltasSource(ClosedSource):

@@ -17,8 +17,12 @@ from app.services.security import redact_secrets
 from app.services.simulation_kernel import KERNEL_SHADOW_ARTIFACT_SCHEMA
 from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
 from app.services.reviews import create_review_case
-from app.services.negotiation import run_negotiation
-from app.services.negotiation import build_consistency_audit_source
+from app.services.negotiation import (
+    build_audit_only_projection_source,
+    build_consistency_audit_source,
+    build_kernel_proposal_batch_source,
+    run_negotiation,
+)
 
 from . import checkpoints, repository, steps
 from .execution_contract import (
@@ -36,6 +40,7 @@ from .finalization_uow import (
     commit_report_generate_v2,
 )
 from .mode_execution_adapter import StoredModeExecutionAdapter
+from .mode_context import build_resolved_mock_agent_batch, resolve_mode_context
 
 
 simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
@@ -98,9 +103,12 @@ def process_job(run_id: str) -> RunJobStatus:
     execution_contract = select_job_execution_contract(job)
     if execution_contract.is_v2 and execution_contract.profile is None:
         raise V2ExecutionPathNotEnabledError("V2 execution profile is incomplete")
-    if execution_contract.is_v2 and job.engine_mode != "deterministic":
+    if execution_contract.is_v2 and job.engine_mode not in {
+        "deterministic",
+        "mock_agent",
+    }:
         raise V2ExecutionPathNotEnabledError(
-            "kernel-mode-execution.v2 Agent-capable execution is not enabled on this worker"
+            "kernel-mode-execution.v2 execution mode is not enabled on this worker"
         )
     kernel_shadow_policy = kernel_shadow_policy_for_job(job)
     worker_id = job.worker_id
@@ -172,6 +180,13 @@ def process_job(run_id: str) -> RunJobStatus:
     report = checkpoint.report
     result_run_id = checkpoint.result_run_id
     previous_step = checkpoint.previous_step
+    resolved_mode_context = None
+    if execution_contract.is_v2 and job.engine_mode == "mock_agent" and result is not None:
+        resolved_mode_context = resolve_mode_context(
+            result,
+            effective_seed=execution_contract.profile.effective_seed,
+        )
+        constraint_context = resolved_mode_context.runtime_constraint_context
     start_index = len(checkpoint.completed_steps)
     if checkpoint.completed_steps:
         repository.append_event(
@@ -283,10 +298,57 @@ def process_job(run_id: str) -> RunJobStatus:
                     },
                 )
             if job.engine_mode == "mock_agent":
-                batch = build_mock_agent_batch(result, run_id=run_id, seed=job.seed)
+                if execution_contract.is_v2:
+                    resolved_mode_context = resolve_mode_context(
+                        result,
+                        effective_seed=execution_contract.profile.effective_seed,
+                    )
+                    repository.add_artifact(
+                        run_id,
+                        "agent_pack",
+                        "agent-pack-resolver-output.v1",
+                        resolved_mode_context.agent_pack.model_dump(mode="json"),
+                    )
+                    repository.add_artifact(
+                        run_id,
+                        "agent_constraint_context",
+                        "constraint-context-resolver-output.v1",
+                        resolved_mode_context.constraint_context.model_dump(
+                            mode="json"
+                        ),
+                    )
+                    batch = build_resolved_mock_agent_batch(
+                        result,
+                        run_id=run_id,
+                        effective_seed=execution_contract.profile.effective_seed,
+                        context=resolved_mode_context,
+                    )
+                    proposal_source = build_kernel_proposal_batch_source(
+                        run_id=run_id,
+                        proposals=tuple(batch.proposals),
+                        source_kind="mock_batch",
+                        mock_batch=batch,
+                    )
+                    artifact = repository.add_artifact(
+                        run_id,
+                        "agent_action_proposals",
+                        proposal_source.schema_version,
+                        proposal_source.model_dump(mode="json"),
+                    )
+                else:
+                    batch = build_mock_agent_batch(
+                        result,
+                        run_id=run_id,
+                        seed=job.seed,
+                    )
+                    artifact = repository.add_artifact(
+                        run_id,
+                        "agent_action_proposals",
+                        batch.schema_version,
+                        batch.model_dump(mode="json"),
+                    )
                 proposals = batch.proposals
                 constraint_context = batch.constraint_context
-                artifact = repository.add_artifact(run_id, "agent_action_proposals", batch.schema_version, batch.model_dump(mode="json"))
                 repository.append_event(
                     run_id,
                     "AGENT",
@@ -367,24 +429,60 @@ def process_job(run_id: str) -> RunJobStatus:
                 proposals=proposals,
                 constraint_context=constraint_context,
             )
-            project_consistency_audit(run_id, report, repository)
             if execution_contract.is_v2:
+                if job.engine_mode == "mock_agent":
+                    if resolved_mode_context is None:
+                        resolved_mode_context = resolve_mode_context(
+                            result,
+                            effective_seed=execution_contract.profile.effective_seed,
+                        )
+                    agent_pack_id = resolved_mode_context.agent_pack.agent_pack_id
+                    agent_pack_hash = resolved_mode_context.agent_pack_hash
+                    context_hash = resolved_mode_context.constraint_context_hash
+                    complete_proposals = tuple(proposals)
+                else:
+                    agent_pack_id = None
+                    agent_pack_hash = None
+                    context_hash = None
+                    complete_proposals = ()
                 consistency_source = build_consistency_audit_source(
                     report,
                     run_id=run_id,
                     role="final",
                     tick=None,
                     evaluator_version=execution_contract.profile.evaluator_version,
-                    agent_pack_id=None,
-                    agent_pack_hash=None,
-                    constraint_context_hash=None,
+                    agent_pack_id=agent_pack_id,
+                    agent_pack_hash=agent_pack_hash,
+                    constraint_context_hash=context_hash,
+                    complete_proposals=complete_proposals,
                 )
-                repository.add_artifact(
+                consistency_artifact = repository.add_artifact(
                     run_id,
                     "consistency_audit",
                     consistency_source.schema_version,
                     consistency_source.model_dump(mode="json"),
                 )
+                repository.append_event(
+                    run_id,
+                    "CONSISTENCY",
+                    "consistency_audit",
+                    "Consistency audit completed",
+                    report.summary.get(
+                        "message_zh",
+                        "Consistency audit completed.",
+                    ),
+                    payload={
+                        "overall_status": report.overall_status,
+                        "evaluated_rule_count": report.evaluated_rule_count,
+                        "skipped_rule_count": report.skipped_rule_count,
+                        "finding_count": len(report.findings),
+                        "audit_hash": consistency_source.audit_hash,
+                        "artifact_id": consistency_artifact.artifact_id,
+                        "read_only": True,
+                    },
+                )
+            else:
+                project_consistency_audit(run_id, report, repository)
             for decision in report.proposal_decisions:
                 if decision.outcome in {"constrained", "rejected", "expired"}:
                     create_review_case(
@@ -448,14 +546,23 @@ def process_job(run_id: str) -> RunJobStatus:
                 )
                 result = outcome.final_result
             elif proposals and report is not None:
-                projection_audit = build_action_projection_audit(
-                    run_id=run_id,
-                    consistency_audit_hash=report.audit_hash,
-                    final_result_hash=stable_hash(result.model_dump(mode="json")),
-                    proposals=proposals,
-                    decisions=report.proposal_decisions,
-                    projection_mode="audit_only",
-                )
+                if execution_contract.is_v2 and job.engine_mode == "mock_agent":
+                    projection_audit = build_audit_only_projection_source(
+                        run_id=run_id,
+                        consistency_audit_hash=consistency_source.audit_hash,
+                        final_result_hash=stable_hash(result.model_dump(mode="json")),
+                        proposals=tuple(proposals),
+                        decisions=tuple(report.proposal_decisions),
+                    )
+                else:
+                    projection_audit = build_action_projection_audit(
+                        run_id=run_id,
+                        consistency_audit_hash=report.audit_hash,
+                        final_result_hash=stable_hash(result.model_dump(mode="json")),
+                        proposals=proposals,
+                        decisions=report.proposal_decisions,
+                        projection_mode="audit_only",
+                    )
                 repository.add_artifact(
                     run_id,
                     "agent_action_projection_audit",

@@ -9,14 +9,24 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.models import WarRoomRun
+from app.services.consistency import evaluate_war_room_result
 from app.services.consistency.hashing import stable_hash
-from app.services.negotiation import extract_consistency_claims
+from app.services.negotiation import (
+    KernelProposalBatchSource,
+    build_audit_only_projection_source,
+    build_consistency_audit_source,
+    build_kernel_proposal_batch_source,
+    extract_consistency_claims,
+    extract_pa_claims,
+    extract_pb_claims,
+)
 from app.services.project_store import connect, dumps
 from app.services.simulation_kernel import (
     KernelModeExecutionProof,
     KernelModeExecutionRecord,
     KernelModeExecutionRequest,
     KernelModeProofReference,
+    KernelModeProofRelationship,
     SimulationKernelApplicationPort,
     normalize_kernel_mode,
     simulation_kernel_service,
@@ -30,6 +40,7 @@ from .execution_contract import (
     select_execution_contract,
 )
 from .integrity import artifact_digest
+from .mode_context import build_resolved_mock_agent_batch, resolve_mode_context
 
 
 class ModeExecutionAdapterError(ValueError):
@@ -139,9 +150,9 @@ class StoredModeExecutionAdapter:
                 or job["worker_id"] != fencing_epoch.worker_id
             ):
                 raise ModeExecutionAdapterError("fencing epoch ownership mismatch")
-            if job["engine_mode"] != "deterministic":
+            if job["engine_mode"] not in {"deterministic", "mock_agent"}:
                 raise ModeExecutionAdapterError(
-                    "this reconstruction slice currently admits deterministic mode only"
+                    "this reconstruction slice currently admits deterministic and mock_agent modes only"
                 )
             if type(job["seed"]) is not int or job["seed"] != selection.profile.effective_seed:
                 raise ModeExecutionAdapterError("job seed does not match V2 runtime profile")
@@ -167,6 +178,48 @@ class StoredModeExecutionAdapter:
                 producing_step_version="consistency-audit-step.v1",
             )
 
+            agent_pack_artifact = None
+            context_artifact = None
+            proposal_artifact = None
+            projection_audit_artifact = None
+            if job["engine_mode"] == "mock_agent":
+                agent_pack_artifact = _load_exact_bound_artifact(
+                    connection,
+                    run_id=run_id,
+                    attempt_id=fencing_epoch.current_attempt_id,
+                    artifact_type="agent_pack",
+                    schema_version="agent-pack-resolver-output.v1",
+                    producing_step_key="deterministic_run",
+                    producing_step_version="deterministic-run.v1",
+                )
+                context_artifact = _load_exact_bound_artifact(
+                    connection,
+                    run_id=run_id,
+                    attempt_id=fencing_epoch.current_attempt_id,
+                    artifact_type="agent_constraint_context",
+                    schema_version="constraint-context-resolver-output.v1",
+                    producing_step_key="deterministic_run",
+                    producing_step_version="deterministic-run.v1",
+                )
+                proposal_artifact = _load_exact_bound_artifact(
+                    connection,
+                    run_id=run_id,
+                    attempt_id=fencing_epoch.current_attempt_id,
+                    artifact_type="agent_action_proposals",
+                    schema_version="kernel-proposal-batch.v1",
+                    producing_step_key="deterministic_run",
+                    producing_step_version="deterministic-run.v1",
+                )
+                projection_audit_artifact = _load_optional_bound_artifact(
+                    connection,
+                    run_id=run_id,
+                    attempt_id=fencing_epoch.current_attempt_id,
+                    artifact_type="agent_action_projection_audit",
+                    schema_version="agent-action-projection-audit.v2",
+                    producing_step_key="consistency_audit",
+                    producing_step_version="consistency-audit-step.v1",
+                )
+
         baseline = WarRoomRun.model_validate(baseline_artifact.payload)
         projection = build_war_room_projection(
             baseline,
@@ -174,42 +227,192 @@ class StoredModeExecutionAdapter:
             seed=selection.profile.effective_seed,
             rule_pack_hash=job["rule_pack_hash"],
         )
-        claims = extract_consistency_claims(
-            consistency_artifact.payload,
-            run_id=run_id,
-            role="final",
-            tick=None,
-            evaluator_version=selection.profile.evaluator_version,
-            agent_pack_id=None,
-            agent_pack_hash=None,
-            constraint_context_hash=None,
-            complete_proposals=(),
-        )
-        claims_hash = stable_hash(
-            {
-                "claims": claims.model_dump(mode="json"),
-                "proof_schema": "kp.final-consistency.v1",
-            }
-        )
-        reference = KernelModeProofReference(
-            proof_schema="kp.final-consistency.v1",
-            artifact_type=consistency_artifact.artifact_type,
-            schema_version=consistency_artifact.schema_version,
-            artifact_id=consistency_artifact.artifact_id,
-            run_id=run_id,
-            session_id=None,
-            attempt=fencing_epoch.current_attempt_id,
-            ordinal=0,
-            tick=None,
-            artifact_sha256=consistency_artifact.sha256,
-            content_hash=claims.audit_hash,
-            claims=claims,
-            claims_hash=claims_hash,
-            relationships=(),
-        )
+        agent_pack_id: str | None = None
+        agent_pack_hash: str | None = None
+        constraint_context_hash: str | None = None
+        references: list[KernelModeProofReference] = []
+        if job["engine_mode"] == "deterministic":
+            claims = extract_consistency_claims(
+                consistency_artifact.payload,
+                run_id=run_id,
+                role="final",
+                tick=None,
+                evaluator_version=selection.profile.evaluator_version,
+                agent_pack_id=None,
+                agent_pack_hash=None,
+                constraint_context_hash=None,
+                complete_proposals=(),
+            )
+            references.append(
+                _proof_reference(
+                    artifact=consistency_artifact,
+                    proof_schema="kp.final-consistency.v1",
+                    claims=claims,
+                    content_hash=claims.audit_hash,
+                    run_id=run_id,
+                    attempt=fencing_epoch.current_attempt_id,
+                    ordinal=0,
+                )
+            )
+        else:
+            if (
+                agent_pack_artifact is None
+                or context_artifact is None
+                or proposal_artifact is None
+            ):
+                raise ModeExecutionAdapterError("mock_agent resolver/PB sources are incomplete")
+            resolved = resolve_mode_context(
+                baseline,
+                effective_seed=selection.profile.effective_seed,
+            )
+            stored_agent_pack = type(resolved.agent_pack).model_validate(
+                agent_pack_artifact.payload,
+                strict=True,
+            )
+            stored_context = type(resolved.constraint_context).model_validate(
+                context_artifact.payload,
+                strict=True,
+            )
+            if stored_agent_pack != resolved.agent_pack or stored_context != resolved.constraint_context:
+                raise ModeExecutionAdapterError(
+                    "stored mock_agent resolver payload differs from provider-free reconstruction"
+                )
+            agent_pack_id = resolved.agent_pack.agent_pack_id
+            agent_pack_hash = resolved.agent_pack_hash
+            constraint_context_hash = resolved.constraint_context_hash
+
+            mock_batch = build_resolved_mock_agent_batch(
+                baseline,
+                run_id=run_id,
+                effective_seed=selection.profile.effective_seed,
+                context=resolved,
+            )
+            stored_pb = KernelProposalBatchSource.model_validate(
+                proposal_artifact.payload
+            )
+            expected_pb = build_kernel_proposal_batch_source(
+                run_id=run_id,
+                proposals=tuple(mock_batch.proposals),
+                source_kind="mock_batch",
+                mock_batch=mock_batch,
+            )
+            if stored_pb.model_dump(mode="json") != expected_pb.model_dump(mode="json"):
+                raise ModeExecutionAdapterError(
+                    "stored mock_agent PB differs from deterministic reconstruction"
+                )
+            complete_proposals = tuple(stored_pb.proposals)
+            pb_claims = extract_pb_claims(
+                proposal_artifact.payload,
+                run_id=run_id,
+                mock_batch_payload=mock_batch.model_dump(mode="json"),
+            )
+
+            recomputed_report = evaluate_war_room_result(
+                baseline,
+                run_id=run_id,
+                created_at="2000-01-01T00:00:00.000Z",
+                proposals=list(mock_batch.proposals),
+                constraint_context=resolved.runtime_constraint_context,
+            )
+            expected_fc = build_consistency_audit_source(
+                recomputed_report,
+                run_id=run_id,
+                role="final",
+                tick=None,
+                evaluator_version=selection.profile.evaluator_version,
+                agent_pack_id=agent_pack_id,
+                agent_pack_hash=agent_pack_hash,
+                constraint_context_hash=constraint_context_hash,
+                complete_proposals=tuple(mock_batch.proposals),
+            )
+            if consistency_artifact.payload != expected_fc.model_dump(mode="json"):
+                raise ModeExecutionAdapterError(
+                    "stored mock_agent FC differs from evaluator reconstruction"
+                )
+            fc_claims = extract_consistency_claims(
+                consistency_artifact.payload,
+                run_id=run_id,
+                role="final",
+                tick=None,
+                evaluator_version=selection.profile.evaluator_version,
+                agent_pack_id=agent_pack_id,
+                agent_pack_hash=agent_pack_hash,
+                constraint_context_hash=constraint_context_hash,
+                complete_proposals=complete_proposals,
+            )
+            pb_reference = _proof_reference(
+                artifact=proposal_artifact,
+                proof_schema="kp.proposal-batch.v1",
+                claims=pb_claims,
+                content_hash=pb_claims.batch_hash,
+                run_id=run_id,
+                attempt=fencing_epoch.current_attempt_id,
+                ordinal=0,
+            )
+            fc_reference = _proof_reference(
+                artifact=consistency_artifact,
+                proof_schema="kp.final-consistency.v1",
+                claims=fc_claims,
+                content_hash=fc_claims.audit_hash,
+                run_id=run_id,
+                attempt=fencing_epoch.current_attempt_id,
+                ordinal=1,
+                relationships=(
+                    _relationship("evaluates", pb_reference),
+                ),
+            )
+            references.extend((pb_reference, fc_reference))
+
+            if pb_claims.proposal_count == 0:
+                if projection_audit_artifact is not None:
+                    raise ModeExecutionAdapterError(
+                        "zero-proposal mock_agent proof may not contain PA"
+                    )
+            else:
+                if projection_audit_artifact is None:
+                    raise ModeExecutionAdapterError(
+                        "nonzero-proposal mock_agent proof requires PA"
+                    )
+                expected_pa = build_audit_only_projection_source(
+                    run_id=run_id,
+                    consistency_audit_hash=expected_fc.audit_hash,
+                    final_result_hash=stable_hash(baseline.model_dump(mode="json")),
+                    proposals=tuple(mock_batch.proposals),
+                    decisions=tuple(recomputed_report.proposal_decisions),
+                )
+                if projection_audit_artifact.payload != expected_pa.model_dump(mode="json"):
+                    raise ModeExecutionAdapterError(
+                        "stored mock_agent PA differs from audit-only reconstruction"
+                    )
+                pa_claims = extract_pa_claims(
+                    projection_audit_artifact.payload,
+                    run_id=run_id,
+                    session_id=None,
+                    tick=None,
+                    projection_mode="audit_only",
+                    consistency_audit_hash=expected_fc.audit_hash,
+                    complete_proposals=complete_proposals,
+                    modifier_claims=None,
+                )
+                references.append(
+                    _proof_reference(
+                        artifact=projection_audit_artifact,
+                        proof_schema="kp.projection-audit.v1",
+                        claims=pa_claims,
+                        content_hash=pa_claims.audit_hash,
+                        run_id=run_id,
+                        attempt=fencing_epoch.current_attempt_id,
+                        ordinal=2,
+                        relationships=(
+                            _relationship("covers", pb_reference),
+                            _relationship("governed_by", fc_reference),
+                        ),
+                    )
+                )
+
         proof_payload = {
             "schema_version": "kernel-mode-execution-proof.v1",
-            "references": [reference.model_dump(mode="json")],
+            "references": [item.model_dump(mode="json") for item in references],
         }
         proof = KernelModeExecutionProof.model_validate(
             {**proof_payload, "proof_hash": stable_hash(proof_payload)}
@@ -228,9 +431,9 @@ class StoredModeExecutionAdapter:
             "effective_seed": selection.profile.effective_seed,
             "rule_pack_id": job["rule_pack_id"],
             "rule_pack_hash": job["rule_pack_hash"],
-            "agent_pack_id": None,
-            "agent_pack_hash": None,
-            "constraint_context_hash": None,
+            "agent_pack_id": agent_pack_id,
+            "agent_pack_hash": agent_pack_hash,
+            "constraint_context_hash": constraint_context_hash,
             "evaluator_version": selection.profile.evaluator_version,
             "runtime_profile_hash": job["runtime_profile_hash"],
             "fencing_epoch_hash": fencing_epoch.fencing_epoch_hash,
@@ -256,6 +459,53 @@ class StoredModeExecutionAdapter:
         )
 
 
+def _relationship(
+    relationship_type: Any,
+    target: KernelModeProofReference,
+) -> KernelModeProofRelationship:
+    return KernelModeProofRelationship(
+        relationship_type=relationship_type,
+        target_artifact_id=target.artifact_id,
+        target_content_hash=target.content_hash,
+        target_attempt=None,
+    )
+
+
+def _proof_reference(
+    *,
+    artifact: _BoundArtifact,
+    proof_schema: Any,
+    claims: Any,
+    content_hash: str,
+    run_id: str,
+    attempt: str,
+    ordinal: int,
+    relationships: tuple[KernelModeProofRelationship, ...] = (),
+) -> KernelModeProofReference:
+    claims_hash = stable_hash(
+        {
+            "claims": claims.model_dump(mode="json"),
+            "proof_schema": proof_schema,
+        }
+    )
+    return KernelModeProofReference(
+        proof_schema=proof_schema,
+        artifact_type=artifact.artifact_type,
+        schema_version=artifact.schema_version,
+        artifact_id=artifact.artifact_id,
+        run_id=run_id,
+        session_id=None,
+        attempt=attempt,
+        ordinal=ordinal,
+        tick=None,
+        artifact_sha256=artifact.sha256,
+        content_hash=content_hash,
+        claims=claims,
+        claims_hash=claims_hash,
+        relationships=relationships,
+    )
+
+
 def build_report_projection_manifest_v2(
     reconstruction: ModeExecutionReconstruction,
 ) -> ReportProjectionManifestV2:
@@ -278,6 +528,30 @@ def build_report_projection_manifest_v2(
 
 def _load_exact_bound_artifact(
     connection,
+    **coordinates: Any,
+) -> _BoundArtifact:
+    bound = _load_bound_artifacts(connection, **coordinates)
+    if len(bound) != 1:
+        raise ModeExecutionAdapterError(
+            f"expected one bound {coordinates['artifact_type']} Artifact, found {len(bound)}"
+        )
+    return bound[0]
+
+
+def _load_optional_bound_artifact(
+    connection,
+    **coordinates: Any,
+) -> _BoundArtifact | None:
+    bound = _load_bound_artifacts(connection, **coordinates)
+    if len(bound) > 1:
+        raise ModeExecutionAdapterError(
+            f"expected at most one bound {coordinates['artifact_type']} Artifact, found {len(bound)}"
+        )
+    return bound[0] if bound else None
+
+
+def _load_bound_artifacts(
+    connection,
     *,
     run_id: str,
     attempt_id: str,
@@ -285,7 +559,7 @@ def _load_exact_bound_artifact(
     schema_version: str,
     producing_step_key: str,
     producing_step_version: str,
-) -> _BoundArtifact:
+) -> tuple[_BoundArtifact, ...]:
     rows = connection.execute(
         """
         SELECT artifact.artifact_id, artifact.artifact_type,
@@ -357,11 +631,7 @@ def _load_exact_bound_artifact(
                     payload=payload,
                 )
             )
-    if len(bound) != 1:
-        raise ModeExecutionAdapterError(
-            f"expected one bound {artifact_type} Artifact, found {len(bound)}"
-        )
-    return bound[0]
+    return tuple(bound)
 
 
 def _validated_artifact_binding(
