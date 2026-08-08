@@ -7,6 +7,8 @@ from .proof_sources import (
     CommitmentLedgerSource,
     ConsistencyAuditSource,
     HybridModifierBundleSource,
+    KernelProposalBatchSource,
+    MockAgentBatchSource,
     NegotiationEligibilitySource,
     NegotiationProposalBatchSource,
     NarrativeDiffusionSource,
@@ -19,6 +21,8 @@ from .proof_sources import (
     extract_nd_claims,
     extract_np_claims,
     extract_pa_claims,
+    extract_pb_claims,
+    mock_agent_batch_source_hash,
 )
 from .repository import NegotiationRepository
 
@@ -44,6 +48,8 @@ __all__ = [
     "CommitmentLedgerSource",
     "ConsistencyAuditSource",
     "HybridModifierBundleSource",
+    "KernelProposalBatchSource",
+    "MockAgentBatchSource",
     "NegotiationEligibilitySource",
     "NegotiationProposalBatchSource",
     "NarrativeDiffusionSource",
@@ -56,6 +62,8 @@ __all__ = [
     "extract_nd_claims",
     "extract_np_claims",
     "extract_pa_claims",
+    "extract_pb_claims",
+    "mock_agent_batch_source_hash",
     "negotiation_read_service",
     "replay_negotiation_from_storage",
     "run_negotiation",

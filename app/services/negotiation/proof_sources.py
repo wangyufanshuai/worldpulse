@@ -37,6 +37,7 @@ from app.services.simulation_kernel.mode_contracts import (
     MBClaims,
     NDClaims,
     NPClaims,
+    PBClaims,
     PAClaims,
     PCClaims,
     CommitmentClaimTuple,
@@ -203,34 +204,61 @@ def _require_exact_keys(
         raise ValueError(f"{field_name} must contain exactly its v1 fields")
 
 
-def _validated_agent_runtime_vectors(
-    source: AgentRuntimeResultSource,
-) -> tuple[tuple[AgentActionProposal, ...], tuple[AgentInvocationAudit, ...]]:
-    context_payload = dict(source.constraint_context)
+def _validated_complete_proposal(
+    raw: Mapping[str, object], *, run_id: str | None, field_name: str
+) -> tuple[AgentActionProposal, dict[str, object]]:
+    proposal_payload = dict(raw)
+    _require_exact_keys(
+        proposal_payload,
+        set(AgentActionProposal.model_fields),
+        field_name,
+    )
+    restored = _restore_lists(proposal_payload)
+    proposal = AgentActionProposal.model_validate(restored, strict=True)
+    if proposal.schema_version != "agent-action-proposal.v1":
+        raise ValueError(f"{field_name} schema mismatch")
+    if run_id is not None and proposal.run_id != run_id:
+        raise ValueError(f"{field_name} run_id mismatch")
+    canonical = proposal.model_dump(mode="json")
+    if stable_hash({"proposal": restored}) != stable_hash({"proposal": canonical}):
+        raise ValueError(f"{field_name} must already be canonical")
+    return proposal, canonical
+
+
+def _validated_complete_context(
+    raw: Mapping[str, object], *, field_name: str
+) -> tuple[AgentConstraintContext, dict[str, object]]:
+    context_payload = dict(raw)
     _require_exact_keys(
         context_payload,
         set(AgentConstraintContext.model_fields),
-        "AR constraint context",
+        field_name,
     )
     if context_payload.get("schema_version") != "agent-constraint-context.v1":
-        raise ValueError("AR constraint context schema mismatch")
-    AgentConstraintContext.model_validate(_restore_lists(context_payload), strict=True)
+        raise ValueError(f"{field_name} schema mismatch")
+    restored = _restore_lists(context_payload)
+    context = AgentConstraintContext.model_validate(restored, strict=True)
+    canonical = context.model_dump(mode="json")
+    if stable_hash({"context": restored}) != stable_hash({"context": canonical}):
+        raise ValueError(f"{field_name} must already be canonical")
+    return context, canonical
+
+
+def _validated_agent_runtime_vectors(
+    source: AgentRuntimeResultSource,
+) -> tuple[tuple[AgentActionProposal, ...], tuple[AgentInvocationAudit, ...]]:
+    _validated_complete_context(
+        source.constraint_context,
+        field_name="AR constraint context",
+    )
 
     proposals: list[AgentActionProposal] = []
     for raw in source.proposals:
-        proposal_payload = dict(raw)
-        _require_exact_keys(
-            proposal_payload,
-            set(AgentActionProposal.model_fields),
-            "AR proposal",
+        proposal, _ = _validated_complete_proposal(
+            raw,
+            run_id=source.run_id,
+            field_name="AR proposal",
         )
-        proposal = AgentActionProposal.model_validate(
-            _restore_lists(proposal_payload), strict=True
-        )
-        if proposal.schema_version != "agent-action-proposal.v1":
-            raise ValueError("AR proposal schema mismatch")
-        if proposal.run_id != source.run_id:
-            raise ValueError("AR proposal run_id mismatch")
         proposals.append(proposal)
 
     invocations: list[AgentInvocationAudit] = []
@@ -250,6 +278,143 @@ def _validated_agent_runtime_vectors(
             raise ValueError("AR invocation run_id mismatch")
         invocations.append(invocation)
     return tuple(proposals), tuple(invocations)
+
+
+class MockAgentBatchSource(ClosedSource):
+    """Complete mock-agent-batch.v1 source bound by mock PB lineage."""
+
+    schema_version: Literal["mock-agent-batch.v1"]
+    provider: Literal["mock-deterministic"]
+    seed: int
+    proposals: tuple[dict[str, object], ...]
+    constraint_context: dict[str, object]
+    batch_hash: Digest
+
+    @model_validator(mode="after")
+    def validate_complete_source(self) -> Self:
+        if type(self.seed) is not int:
+            raise ValueError("mock batch seed must be a strict integer")
+        proposals, canonical_proposals = _validated_mock_agent_batch_proposals(
+            self, run_id=None
+        )
+        if len({item.proposal_id for item in proposals}) != len(proposals):
+            raise ValueError("mock batch proposal IDs must be unique")
+        _, canonical_context = _validated_complete_context(
+            self.constraint_context,
+            field_name="mock batch constraint context",
+        )
+        identity: dict[str, object] = {
+            "provider": self.provider,
+            "seed": self.seed,
+            "proposal_ids": [item.proposal_id for item in proposals],
+        }
+        if canonical_proposals:
+            identity["constraint_context"] = canonical_context
+        if self.batch_hash != stable_hash(identity):
+            raise ValueError("mock batch legacy batch_hash mismatch")
+        return self
+
+
+def _validated_mock_agent_batch_proposals(
+    source: MockAgentBatchSource, *, run_id: str | None
+) -> tuple[tuple[AgentActionProposal, ...], tuple[dict[str, object], ...]]:
+    pairs = tuple(
+        _validated_complete_proposal(
+            raw,
+            run_id=run_id,
+            field_name="mock batch proposal",
+        )
+        for raw in source.proposals
+    )
+    return tuple(item[0] for item in pairs), tuple(item[1] for item in pairs)
+
+
+def mock_agent_batch_source_hash(source: MockAgentBatchSource) -> str:
+    """Hash the complete, closed mock source independently from its legacy hash."""
+
+    return stable_hash(source.model_dump(mode="json"))
+
+
+class KernelProposalBatchSource(ClosedSource):
+    """Complete proposal-batch wrapper admitted by the V2 PB extractor."""
+
+    schema_version: Literal["kernel-proposal-batch.v1"]
+    run_id: str = Field(min_length=1, max_length=160)
+    source_kind: Literal["mock_batch", "agent_runtime"]
+    source_runtime_hash: Digest | None
+    source_mock_batch_hash: Digest | None
+    proposal_ids: tuple[str, ...]
+    proposal_hashes: tuple[Digest, ...]
+    proposals: tuple[dict[str, object], ...]
+    proposal_count: int = Field(ge=0)
+    batch_hash: Digest
+
+    @model_validator(mode="after")
+    def validate_complete_source(self) -> Self:
+        proposals, canonical_proposals = _validated_kernel_proposal_batch_vectors(self)
+        proposal_ids = tuple(item.proposal_id for item in proposals)
+        proposal_hashes = tuple(
+            stable_hash(item.model_dump(mode="json")) for item in proposals
+        )
+        claims = PBClaims(
+            run_id=self.run_id,
+            source_kind=self.source_kind,
+            source_runtime_hash=self.source_runtime_hash,
+            source_mock_batch_hash=self.source_mock_batch_hash,
+            batch_hash=self.batch_hash,
+            proposal_ids=self.proposal_ids,
+            proposal_hashes=self.proposal_hashes,
+            proposal_count=self.proposal_count,
+        )
+        if (
+            claims.proposal_ids != proposal_ids
+            or claims.proposal_hashes != proposal_hashes
+            or claims.proposal_count != len(proposals)
+        ):
+            raise ValueError("PB proposal vectors must match complete proposals")
+        expected_batch_hash = stable_hash(
+            {
+                "schema_version": self.schema_version,
+                "run_id": self.run_id,
+                "source_kind": self.source_kind,
+                "source_runtime_hash": self.source_runtime_hash,
+                "source_mock_batch_hash": self.source_mock_batch_hash,
+                "proposal_ids": self.proposal_ids,
+                "proposal_hashes": self.proposal_hashes,
+                "proposals": canonical_proposals,
+                "proposal_count": self.proposal_count,
+            }
+        )
+        if self.batch_hash != expected_batch_hash:
+            raise ValueError("PB batch_hash mismatch")
+        return self
+
+    def extract_claims(self) -> PBClaims:
+        return PBClaims(
+            run_id=self.run_id,
+            source_kind=self.source_kind,
+            source_runtime_hash=self.source_runtime_hash,
+            source_mock_batch_hash=self.source_mock_batch_hash,
+            batch_hash=self.batch_hash,
+            proposal_ids=self.proposal_ids,
+            proposal_hashes=self.proposal_hashes,
+            proposal_count=self.proposal_count,
+        )
+
+
+def _validated_kernel_proposal_batch_vectors(
+    source: KernelProposalBatchSource,
+) -> tuple[tuple[AgentActionProposal, ...], tuple[dict[str, object], ...]]:
+    pairs: list[tuple[AgentActionProposal, dict[str, object]]] = []
+    for raw in source.proposals:
+        pairs.append(
+            _validated_complete_proposal(
+                raw,
+                run_id=source.run_id,
+                field_name="PB proposal",
+            )
+        )
+    return tuple(item[0] for item in pairs), tuple(item[1] for item in pairs)
 
 
 class NegotiationProposalBatchSource(ClosedSource):
@@ -1275,6 +1440,43 @@ def extract_ar_claims(
         invocation_hashes=tuple(item[1] for item in invocation_pairs),
         invocation_count=len(invocation_pairs),
     )
+
+
+def extract_pb_claims(
+    payload: Mapping[str, object],
+    *,
+    run_id: str,
+    expected_runtime_hash: str | None = None,
+    mock_batch_payload: Mapping[str, object] | None = None,
+) -> PBClaims:
+    """Verify a complete proposal batch and its independently verified source."""
+
+    source = KernelProposalBatchSource.model_validate(dict(payload))
+    if source.run_id != run_id:
+        raise ValueError("PB source run_id mismatch")
+    if source.source_kind == "agent_runtime":
+        if (
+            expected_runtime_hash is None
+            or mock_batch_payload is not None
+            or source.source_runtime_hash != expected_runtime_hash
+        ):
+            raise ValueError("PB agent_runtime source binding mismatch")
+    else:
+        if mock_batch_payload is None or expected_runtime_hash is not None:
+            raise ValueError("PB mock_batch source binding mismatch")
+        mock_source = MockAgentBatchSource.model_validate(dict(mock_batch_payload))
+        _, mock_proposals = _validated_mock_agent_batch_proposals(
+            mock_source,
+            run_id=run_id,
+        )
+        _, pb_proposals = _validated_kernel_proposal_batch_vectors(source)
+        mock_by_id = {item["proposal_id"]: item for item in mock_proposals}
+        pb_by_id = {item["proposal_id"]: item for item in pb_proposals}
+        if len(mock_by_id) != len(mock_proposals) or mock_by_id != pb_by_id:
+            raise ValueError("PB proposals drift from complete mock batch")
+        if source.source_mock_batch_hash != mock_agent_batch_source_hash(mock_source):
+            raise ValueError("PB mock_batch source binding mismatch")
+    return source.extract_claims()
 
 
 def extract_np_claims(
