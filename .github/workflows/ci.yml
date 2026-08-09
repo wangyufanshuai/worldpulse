@@ -53,9 +53,9 @@ jobs:
           python -m mypy --follow-imports=skip app/services/simulation_kernel/*.py app/services/run_lifecycle/kernel_shadow.py app/services/run_lifecycle/checkpoints.py app/services/run_lifecycle/repository.py scripts/benchmark_v2_lifecycle_shadow.py scripts/benchmark_v2_lifecycle_shadow_persistence.py
       - name: V2 Plugin SDK contract ratchet
         run: |
-          python -m ruff check app/services/data_sources.py app/services/plugin_sdk/*.py app/services/plugin_sdk/builtins/*.py tests/test_plugin_sdk_contracts.py tests/test_plugin_data_connectors.py
+          python -m ruff check app/services/data_sources.py app/services/plugin_sdk/*.py app/services/plugin_sdk/builtins/*.py tests/test_plugin_sdk_contracts.py tests/test_plugin_data_connectors.py tests/test_plugin_agent_provider.py
           python -m mypy --follow-imports=skip --ignore-missing-imports app/services/plugin_sdk/*.py app/services/plugin_sdk/builtins/*.py
-          python -m pytest -q tests/test_plugin_sdk_contracts.py tests/test_plugin_data_connectors.py
+          python -m pytest -q tests/test_plugin_sdk_contracts.py tests/test_plugin_data_connectors.py tests/test_plugin_agent_provider.py
       - name: Python tests
         run: python -m pytest -q
       - name: Live PostgreSQL migration and concurrency gates

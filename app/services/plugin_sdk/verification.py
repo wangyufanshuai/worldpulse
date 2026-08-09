@@ -35,13 +35,21 @@ def verify_stored_plugin_output(
     envelope: PluginOutputEnvelope,
     *,
     require_provider_free: bool = False,
+    require_zero_provider_calls: bool = False,
 ) -> PluginOutputEnvelope:
-    """Authenticate stored output without invoking the plugin implementation."""
+    """Authenticate stored output without invoking the plugin implementation.
+
+    ``require_provider_free`` describes this verifier's behavior: it never
+    invokes a provider. ``require_zero_provider_calls`` is a stronger source
+    invariant for plugins such as deterministic connectors. A historical Agent
+    output may legitimately record non-zero calls while still replaying from
+    this stored envelope without a new call.
+    """
 
     envelope.verify_hash()
     _verify_invocation_binding(manifest, envelope.invocation)
     if envelope.output_schema != manifest.output_schema:
         raise ValueError("plugin output schema does not match manifest")
-    if require_provider_free and envelope.provider_calls != 0:
+    if require_zero_provider_calls and envelope.provider_calls != 0:
         raise ValueError("stored plugin replay requires zero provider calls")
     return envelope

@@ -58,6 +58,15 @@
       ]
     },
     {
+      "import_prefix": "app.services.agent_runtime",
+      "allowed_callers": [
+        "app.services.negotiation.engine",
+        "app.services.negotiation.proof_sources",
+        "app.services.plugin_sdk.builtins.agent_provider",
+        "app.services.run_lifecycle.executor"
+      ]
+    },
+    {
       "import_prefix": "app.services.simulation_health",
       "allowed_callers": ["app.services.world_model.application"]
     },

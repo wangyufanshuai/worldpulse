@@ -79,6 +79,7 @@ def test_three_builtin_connectors_emit_closed_lineage(
         connector.manifest,
         stored,
         require_provider_free=True,
+        require_zero_provider_calls=True,
     ) == stored
 
 

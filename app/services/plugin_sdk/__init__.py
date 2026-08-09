@@ -20,6 +20,7 @@ from .registry import (
     PluginRegistry,
 )
 from .verification import verify_plugin_input, verify_stored_plugin_output
+from .ports import AgentProviderPluginPort, DataConnectorPluginPort
 
 __all__ = [
     "PluginCapability",
@@ -39,4 +40,6 @@ __all__ = [
     "canonical_hash",
     "verify_plugin_input",
     "verify_stored_plugin_output",
+    "AgentProviderPluginPort",
+    "DataConnectorPluginPort",
 ]

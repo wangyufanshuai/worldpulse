@@ -7,6 +7,13 @@ from .data_connectors import (
     built_in_data_connector_registry,
     built_in_data_connectors,
 )
+from .agent_provider import (
+    AgentRuntimePluginInputV1,
+    AgentRuntimePluginOutputV1,
+    ControlledAgentProviderAdapter,
+    built_in_agent_provider,
+    built_in_agent_provider_registry,
+)
 
 __all__ = [
     "FredConnector",
@@ -14,4 +21,9 @@ __all__ = [
     "WorldBankConnector",
     "built_in_data_connector_registry",
     "built_in_data_connectors",
+    "AgentRuntimePluginInputV1",
+    "AgentRuntimePluginOutputV1",
+    "ControlledAgentProviderAdapter",
+    "built_in_agent_provider",
+    "built_in_agent_provider_registry",
 ]
