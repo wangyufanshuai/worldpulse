@@ -25,6 +25,71 @@ UCDP_GED_URL = "https://ucdp.uu.se/downloads/ged/ged251-csv.zip"
 WORLD_UNCERTAINTY_INDEX_URL = "https://worlduncertaintyindex.com/wp-content/uploads/2026/05/WUI_M_dataset_2026_04.xlsx"
 FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 CACHE_DIR = Path("data/cache")
+FRED_CACHE_TTL_SECONDS = 6 * 3600
+WORLD_BANK_CACHE_TTL_SECONDS = 7 * 24 * 3600
+NASA_CACHE_TTL_SECONDS = 24 * 3600
+NOAA_CACHE_TTL_SECONDS = 7 * 24 * 3600
+
+BUILTIN_FRED_DATASETS = (
+    "BAMLH0A0HYM2",
+    "DCOILWTICO",
+    "DHHNGSP",
+    "DTWEXBGS",
+    "NASDAQ100",
+    "SP500",
+    "T10Y2Y",
+    "VIXCLS",
+)
+BUILTIN_WORLD_BANK_DATASETS = ("GOLD",)
+BUILTIN_CLIMATE_DATASETS = (
+    "nasa_ocean_heat",
+    "nasa_temperature",
+    "noaa_co2",
+    "noaa_enso",
+)
+
+
+def read_fred_series(
+    series_id: str,
+    dates: pd.DatetimeIndex,
+) -> tuple[pd.Series, str]:
+    """Read one allowlisted FRED series through the existing cache/parser path."""
+
+    if series_id not in BUILTIN_FRED_DATASETS:
+        raise ValueError(f"Unsupported built-in FRED dataset: {series_id}")
+    return _load_fred_series(series_id, dates), f"FRED:{series_id}"
+
+
+def read_world_bank_series(
+    dataset: str,
+    dates: pd.DatetimeIndex,
+) -> tuple[pd.Series, str]:
+    """Read one allowlisted World Bank series through the current workbook path."""
+
+    if dataset not in BUILTIN_WORLD_BANK_DATASETS:
+        raise ValueError(f"Unsupported built-in World Bank dataset: {dataset}")
+    return (
+        _load_world_bank_price_series(dataset, dates),
+        f"World Bank Pink Sheet:{dataset}",
+    )
+
+
+def read_climate_series(
+    dataset: str,
+    dates: pd.DatetimeIndex,
+) -> tuple[pd.Series, str]:
+    """Read one fixed NOAA/NASA signal without accepting a caller URL."""
+
+    loaders = {
+        "nasa_ocean_heat": _load_nasa_ocean_heat_proxy,
+        "nasa_temperature": _load_nasa_temperature_signal,
+        "noaa_co2": _load_noaa_co2_signal,
+        "noaa_enso": _load_noaa_enso_signal,
+    }
+    loader = loaders.get(dataset)
+    if loader is None:
+        raise ValueError(f"Unsupported built-in NOAA/NASA dataset: {dataset}")
+    return loader(dates)
 
 
 def load_world_data(days: int = 420) -> tuple[pd.DataFrame, dict[str, str]]:
@@ -136,7 +201,7 @@ def _load_financial_series(item: dict, dates: pd.DatetimeIndex) -> tuple[pd.Seri
 def _load_fred_series(series_id: str, dates: pd.DatetimeIndex) -> pd.Series:
     filename = f"fred_{series_id}.csv"
     url = f"{FRED_CSV_URL}?id={series_id}"
-    raw = _read_text_cache(filename, url, ttl_seconds=6 * 3600)
+    raw = _read_text_cache(filename, url, ttl_seconds=FRED_CACHE_TTL_SECONDS)
     frame = pd.read_csv(io.StringIO(raw))
     if frame.empty or series_id not in frame.columns:
         raise ValueError(f"FRED series {series_id} returned no usable data")
@@ -158,14 +223,22 @@ def _load_world_bank_price_series(code: str, dates: pd.DatetimeIndex) -> pd.Seri
 
 
 def _load_nasa_temperature_signal(dates: pd.DatetimeIndex) -> tuple[pd.Series, str]:
-    raw = _read_text_cache("nasa_gistemp.csv", NASA_GISTEMP_URL, ttl_seconds=24 * 3600)
+    raw = _read_text_cache(
+        "nasa_gistemp.csv",
+        NASA_GISTEMP_URL,
+        ttl_seconds=NASA_CACHE_TTL_SECONDS,
+    )
     monthly = _parse_gistemp_csv(raw)
     monthly["risk"] = _scale_series(monthly["value"], low=0.3, high=1.6)
     return _align_monthly(monthly[["date", "risk"]], dates), "NASA GISTEMP"
 
 
 def _load_nasa_ocean_heat_proxy(dates: pd.DatetimeIndex) -> tuple[pd.Series, str]:
-    raw = _read_text_cache("nasa_gistemp.csv", NASA_GISTEMP_URL, ttl_seconds=24 * 3600)
+    raw = _read_text_cache(
+        "nasa_gistemp.csv",
+        NASA_GISTEMP_URL,
+        ttl_seconds=NASA_CACHE_TTL_SECONDS,
+    )
     monthly = _parse_gistemp_csv(raw)
     smoothed = monthly["value"].rolling(12, min_periods=3).mean()
     acceleration = smoothed.diff(12).fillna(0)
@@ -174,7 +247,11 @@ def _load_nasa_ocean_heat_proxy(dates: pd.DatetimeIndex) -> tuple[pd.Series, str
 
 
 def _load_noaa_co2_signal(dates: pd.DatetimeIndex) -> tuple[pd.Series, str]:
-    raw = _read_text_cache("noaa_co2_mm_mlo.csv", NOAA_CO2_URL, ttl_seconds=7 * 24 * 3600)
+    raw = _read_text_cache(
+        "noaa_co2_mm_mlo.csv",
+        NOAA_CO2_URL,
+        ttl_seconds=NOAA_CACHE_TTL_SECONDS,
+    )
     frame = pd.read_csv(io.StringIO(raw), comment="#")
     frame["date"] = pd.to_datetime(dict(year=frame["year"], month=frame["month"], day=1))
     frame["average"] = pd.to_numeric(frame["average"], errors="coerce").replace(-99.99, np.nan)
@@ -185,7 +262,11 @@ def _load_noaa_co2_signal(dates: pd.DatetimeIndex) -> tuple[pd.Series, str]:
 
 
 def _load_noaa_enso_signal(dates: pd.DatetimeIndex) -> tuple[pd.Series, str]:
-    raw = _read_text_cache("noaa_oni.txt", NOAA_ONI_URL, ttl_seconds=7 * 24 * 3600)
+    raw = _read_text_cache(
+        "noaa_oni.txt",
+        NOAA_ONI_URL,
+        ttl_seconds=NOAA_CACHE_TTL_SECONDS,
+    )
     frame = pd.read_csv(io.StringIO(raw), sep=r"\s+")
     season_month = {
         "DJF": 1,
@@ -244,7 +325,7 @@ def _load_world_bank_fertilizer_signal(dates: pd.DatetimeIndex) -> tuple[pd.Seri
 def _load_fred_scaled_signal(series_id: str, dates: pd.DatetimeIndex, low: float, high: float) -> tuple[pd.Series, str]:
     filename = f"fred_{series_id}.csv"
     url = f"{FRED_CSV_URL}?id={series_id}"
-    raw = _read_text_cache(filename, url, ttl_seconds=6 * 3600)
+    raw = _read_text_cache(filename, url, ttl_seconds=FRED_CACHE_TTL_SECONDS)
     frame = pd.read_csv(io.StringIO(raw))
     frame = frame.rename(columns={"observation_date": "date", series_id: "value"})
     frame["date"] = pd.to_datetime(frame["date"])
@@ -257,7 +338,7 @@ def _load_fred_scaled_signal(series_id: str, dates: pd.DatetimeIndex, low: float
 def _load_fred_index_signal(series_id: str, dates: pd.DatetimeIndex, source_name: str | None = None) -> tuple[pd.Series, str]:
     filename = f"fred_{series_id}.csv"
     url = f"{FRED_CSV_URL}?id={series_id}"
-    raw = _read_text_cache(filename, url, ttl_seconds=6 * 3600)
+    raw = _read_text_cache(filename, url, ttl_seconds=FRED_CACHE_TTL_SECONDS)
     frame = pd.read_csv(io.StringIO(raw))
     frame = frame.rename(columns={"observation_date": "date", series_id: "value"})
     frame["date"] = pd.to_datetime(frame["date"])
@@ -270,7 +351,7 @@ def _load_fred_index_signal(series_id: str, dates: pd.DatetimeIndex, source_name
 def _load_yield_curve_signal(dates: pd.DatetimeIndex) -> tuple[pd.Series, str]:
     filename = "fred_T10Y2Y.csv"
     url = f"{FRED_CSV_URL}?id=T10Y2Y"
-    raw = _read_text_cache(filename, url, ttl_seconds=6 * 3600)
+    raw = _read_text_cache(filename, url, ttl_seconds=FRED_CACHE_TTL_SECONDS)
     frame = pd.read_csv(io.StringIO(raw))
     frame = frame.rename(columns={"observation_date": "date", "T10Y2Y": "value"})
     frame["date"] = pd.to_datetime(frame["date"])
@@ -285,7 +366,11 @@ def _load_dollar_stress_signal(dates: pd.DatetimeIndex) -> tuple[pd.Series, str]
 
 
 def _load_world_bank_indices() -> pd.DataFrame:
-    content = _read_bytes_cache("world_bank_pink_sheet.xlsx", WORLD_BANK_PINK_SHEET_URL, ttl_seconds=7 * 24 * 3600)
+    content = _read_bytes_cache(
+        "world_bank_pink_sheet.xlsx",
+        WORLD_BANK_PINK_SHEET_URL,
+        ttl_seconds=WORLD_BANK_CACHE_TTL_SECONDS,
+    )
     import openpyxl
 
     workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
@@ -310,7 +395,11 @@ def _load_world_bank_indices() -> pd.DataFrame:
 
 
 def _load_world_bank_prices() -> pd.DataFrame:
-    content = _read_bytes_cache("world_bank_pink_sheet.xlsx", WORLD_BANK_PINK_SHEET_URL, ttl_seconds=7 * 24 * 3600)
+    content = _read_bytes_cache(
+        "world_bank_pink_sheet.xlsx",
+        WORLD_BANK_PINK_SHEET_URL,
+        ttl_seconds=WORLD_BANK_CACHE_TTL_SECONDS,
+    )
     import openpyxl
 
     workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)

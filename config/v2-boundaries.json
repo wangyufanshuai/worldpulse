@@ -50,6 +50,14 @@
       ]
     },
     {
+      "import_prefix": "app.services.data_sources",
+      "allowed_callers": [
+        "app.services.causal_backtest",
+        "app.services.plugin_sdk.builtins.data_connectors",
+        "app.services.risk_engine"
+      ]
+    },
+    {
       "import_prefix": "app.services.simulation_health",
       "allowed_callers": ["app.services.world_model.application"]
     },

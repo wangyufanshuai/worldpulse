@@ -51,6 +51,11 @@ jobs:
         run: |
           python -m ruff check app/services/simulation_kernel/*.py app/services/run_lifecycle/kernel_shadow.py app/services/run_lifecycle/checkpoints.py app/services/run_lifecycle/repository.py app/services/project_app/replay_pack.py scripts/benchmark_v2_kernel_shadow.py scripts/benchmark_v2_lifecycle_shadow.py scripts/benchmark_v2_lifecycle_shadow_persistence.py tests/test_v2_kernel_contracts.py tests/test_v2_kernel_event_log.py tests/test_v2_kernel_performance.py tests/test_v2_kernel_shadow_artifact.py tests/test_v2_lifecycle_kernel_shadow_artifact.py tests/test_v2_lifecycle_shadow_performance.py tests/test_v2_lifecycle_shadow_persistence_performance.py tests/test_v2_war_room_projection.py
           python -m mypy --follow-imports=skip app/services/simulation_kernel/*.py app/services/run_lifecycle/kernel_shadow.py app/services/run_lifecycle/checkpoints.py app/services/run_lifecycle/repository.py scripts/benchmark_v2_lifecycle_shadow.py scripts/benchmark_v2_lifecycle_shadow_persistence.py
+      - name: V2 Plugin SDK contract ratchet
+        run: |
+          python -m ruff check app/services/data_sources.py app/services/plugin_sdk/*.py app/services/plugin_sdk/builtins/*.py tests/test_plugin_sdk_contracts.py tests/test_plugin_data_connectors.py
+          python -m mypy --follow-imports=skip --ignore-missing-imports app/services/plugin_sdk/*.py app/services/plugin_sdk/builtins/*.py
+          python -m pytest -q tests/test_plugin_sdk_contracts.py tests/test_plugin_data_connectors.py
       - name: Python tests
         run: python -m pytest -q
       - name: Live PostgreSQL migration and concurrency gates

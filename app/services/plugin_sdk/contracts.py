@@ -40,7 +40,9 @@ _SCHEMA = r"^[a-z][a-z0-9_.-]{1,79}\.v1$"
 _CAPABILITY = re.compile(r"^[a-z][a-z0-9_.-]{0,79}$")
 
 
-def _canonical_hash(value: Any) -> str:
+def canonical_hash(value: Any) -> str:
+    """Hash a JSON-compatible value using the Plugin SDK canonical encoding."""
+
     body = json.dumps(
         value,
         ensure_ascii=False,
@@ -96,7 +98,7 @@ class PluginManifest(BaseModel):
         return self.model_dump(mode="json", exclude={"manifest_hash"})
 
     def verify_hash(self) -> "PluginManifest":
-        expected = _canonical_hash(self.preimage())
+        expected = canonical_hash(self.preimage())
         if expected != self.manifest_hash:
             raise ValueError("plugin manifest hash mismatch")
         return self
@@ -104,7 +106,7 @@ class PluginManifest(BaseModel):
     def verify_configuration(self, configuration: Any) -> "PluginManifest":
         """Verify runtime configuration against the manifest-pinned digest."""
 
-        if _canonical_hash(configuration) != self.configuration_hash:
+        if canonical_hash(configuration) != self.configuration_hash:
             raise ValueError("plugin configuration hash mismatch")
         return self.verify_hash()
 
@@ -128,7 +130,7 @@ class PluginInvocation(BaseModel):
         return self.model_dump(mode="json", exclude={"invocation_hash"})
 
     def verify_hash(self) -> "PluginInvocation":
-        expected = _canonical_hash(self.preimage())
+        expected = canonical_hash(self.preimage())
         if expected != self.invocation_hash:
             raise ValueError("plugin invocation hash mismatch")
         return self
@@ -146,7 +148,7 @@ class PluginInputEnvelope(BaseModel):
     payload_hash: str = Field(pattern=_HEX64)
 
     def verify_hash(self) -> "PluginInputEnvelope":
-        if _canonical_hash(self.payload) != self.payload_hash:
+        if canonical_hash(self.payload) != self.payload_hash:
             raise ValueError("plugin input payload hash mismatch")
         self.invocation.verify_hash()
         return self
@@ -165,7 +167,7 @@ class PluginOutputEnvelope(BaseModel):
     provider_calls: int = Field(default=0, ge=0, le=1000)
 
     def verify_hash(self) -> "PluginOutputEnvelope":
-        if _canonical_hash(self.payload) != self.payload_hash:
+        if canonical_hash(self.payload) != self.payload_hash:
             raise ValueError("plugin output payload hash mismatch")
         self.invocation.verify_hash()
         return self
@@ -185,7 +187,7 @@ def build_plugin_manifest(
 ) -> PluginManifest:
     """Build and authenticate a canonical manifest from configuration."""
 
-    configuration_hash = _canonical_hash(configuration)
+    configuration_hash = canonical_hash(configuration)
     preimage = {
         "schema_version": "plugin-manifest.v1",
         "plugin_id": plugin_id,
@@ -200,7 +202,7 @@ def build_plugin_manifest(
     }
     return PluginManifest(
         **preimage,
-        manifest_hash=_canonical_hash(preimage),
+        manifest_hash=canonical_hash(preimage),
     ).verify_hash()
 
 
@@ -214,7 +216,7 @@ def build_plugin_input(
     """Create an invocation envelope bound to the manifest and input payload."""
 
     manifest.verify_hash()
-    payload_hash = _canonical_hash(payload)
+    payload_hash = canonical_hash(payload)
     invocation_preimage = {
         "schema_version": "plugin-invocation.v1",
         "plugin_id": manifest.plugin_id,
@@ -227,7 +229,7 @@ def build_plugin_input(
     }
     invocation = PluginInvocation(
         **invocation_preimage,
-        invocation_hash=_canonical_hash(invocation_preimage),
+        invocation_hash=canonical_hash(invocation_preimage),
     ).verify_hash()
     return PluginInputEnvelope(
         invocation=invocation,
@@ -259,6 +261,6 @@ def build_plugin_output(
         invocation=invocation,
         output_schema=manifest.output_schema,
         payload=payload,
-        payload_hash=_canonical_hash(payload),
+        payload_hash=canonical_hash(payload),
         provider_calls=provider_calls,
     ).verify_hash()

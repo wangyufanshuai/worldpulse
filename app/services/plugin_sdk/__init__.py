@@ -11,6 +11,7 @@ from .contracts import (
     build_plugin_manifest,
     build_plugin_input,
     build_plugin_output,
+    canonical_hash,
 )
 from .registry import (
     PluginManifestError,
@@ -18,6 +19,7 @@ from .registry import (
     PluginPermissionError,
     PluginRegistry,
 )
+from .verification import verify_plugin_input, verify_stored_plugin_output
 
 __all__ = [
     "PluginCapability",
@@ -34,4 +36,7 @@ __all__ = [
     "build_plugin_manifest",
     "build_plugin_input",
     "build_plugin_output",
+    "canonical_hash",
+    "verify_plugin_input",
+    "verify_stored_plugin_output",
 ]
