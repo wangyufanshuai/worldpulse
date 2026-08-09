@@ -20,7 +20,12 @@ from .registry import (
     PluginRegistry,
 )
 from .verification import verify_plugin_input, verify_stored_plugin_output
-from .ports import AgentProviderPluginPort, DataConnectorPluginPort
+from .ports import (
+    AgentProviderPluginPort,
+    DataConnectorPluginPort,
+    EvaluatorPluginPort,
+    RulePackPluginPort,
+)
 
 __all__ = [
     "PluginCapability",
@@ -42,4 +47,6 @@ __all__ = [
     "verify_stored_plugin_output",
     "AgentProviderPluginPort",
     "DataConnectorPluginPort",
+    "EvaluatorPluginPort",
+    "RulePackPluginPort",
 ]

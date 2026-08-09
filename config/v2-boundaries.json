@@ -67,6 +67,19 @@
       ]
     },
     {
+      "import_prefix": "app.services.rule_packs",
+      "allowed_callers": [
+        "app.api.v3",
+        "app.services.calibration",
+        "app.services.evaluation.service",
+        "app.services.operations",
+        "app.services.plugin_sdk.builtins.rule_pack",
+        "app.services.project_app.war_room_persistence",
+        "app.services.run_lifecycle.repository",
+        "app.services.trust_center"
+      ]
+    },
+    {
       "import_prefix": "app.services.simulation_health",
       "allowed_callers": ["app.services.world_model.application"]
     },

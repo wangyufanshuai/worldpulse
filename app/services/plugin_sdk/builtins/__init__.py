@@ -14,6 +14,20 @@ from .agent_provider import (
     built_in_agent_provider,
     built_in_agent_provider_registry,
 )
+from .rule_pack import (
+    ActiveRulePackAdapter,
+    ActiveRulePackOutputV1,
+    ActiveRulePackRequestV1,
+    built_in_rule_pack,
+    built_in_rule_pack_registry,
+)
+from .evaluator import (
+    EvaluationReportAdapter,
+    EvaluationReportOutputV1,
+    EvaluationReportRequestV1,
+    built_in_evaluator,
+    built_in_evaluator_registry,
+)
 
 __all__ = [
     "FredConnector",
@@ -26,4 +40,14 @@ __all__ = [
     "ControlledAgentProviderAdapter",
     "built_in_agent_provider",
     "built_in_agent_provider_registry",
+    "ActiveRulePackAdapter",
+    "ActiveRulePackOutputV1",
+    "ActiveRulePackRequestV1",
+    "built_in_rule_pack",
+    "built_in_rule_pack_registry",
+    "EvaluationReportAdapter",
+    "EvaluationReportOutputV1",
+    "EvaluationReportRequestV1",
+    "built_in_evaluator",
+    "built_in_evaluator_registry",
 ]
