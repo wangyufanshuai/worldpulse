@@ -6,6 +6,9 @@ permission to add data sources without governance review.
 
 ## Slice 3A — pure SDK and registry
 
+Status: completed by local checkpoint `5d7a51a`; production dispatch remains
+disabled.
+
 Add a dependency-free contract package with closed Pydantic models, canonical
 manifest hashing, permission/capability enums, input/output envelope models and
 a deterministic in-memory registry. Add tests for hash mutation, duplicate
