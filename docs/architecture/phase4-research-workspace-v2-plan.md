@@ -1,8 +1,9 @@
 # Phase 4 Research Workspace V2 migration plan
 
 Status: active; Slice 4A completed by local checkpoint
-`98811eff4f2d113cbfba9a35226583dd4e0620e8`; Slice 4B is the next bounded
-implementation slice
+`98811eff4f2d113cbfba9a35226583dd4e0620e8`; Slice 4B completed by local
+checkpoint `ad691ab7e0c529a77fac24278eed0e2b5add7d44`; Slice 4C is the next
+bounded implementation slice
 
 This plan follows [ADR-0009](adr/0009-research-workspace-v2-guided-flow.md).
 It is a progressive extraction and projection program, not a frontend rewrite,
@@ -147,6 +148,9 @@ selectors unchanged.
 
 ## Phase 4B — Evidence and Scenario Draft governance context
 
+Status: completed by local checkpoint
+`ad691ab7e0c529a77fac24278eed0e2b5add7d44`.
+
 ### What to implement
 
 Copy the governed Evidence and Scenario Compiler module contracts to expose a
@@ -189,6 +193,24 @@ go through `EvidenceApplicationPort`; no Connector writes Evidence directly.
 - Do not copy OpenCTI STIX/GraphQL/Elastic code or Enterprise-only behavior.
 - Do not let frontend permission visibility replace backend organization/RBAC
   enforcement.
+
+### Completion evidence
+
+- Existing V4 Pack detail reads verify stored integrity and are matched against
+  Draft Pack ID, project ID and manifest hash; unavailable or mismatched Pack
+  lineage blocks submitted approval and approved/frozen stage completion.
+- Global account permissions and current organization membership roles are
+  intersected deliberately, mirroring the two middleware gates in
+  `app/main.py`; controls default denied until organization context loads.
+- Evidence sync, submit, review and clone use one in-flight mutation guard;
+  conflicting or duplicate dispatch is rejected, while Draft selection and
+  Evidence search use independent generation guards.
+- Approved root revisions and cloned revisions expose scenario, assumptions,
+  Draft/Pack hashes, verified manifest hash and parent/current lineage without
+  permitting in-place edit.
+- Frontend unit `15 files / 100 passed`, type check, production build and all
+  `13` Playwright flows passed. Backend remained `703 passed, 5 skipped` under
+  the external-gate accounting defined by Gate 0.
 
 ## Phase 4C — bounded Experiment Matrix read surface
 
@@ -316,7 +338,7 @@ Pause and ask before any of the following:
 4. A new V2 public non-deterministic creation path, separate service, queue or
    deployment model.
 
-The next execution slice is 4B only: expose the existing governed Evidence and
-Scenario Draft context through the Guided Flow, including explicit draft,
-review, approved/frozen, permission and gate-reason projections. This status
-does not authorize a new API, migration or expansion of the Phase 4B scope.
+The next execution slice is 4C only: expose the existing governed finite
+Evaluation/Run matrix as a bounded read surface. This status does not authorize
+a new API, migration, arbitrary matrix creation or expansion above the existing
+Phase 4C decision gates.

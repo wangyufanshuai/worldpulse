@@ -1,7 +1,8 @@
 # ADR-0009: governed Research Workspace V2 Guided Flow
 
 Status: accepted; Slice 4A completed by local checkpoint
-`98811eff4f2d113cbfba9a35226583dd4e0620e8`; Phase 4 remains active
+`98811eff4f2d113cbfba9a35226583dd4e0620e8`; Slice 4B completed by local
+checkpoint `ad691ab7e0c529a77fac24278eed0e2b5add7d44`; Phase 4 remains active
 
 ## Context
 
@@ -69,6 +70,12 @@ the organization header, credentials and CSRF interceptor remain in force.
 All backend orchestration goes through `ResearchWorkspaceApplicationPort`,
 `EvidenceApplicationPort`, Scenario Compiler and Run Control ports. No Guided
 Flow code reads another bounded context's SQL tables directly.
+
+Guided write/review visibility uses the same two-layer authorization as the
+HTTP middleware: the global account permission and current organization
+membership role must both allow the action. Organization context not yet loaded
+is denied. This is only a presentation projection; backend global permission,
+organization role, resource scope and CSRF checks remain authoritative.
 
 ### 2. Use a five-stage visible flow with explicit gates
 
