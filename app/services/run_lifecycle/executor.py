@@ -14,7 +14,10 @@ from app.services.consistency.projection import build_action_projection_audit
 from app.services.hybrid_simulation import run_hybrid_simulation
 from app.services.projects import persist_war_room_result
 from app.services.security import redact_secrets
-from app.services.simulation_kernel import KERNEL_SHADOW_ARTIFACT_SCHEMA
+from app.services.simulation_kernel import (
+    KERNEL_SHADOW_ARTIFACT_SCHEMA,
+    build_deterministic_run_resolver_output,
+)
 from app.services.simulation_runtime import SimulationRuntimeApplicationPort, simulation_runtime_service
 from app.services.reviews import create_review_case
 from app.services.negotiation import (
@@ -41,6 +44,12 @@ from .finalization_uow import (
 )
 from .mode_execution_adapter import StoredModeExecutionAdapter
 from .mode_context import build_resolved_mock_agent_batch, resolve_mode_context
+from .source_roots import (
+    build_mode_proof_step_output,
+    build_proof_artifact_ref,
+    resolver_reference_from_artifact,
+    root_artifact_from_summary,
+)
 
 
 simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
@@ -111,6 +120,14 @@ def process_job(run_id: str) -> RunJobStatus:
             "kernel-mode-execution.v2 execution mode is not enabled on this worker"
         )
     kernel_shadow_policy = kernel_shadow_policy_for_job(job)
+    if (
+        execution_contract.is_v2
+        and job.engine_mode == "mock_agent"
+        and kernel_shadow_policy is not None
+    ):
+        raise V2ExecutionPathNotEnabledError(
+            "mock_agent V2 resolver roots do not admit a Kernel shadow auxiliary Artifact"
+        )
     worker_id = job.worker_id
     projected_run_id = repository.get_projected_result_run_id(run_id)
     if projected_run_id:
@@ -206,6 +223,7 @@ def process_job(run_id: str) -> RunJobStatus:
     for index, (phase, progress, event_type, title, detail) in enumerate(PHASES[start_index:], start=start_index):
         phase_started = perf_counter()
         step_committed_by_uow = False
+        step_output_override: dict | None = None
         repository.heartbeat_job(run_id, worker_id)
         if worker_id:
             from app.services.operations import heartbeat_registered_worker
@@ -239,7 +257,13 @@ def process_job(run_id: str) -> RunJobStatus:
         lifecycle_fault_hook(phase, "before")
         repository.mark_phase(run_id, phase, progress, event_type, title, detail, payload={"phase_index": index, "progress": progress})
         if phase == "scenario_compile":
-            repository.add_artifact(run_id, "scenario", "scenario.v1", scenario.model_dump(mode="json"))
+            repository.add_artifact(
+                run_id,
+                "scenario",
+                "scenario.v1",
+                scenario.model_dump(mode="json"),
+                auto_supersede=not execution_contract.is_v2,
+            )
         elif phase == "environment_prepare":
             repository.add_artifact(
                 run_id,
@@ -254,6 +278,7 @@ def process_job(run_id: str) -> RunJobStatus:
                     "rule_pack_id": job.rule_pack_id,
                     "rule_pack_hash": job.rule_pack_hash,
                 },
+                auto_supersede=not execution_contract.is_v2,
             )
         elif phase == "deterministic_run":
             result = run_war_room(scenario)
@@ -262,6 +287,7 @@ def process_job(run_id: str) -> RunJobStatus:
                 "war_room_result",
                 "war-room-result.v1",
                 result.model_dump(),
+                auto_supersede=not execution_contract.is_v2,
             )
             if kernel_shadow_policy is not None:
                 shadow_started = perf_counter()
@@ -276,6 +302,7 @@ def process_job(run_id: str) -> RunJobStatus:
                     KERNEL_SHADOW_ARTIFACT_TYPE,
                     KERNEL_SHADOW_ARTIFACT_SCHEMA,
                     prepared_shadow.payload,
+                    auto_supersede=not execution_contract.is_v2,
                 )
                 shadow_duration_ms = (perf_counter() - shadow_started) * 1000
                 repository.append_event(
@@ -303,38 +330,69 @@ def process_job(run_id: str) -> RunJobStatus:
                         result,
                         effective_seed=execution_contract.profile.effective_seed,
                     )
-                    repository.add_artifact(
+                    agent_pack_artifact = repository.add_artifact(
                         run_id,
                         "agent_pack",
                         "agent-pack-resolver-output.v1",
                         resolved_mode_context.agent_pack.model_dump(mode="json"),
+                        auto_supersede=False,
                     )
-                    repository.add_artifact(
+                    context_artifact = repository.add_artifact(
                         run_id,
                         "agent_constraint_context",
                         "constraint-context-resolver-output.v1",
                         resolved_mode_context.constraint_context.model_dump(
                             mode="json"
                         ),
+                        auto_supersede=False,
                     )
+                    agent_root = root_artifact_from_summary(
+                        agent_pack_artifact,
+                        resolved_mode_context.agent_pack.model_dump(mode="json"),
+                    )
+                    context_root = root_artifact_from_summary(
+                        context_artifact,
+                        resolved_mode_context.constraint_context.model_dump(
+                            mode="json"
+                        ),
+                    )
+                    resolver_output = build_deterministic_run_resolver_output(
+                        run_id=run_id,
+                        attempt=attempt_id,
+                        agent_pack_resolver_version=(
+                            execution_contract.profile.agent_pack_resolver_version
+                        ),
+                        constraint_context_resolver_version=(
+                            execution_contract.profile.constraint_context_resolver_version
+                        ),
+                        effective_seed=execution_contract.profile.effective_seed,
+                        baseline_result_hash=stable_hash(
+                            result.model_dump(mode="json")
+                        ),
+                        scenario_hash=stable_hash(scenario.model_dump(mode="json")),
+                        rule_pack_hash=job.rule_pack_hash,
+                        agent_pack=resolved_mode_context.agent_pack,
+                        constraint_context=resolved_mode_context.constraint_context,
+                        agent_pack_artifact_ref=resolver_reference_from_artifact(
+                            agent_root,
+                            content_hash=resolved_mode_context.agent_pack_hash,
+                            resolver_schema="agent-pack-resolver-output.v1",
+                        ),
+                        constraint_context_artifact_ref=resolver_reference_from_artifact(
+                            context_root,
+                            content_hash=resolved_mode_context.constraint_context_hash,
+                            resolver_schema="constraint-context-resolver-output.v1",
+                        ),
+                    )
+                    step_output_override = resolver_output.model_dump(mode="json")
+                    constraint_context = resolved_mode_context.runtime_constraint_context
                     batch = build_resolved_mock_agent_batch(
                         result,
                         run_id=run_id,
                         effective_seed=execution_contract.profile.effective_seed,
                         context=resolved_mode_context,
                     )
-                    proposal_source = build_kernel_proposal_batch_source(
-                        run_id=run_id,
-                        proposals=tuple(batch.proposals),
-                        source_kind="mock_batch",
-                        mock_batch=batch,
-                    )
-                    artifact = repository.add_artifact(
-                        run_id,
-                        "agent_action_proposals",
-                        proposal_source.schema_version,
-                        proposal_source.model_dump(mode="json"),
-                    )
+                    artifact = agent_pack_artifact
                 else:
                     batch = build_mock_agent_batch(
                         result,
@@ -353,13 +411,19 @@ def process_job(run_id: str) -> RunJobStatus:
                     run_id,
                     "AGENT",
                     "deterministic_run",
-                    "Deterministic Mock Agent proposals recorded",
+                    (
+                        "V2 deterministic Mock Agent batch prepared"
+                        if execution_contract.is_v2
+                        else "Deterministic Mock Agent proposals recorded"
+                    ),
                     f"已生成 {len(proposals)} 个可重复的结构化提案；尚未进入确定性数值转换。",
                     payload={
                         "provider": batch.provider,
                         "proposal_count": len(proposals),
                         "batch_hash": batch.batch_hash,
-                        "artifact_id": artifact.artifact_id,
+                        "artifact_id": (
+                            None if execution_contract.is_v2 else artifact.artifact_id
+                        ),
                     },
                 )
             elif job.engine_mode in {"controlled_agent", "hybrid"}:
@@ -409,6 +473,36 @@ def process_job(run_id: str) -> RunJobStatus:
         elif phase == "consistency_audit":
             if result is None:
                 raise HTTPException(status_code=500, detail="Consistency audit requires a deterministic War Room result")
+            proposal_source = None
+            proposal_artifact = None
+            projection_audit_artifact = None
+            if execution_contract.is_v2 and job.engine_mode == "mock_agent":
+                if resolved_mode_context is None:
+                    resolved_mode_context = resolve_mode_context(
+                        result,
+                        effective_seed=execution_contract.profile.effective_seed,
+                    )
+                batch = build_resolved_mock_agent_batch(
+                    result,
+                    run_id=run_id,
+                    effective_seed=execution_contract.profile.effective_seed,
+                    context=resolved_mode_context,
+                )
+                proposals = batch.proposals
+                constraint_context = resolved_mode_context.runtime_constraint_context
+                proposal_source = build_kernel_proposal_batch_source(
+                    run_id=run_id,
+                    proposals=tuple(proposals),
+                    source_kind="mock_batch",
+                    mock_batch=batch,
+                )
+                proposal_artifact = repository.add_artifact(
+                    run_id,
+                    "agent_action_proposals",
+                    proposal_source.schema_version,
+                    proposal_source.model_dump(mode="json"),
+                    auto_supersede=False,
+                )
             if job.engine_mode == "negotiation":
                 result, negotiation_summary = run_negotiation(
                     result,
@@ -461,6 +555,7 @@ def process_job(run_id: str) -> RunJobStatus:
                     "consistency_audit",
                     consistency_source.schema_version,
                     consistency_source.model_dump(mode="json"),
+                    auto_supersede=False,
                 )
                 repository.append_event(
                     run_id,
@@ -563,12 +658,68 @@ def process_job(run_id: str) -> RunJobStatus:
                         decisions=report.proposal_decisions,
                         projection_mode="audit_only",
                     )
-                repository.add_artifact(
+                projection_audit_artifact = repository.add_artifact(
                     run_id,
                     "agent_action_projection_audit",
                     projection_audit.schema_version,
                     projection_audit.model_dump(mode="json"),
+                    auto_supersede=not execution_contract.is_v2,
                 )
+            if execution_contract.is_v2 and job.engine_mode == "mock_agent":
+                if proposal_source is None or proposal_artifact is None:
+                    raise V2ExecutionPathNotEnabledError(
+                        "mock_agent V2 consistency step is missing PB"
+                    )
+                proof_references = [
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            proposal_artifact,
+                            proposal_source.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.proposal-batch.v1",
+                        content_hash=proposal_source.batch_hash,
+                    ),
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            consistency_artifact,
+                            consistency_source.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.final-consistency.v1",
+                        content_hash=consistency_source.audit_hash,
+                    ),
+                ]
+                if projection_audit_artifact is not None:
+                    proof_references.append(
+                        build_proof_artifact_ref(
+                            root_artifact_from_summary(
+                                projection_audit_artifact,
+                                projection_audit.model_dump(mode="json"),
+                            ),
+                            proof_schema="kp.projection-audit.v1",
+                            content_hash=projection_audit.audit_hash,
+                        )
+                    )
+                step_output_override = build_mode_proof_step_output(
+                    run_id=run_id,
+                    attempt=attempt_id,
+                    engine_mode="mock_agent",
+                    references=tuple(proof_references),
+                ).model_dump(mode="json")
+            elif execution_contract.is_v2 and job.engine_mode == "deterministic":
+                deterministic_reference = build_proof_artifact_ref(
+                    root_artifact_from_summary(
+                        consistency_artifact,
+                        consistency_source.model_dump(mode="json"),
+                    ),
+                    proof_schema="kp.final-consistency.v1",
+                    content_hash=consistency_source.audit_hash,
+                )
+                step_output_override = build_mode_proof_step_output(
+                    run_id=run_id,
+                    attempt=attempt_id,
+                    engine_mode="deterministic",
+                    references=(deterministic_reference,),
+                ).model_dump(mode="json")
         elif phase == "report_generate":
             if result is None:
                 raise HTTPException(status_code=500, detail="Report projection requires a deterministic War Room result")
@@ -637,32 +788,35 @@ def process_job(run_id: str) -> RunJobStatus:
             if item.artifact_id not in artifacts_before
         ]
         new_artifacts = [item.artifact_id for item in new_artifact_summaries]
-        step_output = {
-            "phase": phase,
-            "progress": progress,
-            "result_hash": stable_hash(result.model_dump(mode="json")) if result is not None else None,
-            "proposal_count": len(proposals),
-            "consistency_audit_hash": report.audit_hash if report is not None else None,
-            "result_run_id": result_run_id,
-            "artifact_refs": new_artifacts,
-        }
-        if execution_contract.is_v2:
-            step_output["artifact_bindings"] = [
-                {
-                    "artifact_id": item.artifact_id,
-                    "artifact_type": item.artifact_type,
-                    "schema_version": item.schema_version,
-                    "sha256": item.sha256,
-                    "attempt_id": item.attempt_id,
-                    "step_id": item.step_id,
-                    "artifact_version": item.artifact_version,
-                    "supersedes_artifact_id": item.supersedes_artifact_id,
-                }
-                for item in sorted(
-                    new_artifact_summaries,
-                    key=lambda value: value.artifact_id.encode("utf-8"),
-                )
-            ]
+        if step_output_override is not None:
+            step_output = step_output_override
+        else:
+            step_output = {
+                "phase": phase,
+                "progress": progress,
+                "result_hash": stable_hash(result.model_dump(mode="json")) if result is not None else None,
+                "proposal_count": len(proposals),
+                "consistency_audit_hash": report.audit_hash if report is not None else None,
+                "result_run_id": result_run_id,
+                "artifact_refs": new_artifacts,
+            }
+            if execution_contract.is_v2:
+                step_output["artifact_bindings"] = [
+                    {
+                        "artifact_id": item.artifact_id,
+                        "artifact_type": item.artifact_type,
+                        "schema_version": item.schema_version,
+                        "sha256": item.sha256,
+                        "attempt_id": item.attempt_id,
+                        "step_id": item.step_id,
+                        "artifact_version": item.artifact_version,
+                        "supersedes_artifact_id": item.supersedes_artifact_id,
+                    }
+                    for item in sorted(
+                        new_artifact_summaries,
+                        key=lambda value: value.artifact_id.encode("utf-8"),
+                    )
+                ]
         previous_step = steps.complete_step(step.step_id, step_output, new_artifacts)
 
     if result is None:

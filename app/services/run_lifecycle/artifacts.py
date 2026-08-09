@@ -23,6 +23,7 @@ def add_artifact(
     attempt_id: str | None = None,
     step_id: str | None = None,
     supersedes_artifact_id: str | None = None,
+    auto_supersede: bool = True,
 ) -> RunArtifactSummary:
     init_db()
     body = dumps(content)
@@ -45,7 +46,7 @@ def add_artifact(
                 (run_id, attempt_id),
             ).fetchone()
             step_id = active_step["step_id"] if active_step else None
-        if supersedes_artifact_id is None:
+        if supersedes_artifact_id is None and auto_supersede:
             previous = conn.execute(
                 """
                 SELECT artifact_id FROM run_artifacts

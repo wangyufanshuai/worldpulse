@@ -17,6 +17,11 @@ from .kernel_shadow import (
     kernel_shadow_policy_for_job,
     verify_persisted_kernel_shadow_artifact,
 )
+from .source_roots import (
+    RootArtifact,
+    validate_mode_proof_step_root,
+    validate_resolver_step_root,
+)
 
 
 @dataclass
@@ -88,6 +93,7 @@ def _step_is_valid(
     previous: RunStepRecord | None,
     scenario_hash: str,
 ) -> bool:
+    execution_contract = select_job_execution_contract(job)
     if stable_hash(step.input) != step.input_hash:
         return False
     if step.output_hash is None or stable_hash(step.output) != step.output_hash:
@@ -104,11 +110,58 @@ def _step_is_valid(
         return False
     if step.input.get("previous_artifact_refs", []) != (previous.artifact_refs if previous else []):
         return False
-    if sorted(step.output.get("artifact_refs", [])) != sorted(step.artifact_refs):
-        return False
     try:
+        root_artifacts: list[RootArtifact] = []
         for artifact_id in step.artifact_refs:
-            repository.get_artifact_content_by_id(job.run_id, artifact_id)
+            payload = repository.get_artifact_content_by_id(job.run_id, artifact_id)
+            summary = repository.get_artifact_summary_by_id(job.run_id, artifact_id)
+            root_artifacts.append(
+                RootArtifact(
+                    artifact_id=summary.artifact_id,
+                    artifact_type=summary.artifact_type,
+                    schema_version=summary.schema_version,
+                    sha256=summary.sha256,
+                    attempt_id=summary.attempt_id,
+                    supersedes_artifact_id=summary.supersedes_artifact_id,
+                    payload=payload,
+                )
+            )
+        output_schema = step.output.get("schema_version")
+        if output_schema == "deterministic-run-resolver-output.v1":
+            if execution_contract.profile is None:
+                return False
+            validate_resolver_step_root(
+                step.output,
+                run_id=job.run_id,
+                attempt=step.attempt_id,
+                engine_mode=job.engine_mode,
+                effective_seed=execution_contract.profile.effective_seed,
+                agent_pack_resolver_version=(
+                    execution_contract.profile.agent_pack_resolver_version
+                ),
+                constraint_context_resolver_version=(
+                    execution_contract.profile.constraint_context_resolver_version
+                ),
+                scenario_hash=scenario_hash,
+                rule_pack_hash=job.rule_pack_hash or "",
+                artifacts=tuple(root_artifacts),
+            )
+            return True
+        if output_schema == "mode-proof-step-output.v1":
+            by_id = {item.artifact_id: item for item in root_artifacts}
+            ordered_ids = tuple(item[1] for item in step.output.get("artifact_refs", []))
+            if set(ordered_ids) != set(step.artifact_refs):
+                return False
+            validate_mode_proof_step_root(
+                step.output,
+                run_id=job.run_id,
+                attempt=step.attempt_id,
+                engine_mode=job.engine_mode,
+                artifacts=tuple(by_id[item] for item in ordered_ids),
+            )
+            return True
+        if sorted(step.output.get("artifact_refs", [])) != sorted(step.artifact_refs):
+            return False
     except Exception:
         return False
     return True

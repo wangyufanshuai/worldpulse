@@ -2,70 +2,35 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.models import ResearchProjectCreate, RunJobCreateRequest, WarRoomScenarioRequest
+from app.core.models import (
+    ResearchProjectCreate,
+    RunJobCreateRequest,
+    WarRoomRun,
+    WarRoomScenarioRequest,
+)
 from app.db import postgres as postgres_db
 from app.db.postgres import PostgresSessionIdentity
 from app.services import operations, project_store
+from app.services.agent_contract.models import MockAgentBatch
 from app.services.auth import ensure_system_user
-from app.services.consistency import evaluate_war_room_result
 from app.services.consistency.hashing import stable_hash
-from app.services.negotiation import (
-    build_audit_only_projection_source,
-    build_consistency_audit_source,
-    build_kernel_proposal_batch_source,
-)
 from app.services.project_app.service import create_project
 from app.services.project_store import connect, dumps, loads
 from app.services.run_lifecycle import repository, steps, worker_trust
 from app.services.run_lifecycle import executor as lifecycle_executor
+from app.services.run_lifecycle import mode_execution_adapter as mode_adapter_module
 from app.services.run_lifecycle.execution_contract import (
     KERNEL_MODE_EXECUTION_V2,
     build_worker_execution_capability,
     expected_postgres_worker_principal,
 )
 from app.services.run_lifecycle.integrity import artifact_digest
-from app.services.run_lifecycle.mode_context import (
-    build_resolved_mock_agent_batch,
-    resolve_mode_context,
-)
+from app.services.run_lifecycle.mode_context import resolve_mode_context
 from app.services.run_lifecycle.mode_execution_adapter import (
     ModeExecutionAdapterError,
     StoredModeExecutionAdapter,
 )
 from app.services.run_lifecycle.executor import process_job
-from app.services.simulation_runtime import simulation_runtime_service
-
-
-def _artifact_binding(summary) -> dict:
-    return {
-        "artifact_id": summary.artifact_id,
-        "artifact_type": summary.artifact_type,
-        "schema_version": summary.schema_version,
-        "sha256": summary.sha256,
-        "attempt_id": summary.attempt_id,
-        "step_id": summary.step_id,
-        "artifact_version": summary.artifact_version,
-        "supersedes_artifact_id": summary.supersedes_artifact_id,
-    }
-
-
-def _complete_step(step, summaries) -> None:
-    refs = [item.artifact_id for item in summaries]
-    steps.complete_step(
-        step.step_id,
-        {
-            "phase": step.step_key,
-            "artifact_refs": refs,
-            "artifact_bindings": [
-                _artifact_binding(item)
-                for item in sorted(
-                    summaries,
-                    key=lambda value: value.artifact_id.encode("utf-8"),
-                )
-            ],
-        },
-        refs,
-    )
 
 
 def _rewrite_bound_artifact(artifact_id: str, payload: dict) -> None:
@@ -85,9 +50,20 @@ def _rewrite_bound_artifact(artifact_id: str, payload: dict) -> None:
             (row["step_id"],),
         ).fetchone()
         output = loads(step_row["output_json"], {})
-        for binding in output["artifact_bindings"]:
+        for binding in output.get("artifact_bindings", []):
             if binding["artifact_id"] == artifact_id:
                 binding["sha256"] = digest
+        for reference in output.get("artifact_refs", []):
+            if (
+                isinstance(reference, list)
+                and len(reference) == 6
+                and reference[1] == artifact_id
+            ):
+                reference[2] = digest
+                reference[3] = payload.get(
+                    "batch_hash",
+                    payload.get("audit_hash", reference[3]),
+                )
         connection.execute(
             "UPDATE run_steps SET output_json = ?, output_hash = ? WHERE step_id = ?",
             (dumps(output), stable_hash(output), row["step_id"]),
@@ -177,124 +153,39 @@ def _setup_mock_sources(monkeypatch, tmp_path, *, prebuild_sources: bool = True)
     if not prebuild_sources:
         return job, capability
 
-    result = simulation_runtime_service.run_war_room(
-        WarRoomScenarioRequest.model_validate(job.scenario)
-    )
-    resolved = resolve_mode_context(result, effective_seed=41)
-    batch = build_resolved_mock_agent_batch(
-        result,
-        run_id=job.run_id,
-        effective_seed=41,
-        context=resolved,
-    )
-    pb = build_kernel_proposal_batch_source(
-        run_id=job.run_id,
-        proposals=tuple(batch.proposals),
-        source_kind="mock_batch",
-        mock_batch=batch,
-    )
+    failed_once = {"value": False}
 
-    repository.mark_phase(
-        job.run_id,
-        "deterministic_run",
-        56,
-        "ENGINE",
-        "Mock deterministic source",
-        "Test mock deterministic source.",
+    def stop_before_report(phase: str, moment: str) -> None:
+        if phase == "report_generate" and moment == "before" and not failed_once["value"]:
+            failed_once["value"] = True
+            raise RuntimeError("prepared rooted mock sources")
+
+    monkeypatch.setattr(
+        lifecycle_executor,
+        "lifecycle_fault_hook",
+        stop_before_report,
     )
-    deterministic_step = steps.begin_step(
-        job.run_id,
-        "deterministic_run",
-        job.current_attempt_id,
-        {"run_id": job.run_id, "phase": "deterministic_run"},
-        runtime_profile=job.runtime_profile,
+    with pytest.raises(RuntimeError, match="prepared rooted mock sources"):
+        process_job(job.run_id)
+    monkeypatch.setattr(
+        lifecycle_executor,
+        "lifecycle_fault_hook",
+        lambda _phase, _moment: None,
     )
-    baseline_artifact = repository.add_artifact(
+    job = repository.get_job(job.run_id)
+    result_payload = repository.get_latest_artifact_content(
         job.run_id,
         "war_room_result",
-        "war-room-result.v1",
-        result.model_dump(mode="json"),
     )
-    agent_pack_artifact = repository.add_artifact(
+    agent_pack_artifact = repository.get_latest_artifact_summary(
         job.run_id,
         "agent_pack",
-        "agent-pack-resolver-output.v1",
-        resolved.agent_pack.model_dump(mode="json"),
     )
-    context_artifact = repository.add_artifact(
-        job.run_id,
-        "agent_constraint_context",
-        "constraint-context-resolver-output.v1",
-        resolved.constraint_context.model_dump(mode="json"),
-    )
-    pb_artifact = repository.add_artifact(
-        job.run_id,
-        "agent_action_proposals",
-        pb.schema_version,
-        pb.model_dump(mode="json"),
-    )
-    _complete_step(
-        deterministic_step,
-        [baseline_artifact, agent_pack_artifact, context_artifact, pb_artifact],
-    )
-
-    report = evaluate_war_room_result(
-        result,
-        run_id=job.run_id,
-        created_at="2026-08-08T00:00:00.000",
-        proposals=batch.proposals,
-        constraint_context=resolved.runtime_constraint_context,
-    )
-    fc = build_consistency_audit_source(
-        report,
-        run_id=job.run_id,
-        role="final",
-        tick=None,
-        evaluator_version=job.runtime_profile["evaluator_version"],
-        agent_pack_id=resolved.agent_pack.agent_pack_id,
-        agent_pack_hash=resolved.agent_pack_hash,
-        constraint_context_hash=resolved.constraint_context_hash,
-        complete_proposals=tuple(batch.proposals),
-    )
-    pa = build_audit_only_projection_source(
-        run_id=job.run_id,
-        consistency_audit_hash=fc.audit_hash,
-        final_result_hash=stable_hash(result.model_dump(mode="json")),
-        proposals=tuple(batch.proposals),
-        decisions=tuple(report.proposal_decisions),
-    )
-    repository.mark_phase(
-        job.run_id,
-        "consistency_audit",
-        74,
-        "CONSISTENCY",
-        "Mock consistency source",
-        "Test mock consistency source.",
-    )
-    consistency_step = steps.begin_step(
-        job.run_id,
-        "consistency_audit",
-        job.current_attempt_id,
-        {"run_id": job.run_id, "phase": "consistency_audit"},
-        runtime_profile=job.runtime_profile,
-    )
-    fc_artifact = repository.add_artifact(
-        job.run_id,
-        "consistency_audit",
-        fc.schema_version,
-        fc.model_dump(mode="json"),
-    )
-    pa_artifact = repository.add_artifact(
-        job.run_id,
-        "agent_action_projection_audit",
-        pa.schema_version,
-        pa.model_dump(mode="json"),
-    )
-    _complete_step(consistency_step, [fc_artifact, pa_artifact])
-    operations.heartbeat_worker(
-        capability.worker_id,
-        status="busy",
-        current_job_id=job.run_id,
+    assert result_payload is not None
+    assert agent_pack_artifact is not None
+    resolved = resolve_mode_context(
+        WarRoomRun.model_validate(result_payload),
+        effective_seed=41,
     )
     epoch = repository.capture_v2_fencing_epoch(job.run_id)
     return job, epoch, resolved, agent_pack_artifact
@@ -336,9 +227,10 @@ def test_mock_production_path_reaches_atomic_v2_terminal_state(
 
     assert completed.status == "completed"
     assert completed.result_run_id
+    artifact_summaries = repository.get_artifacts(job.run_id)
     schemas = {
         (item.artifact_type, item.schema_version)
-        for item in repository.get_artifacts(job.run_id)
+        for item in artifact_summaries
     }
     assert {
         ("agent_pack", "agent-pack-resolver-output.v1"),
@@ -360,6 +252,59 @@ def test_mock_production_path_reaches_atomic_v2_terminal_state(
     assert manifest["execution_record"]["authority_path"] == (
         "mock_action_adapter_deterministic"
     )
+    completed_steps = {
+        item.step_key: item
+        for item in steps.get_steps(job.run_id)
+        if item.status == "completed"
+    }
+    resolver_output = completed_steps["deterministic_run"].output
+    assert set(resolver_output) == {
+        "schema_version",
+        "run_id",
+        "attempt",
+        "agent_pack_resolver_version",
+        "constraint_context_resolver_version",
+        "effective_seed",
+        "baseline_result_hash",
+        "scenario_hash",
+        "rule_pack_hash",
+        "agent_pack_id",
+        "agent_pack_hash",
+        "constraint_context_hash",
+        "artifact_refs",
+    }
+    proof_output = completed_steps["consistency_audit"].output
+    assert set(proof_output) == {
+        "schema_version",
+        "run_id",
+        "attempt",
+        "engine_mode",
+        "artifact_refs",
+    }
+    assert [item[4] for item in proof_output["artifact_refs"]] == [
+        "kp.proposal-batch.v1",
+        "kp.final-consistency.v1",
+        "kp.projection-audit.v1",
+    ]
+    source_types = {
+        "war_room_result",
+        "agent_pack",
+        "agent_constraint_context",
+        "agent_action_proposals",
+        "consistency_audit",
+        "agent_action_projection_audit",
+    }
+    assert all(
+        item.supersedes_artifact_id is None
+        for item in artifact_summaries
+        if item.artifact_type in source_types
+    )
+    pb_summary = next(
+        item
+        for item in artifact_summaries
+        if item.artifact_type == "agent_action_proposals"
+    )
+    assert pb_summary.step_id == completed_steps["consistency_audit"].step_id
 
 
 def test_mock_resume_reuses_verified_sources_without_duplicate_emission(
@@ -399,6 +344,178 @@ def test_mock_resume_reuses_verified_sources_without_duplicate_emission(
         "report_projection_manifest",
     ):
         assert sum(item.artifact_type == artifact_type for item in artifacts) == 1, artifact_type
+
+
+def test_zero_proposal_mock_root_forbids_projection_audit(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    def empty_batch(
+        _result,
+        *,
+        run_id: str,
+        effective_seed: int,
+        context,
+    ) -> MockAgentBatch:
+        del run_id
+        return MockAgentBatch(
+            seed=effective_seed,
+            proposals=[],
+            constraint_context=context.runtime_constraint_context,
+            batch_hash=stable_hash(
+                {
+                    "provider": "mock-deterministic",
+                    "seed": effective_seed,
+                    "proposal_ids": [],
+                }
+            ),
+        )
+
+    monkeypatch.setattr(
+        lifecycle_executor,
+        "build_resolved_mock_agent_batch",
+        empty_batch,
+    )
+    monkeypatch.setattr(
+        mode_adapter_module,
+        "build_resolved_mock_agent_batch",
+        empty_batch,
+    )
+    job, _ = _setup_mock_sources(
+        monkeypatch,
+        tmp_path,
+        prebuild_sources=False,
+    )
+
+    completed = process_job(job.run_id)
+
+    assert completed.status == "completed"
+    proof_step = next(
+        item
+        for item in steps.get_steps(job.run_id)
+        if item.step_key == "consistency_audit" and item.status == "completed"
+    )
+    assert [item[4] for item in proof_step.output["artifact_refs"]] == [
+        "kp.proposal-batch.v1",
+        "kp.final-consistency.v1",
+    ]
+    assert repository.get_latest_artifact_content(
+        job.run_id,
+        "agent_action_projection_audit",
+    ) is None
+
+
+def test_mock_proof_root_order_tamper_fails_closed(monkeypatch, tmp_path) -> None:
+    job, epoch, _, _ = _setup_mock_sources(monkeypatch, tmp_path)
+    proof_step = next(
+        item
+        for item in steps.get_steps(job.run_id)
+        if item.step_key == "consistency_audit" and item.status == "completed"
+    )
+    output = proof_step.output
+    output["artifact_refs"][0], output["artifact_refs"][1] = (
+        output["artifact_refs"][1],
+        output["artifact_refs"][0],
+    )
+    with connect() as connection:
+        connection.execute(
+            "UPDATE run_steps SET output_json = ?, output_hash = ? WHERE step_id = ?",
+            (dumps(output), stable_hash(output), proof_step.step_id),
+        )
+
+    with pytest.raises(ValueError, match="canonical|schema|root|identity"):
+        StoredModeExecutionAdapter().reconstruct(
+            job.run_id,
+            fencing_epoch=epoch,
+        )
+    assert repository.get_latest_artifact_content(
+        job.run_id,
+        "report_projection_manifest",
+    ) is None
+
+
+def test_mock_retry_rebuilds_complete_current_attempt_roots(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    job, capability = _setup_mock_sources(
+        monkeypatch,
+        tmp_path,
+        prebuild_sources=False,
+    )
+    first_attempt = job.current_attempt_id
+    failed_once = {"value": False}
+
+    def fail_first_report(phase: str, moment: str) -> None:
+        if phase == "report_generate" and moment == "before" and not failed_once["value"]:
+            failed_once["value"] = True
+            raise RuntimeError("first mock attempt failed")
+
+    monkeypatch.setattr(
+        lifecycle_executor,
+        "lifecycle_fault_hook",
+        fail_first_report,
+    )
+    with pytest.raises(RuntimeError, match="first mock attempt failed") as raised:
+        process_job(job.run_id)
+    steps.fail_active_step(job.run_id, raised.value)
+    retrying = repository.handle_attempt_failure(job.run_id, raised.value)
+    assert retrying.status == "queued"
+    with connect() as connection:
+        connection.execute(
+            "UPDATE run_jobs SET next_attempt_at = NULL WHERE run_id = ?",
+            (job.run_id,),
+        )
+    operations.heartbeat_worker(
+        capability.worker_id,
+        status="ready",
+        current_job_id=None,
+    )
+    claimed = repository.claim_next_job(worker_id=capability.worker_id)
+    assert claimed is not None
+    assert claimed.current_attempt_id != first_attempt
+
+    completed = process_job(job.run_id)
+
+    assert completed.status == "completed"
+    current_attempt = completed.current_attempt_id
+    source_types = {
+        "war_room_result",
+        "agent_pack",
+        "agent_constraint_context",
+        "agent_action_proposals",
+        "consistency_audit",
+        "agent_action_projection_audit",
+    }
+    artifacts = [
+        item
+        for item in repository.get_artifacts(job.run_id)
+        if item.artifact_type in source_types
+    ]
+    assert {item.attempt_id for item in artifacts} == {
+        first_attempt,
+        current_attempt,
+    }
+    assert all(item.supersedes_artifact_id is None for item in artifacts)
+    current_steps = [
+        item
+        for item in steps.get_steps(job.run_id)
+        if item.attempt_id == current_attempt and item.status == "completed"
+    ]
+    assert [item.step_key for item in current_steps] == [
+        "scenario_compile",
+        "environment_prepare",
+        "deterministic_run",
+        "consistency_audit",
+        "report_generate",
+        "replay_archive",
+    ]
+    manifest = repository.get_latest_artifact_content(
+        job.run_id,
+        "report_projection_manifest",
+    )
+    assert manifest is not None
+    assert manifest["execution_record"]["attempt"] == current_attempt
 
 
 def test_mock_adapter_rejects_rehashed_resolver_substitution(monkeypatch, tmp_path) -> None:

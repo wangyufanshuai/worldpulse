@@ -308,6 +308,15 @@ def test_deterministic_v2_lifecycle_completes_end_to_end(monkeypatch, tmp_path):
     }
     assert versions["report_generate"] == "report-generate.v2"
     assert versions["replay_archive"] == "replay-archive.v2"
+    consistency_step = next(
+        item
+        for item in steps.get_steps(job.run_id)
+        if item.step_key == "consistency_audit"
+    )
+    assert consistency_step.output["schema_version"] == "mode-proof-step-output.v1"
+    assert [item[4] for item in consistency_step.output["artifact_refs"]] == [
+        "kp.final-consistency.v1"
+    ]
     artifacts = repository.get_artifacts(job.run_id)
     assert any(
         item.artifact_type == "report_projection_manifest"

@@ -1932,6 +1932,30 @@ as `proof`, a proof source may not be encoded or consumed as `resolver`, and a
 tuple containing both schema fields, neither schema field, an unknown
 discriminator or additional members fails closed.
 
+The completed source-producing `consistency_audit` step uses the closed output
+schema `mode-proof-step-output.v1`, with exactly `schema_version`, `run_id`,
+`attempt`, `engine_mode` and `artifact_refs`. `artifact_refs` is the canonical
+matrix-ordered array of `proof` tuples above; its order is semantic and is not
+replaced by the generic Artifact table's ID ordering. The stored step
+`artifact_refs` column contains exactly the same Artifact IDs and no auxiliary
+Artifact. The deterministic treatment uses its existing FC-only sequence;
+`mock_agent` uses PB, FC and PA when proposals are nonempty, or PB and FC when
+they are empty. Later modes use their exact matrix subsequence for that step.
+Unknown fields, a resolver tuple in this output, a missing/surplus tuple,
+cross-attempt tuple, row/tuple SHA mismatch, content-hash mismatch or order
+drift fails before checkpoint recovery or Kernel invocation.
+
+For an Agent-capable `deterministic_run`, the existing closed
+`deterministic-run-resolver-output.v1` remains the entire completed-step
+output. Its stored step `artifact_refs` column contains exactly the baseline
+`war_room_result` row and the two resolver rows as an unordered storage set;
+validation recovers their identity by the closed row type/schema and
+requires exactly one of each. PB is emitted only by the following
+`consistency_audit` source step, after this resolver-rooted step has completed.
+This preserves the required post-baseline/pre-Agent resolver boundary and
+prevents a PB or Provider transcript from being smuggled into the resolver
+checkpoint.
+
 When a lifecycle source-producing step completes, its canonical output and `artifact_refs` hash
 commit the exact ordered sequence of these variants, and the authenticated
 checkpoint commits that completed-step output hash and `artifact_refs` hash.

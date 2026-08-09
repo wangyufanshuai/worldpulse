@@ -41,6 +41,11 @@ from .execution_contract import (
 )
 from .integrity import artifact_digest
 from .mode_context import build_resolved_mock_agent_batch, resolve_mode_context
+from .source_roots import (
+    RootArtifact,
+    validate_mode_proof_step_root,
+    validate_resolver_step_root,
+)
 
 
 class ModeExecutionAdapterError(ValueError):
@@ -120,7 +125,7 @@ class StoredModeExecutionAdapter:
                        job.engine_mode, job.status, job.current_attempt_id,
                        job.worker_id, job.seed, job.rule_pack_id,
                        job.rule_pack_hash, job.runtime_profile_json,
-                       job.runtime_profile_hash
+                       job.runtime_profile_hash, job.scenario_json
                 FROM run_jobs AS job
                 JOIN organization_resources AS ownership
                   ON ownership.resource_type = 'project'
@@ -159,65 +164,53 @@ class StoredModeExecutionAdapter:
             if not job["rule_pack_id"] or not job["rule_pack_hash"]:
                 raise ModeExecutionAdapterError("V2 job is missing its pinned Rule Pack")
 
-            baseline_artifact = _load_exact_bound_artifact(
-                connection,
-                run_id=run_id,
-                attempt_id=fencing_epoch.current_attempt_id,
-                artifact_type="war_room_result",
-                schema_version="war-room-result.v1",
-                producing_step_key="deterministic_run",
-                producing_step_version="deterministic-run.v1",
-            )
-            consistency_artifact = _load_exact_bound_artifact(
-                connection,
-                run_id=run_id,
-                attempt_id=fencing_epoch.current_attempt_id,
-                artifact_type="consistency_audit",
-                schema_version="consistency-audit.v3",
-                producing_step_key="consistency_audit",
-                producing_step_version="consistency-audit-step.v1",
-            )
-
             agent_pack_artifact = None
             context_artifact = None
             proposal_artifact = None
             projection_audit_artifact = None
-            if job["engine_mode"] == "mock_agent":
-                agent_pack_artifact = _load_exact_bound_artifact(
+            if job["engine_mode"] == "deterministic":
+                baseline_artifact = _load_exact_bound_artifact(
                     connection,
                     run_id=run_id,
                     attempt_id=fencing_epoch.current_attempt_id,
-                    artifact_type="agent_pack",
-                    schema_version="agent-pack-resolver-output.v1",
+                    artifact_type="war_room_result",
+                    schema_version="war-room-result.v1",
                     producing_step_key="deterministic_run",
                     producing_step_version="deterministic-run.v1",
                 )
-                context_artifact = _load_exact_bound_artifact(
+                consistency_artifact = _load_exact_bound_artifact(
                     connection,
                     run_id=run_id,
                     attempt_id=fencing_epoch.current_attempt_id,
-                    artifact_type="agent_constraint_context",
-                    schema_version="constraint-context-resolver-output.v1",
-                    producing_step_key="deterministic_run",
-                    producing_step_version="deterministic-run.v1",
-                )
-                proposal_artifact = _load_exact_bound_artifact(
-                    connection,
-                    run_id=run_id,
-                    attempt_id=fencing_epoch.current_attempt_id,
-                    artifact_type="agent_action_proposals",
-                    schema_version="kernel-proposal-batch.v1",
-                    producing_step_key="deterministic_run",
-                    producing_step_version="deterministic-run.v1",
-                )
-                projection_audit_artifact = _load_optional_bound_artifact(
-                    connection,
-                    run_id=run_id,
-                    attempt_id=fencing_epoch.current_attempt_id,
-                    artifact_type="agent_action_projection_audit",
-                    schema_version="agent-action-projection-audit.v2",
+                    artifact_type="consistency_audit",
+                    schema_version="consistency-audit.v3",
                     producing_step_key="consistency_audit",
                     producing_step_version="consistency-audit-step.v1",
+                )
+            else:
+                rooted = _load_mock_source_roots(
+                    connection,
+                    job=job,
+                    profile=selection.profile,
+                    run_id=run_id,
+                    attempt_id=fencing_epoch.current_attempt_id,
+                )
+                baseline_artifact = _bound_from_root(rooted["war_room_result"])
+                agent_pack_artifact = _bound_from_root(rooted["agent_pack"])
+                context_artifact = _bound_from_root(
+                    rooted["agent_constraint_context"]
+                )
+                proposal_artifact = _bound_from_root(
+                    rooted["agent_action_proposals"]
+                )
+                consistency_artifact = _bound_from_root(
+                    rooted["consistency_audit"]
+                )
+                projection_root = rooted.get("agent_action_projection_audit")
+                projection_audit_artifact = (
+                    _bound_from_root(projection_root)
+                    if projection_root is not None
+                    else None
                 )
 
         baseline = WarRoomRun.model_validate(baseline_artifact.payload)
@@ -526,6 +519,187 @@ def build_report_projection_manifest_v2(
     )
 
 
+def _bound_from_root(artifact: RootArtifact) -> _BoundArtifact:
+    return _BoundArtifact(
+        artifact_id=artifact.artifact_id,
+        artifact_type=artifact.artifact_type,
+        schema_version=artifact.schema_version,
+        sha256=artifact.sha256,
+        payload=artifact.payload,
+    )
+
+
+def _load_mock_source_roots(
+    connection,
+    *,
+    job,
+    profile,
+    run_id: str,
+    attempt_id: str,
+) -> dict[str, RootArtifact]:
+    resolver_step, resolver_artifacts = _load_rooted_step(
+        connection,
+        run_id=run_id,
+        attempt_id=attempt_id,
+        step_key="deterministic_run",
+        step_version="deterministic-run.v1",
+    )
+    scenario = _strict_json_object(job["scenario_json"], "stored scenario")
+    scenario_hash = stable_hash(scenario)
+    if (
+        resolver_step["input"].get("run_id") != run_id
+        or resolver_step["input"].get("engine_mode") != job["engine_mode"]
+        or resolver_step["input"].get("scenario_hash") != scenario_hash
+        or resolver_step["input"].get("rule_pack_id") != job["rule_pack_id"]
+        or resolver_step["input"].get("rule_pack_hash") != job["rule_pack_hash"]
+    ):
+        raise ModeExecutionAdapterError("resolver-step input identity drift")
+    validate_resolver_step_root(
+        resolver_step["output"],
+        run_id=run_id,
+        attempt=attempt_id,
+        engine_mode=job["engine_mode"],
+        effective_seed=profile.effective_seed,
+        agent_pack_resolver_version=profile.agent_pack_resolver_version,
+        constraint_context_resolver_version=(
+            profile.constraint_context_resolver_version
+        ),
+        scenario_hash=scenario_hash,
+        rule_pack_hash=job["rule_pack_hash"],
+        artifacts=resolver_artifacts,
+    )
+    proof_step, proof_artifacts = _load_rooted_step(
+        connection,
+        run_id=run_id,
+        attempt_id=attempt_id,
+        step_key="consistency_audit",
+        step_version="consistency-audit-step.v1",
+    )
+    proof_refs = proof_step["output"].get("artifact_refs")
+    if not isinstance(proof_refs, list):
+        raise ModeExecutionAdapterError("proof-step output refs must be an array")
+    proof_ids = tuple(
+        item[1]
+        for item in proof_refs
+        if isinstance(item, list) and len(item) == 6
+    )
+    if len(proof_ids) != len(proof_refs):
+        raise ModeExecutionAdapterError("proof-step output refs are malformed")
+    proof_by_id = {item.artifact_id: item for item in proof_artifacts}
+    if set(proof_ids) != set(proof_by_id):
+        raise ModeExecutionAdapterError("proof-step output/root membership mismatch")
+    ordered_proof_artifacts = tuple(proof_by_id[item] for item in proof_ids)
+    validate_mode_proof_step_root(
+        proof_step["output"],
+        run_id=run_id,
+        attempt=attempt_id,
+        engine_mode=job["engine_mode"],
+        artifacts=ordered_proof_artifacts,
+    )
+    consistency_input = proof_step["input"]
+    if (
+        consistency_input.get("run_id") != run_id
+        or consistency_input.get("engine_mode") != job["engine_mode"]
+        or consistency_input.get("scenario_hash") != scenario_hash
+        or consistency_input.get("rule_pack_id") != job["rule_pack_id"]
+        or consistency_input.get("rule_pack_hash") != job["rule_pack_hash"]
+        or consistency_input.get("previous_step_id") != resolver_step["step_id"]
+        or consistency_input.get("previous_output_hash")
+        != resolver_step["output_hash"]
+        or consistency_input.get("previous_artifact_refs")
+        != resolver_step["artifact_refs"]
+    ):
+        raise ModeExecutionAdapterError(
+            "proof-step input does not extend the resolver checkpoint root"
+        )
+    combined = (*resolver_artifacts, *ordered_proof_artifacts)
+    by_type = {item.artifact_type: item for item in combined}
+    if len(by_type) != len(combined):
+        raise ModeExecutionAdapterError("mock source roots contain duplicate Artifact types")
+    return by_type
+
+
+def _load_rooted_step(
+    connection,
+    *,
+    run_id: str,
+    attempt_id: str,
+    step_key: str,
+    step_version: str,
+) -> tuple[dict[str, Any], tuple[RootArtifact, ...]]:
+    rows = connection.execute(
+        """
+        SELECT step_id, input_json, input_hash, output_json, output_hash,
+               artifact_refs, status
+        FROM run_steps
+        WHERE run_id = ? AND attempt_id = ? AND step_key = ?
+          AND step_version = ? AND status = 'completed'
+        """,
+        (run_id, attempt_id, step_key, step_version),
+    ).fetchall()
+    if len(rows) != 1:
+        raise ModeExecutionAdapterError(
+            f"expected one completed rooted {step_key} step, found {len(rows)}"
+        )
+    row = rows[0]
+    step_input = _strict_json_object(row["input_json"], f"{step_key} input")
+    step_output = _strict_json_object(row["output_json"], f"{step_key} output")
+    artifact_refs = _strict_json_array(
+        row["artifact_refs"],
+        f"{step_key} Artifact refs",
+    )
+    if (
+        stable_hash(step_input) != row["input_hash"]
+        or stable_hash(step_output) != row["output_hash"]
+        or any(not isinstance(item, str) for item in artifact_refs)
+        or artifact_refs
+        != sorted(set(artifact_refs), key=lambda value: value.encode("utf-8"))
+    ):
+        raise ModeExecutionAdapterError(f"{step_key} completed root hash mismatch")
+    artifact_rows = connection.execute(
+        """
+        SELECT artifact_id, artifact_type, schema_version, content_json,
+               sha256, attempt_id, supersedes_artifact_id
+        FROM run_artifacts
+        WHERE run_id = ? AND attempt_id = ? AND step_id = ?
+        ORDER BY artifact_id ASC
+        """,
+        (run_id, attempt_id, row["step_id"]),
+    ).fetchall()
+    if tuple(item["artifact_id"] for item in artifact_rows) != tuple(artifact_refs):
+        raise ModeExecutionAdapterError(
+            f"{step_key} stored Artifact refs do not match its rows"
+        )
+    artifacts: list[RootArtifact] = []
+    for artifact in artifact_rows:
+        raw = artifact["content_json"]
+        if not isinstance(raw, str) or artifact_digest(raw) != artifact["sha256"]:
+            raise ModeExecutionAdapterError(
+                f"{step_key} source Artifact outer SHA mismatch"
+            )
+        artifacts.append(
+            RootArtifact(
+                artifact_id=artifact["artifact_id"],
+                artifact_type=artifact["artifact_type"],
+                schema_version=artifact["schema_version"],
+                sha256=artifact["sha256"],
+                attempt_id=artifact["attempt_id"],
+                supersedes_artifact_id=artifact["supersedes_artifact_id"],
+                payload=_strict_json_object(raw, f"{step_key} source Artifact"),
+            )
+        )
+    return (
+        {
+            "step_id": row["step_id"],
+            "input": step_input,
+            "output": step_output,
+            "output_hash": row["output_hash"],
+            "artifact_refs": artifact_refs,
+        },
+        tuple(artifacts),
+    )
+
+
 def _load_exact_bound_artifact(
     connection,
     **coordinates: Any,
@@ -606,9 +780,40 @@ def _load_bound_artifacts(
         if (
             stable_hash(step_input) != row["input_hash"]
             or stable_hash(step_output) != row["output_hash"]
-            or not isinstance(output_refs, list)
-            or any(not isinstance(item, str) for item in output_refs)
             or any(not isinstance(item, str) for item in artifact_refs)
+        ):
+            raise ModeExecutionAdapterError("producing step hash root mismatch")
+        if step_output.get("schema_version") == "mode-proof-step-output.v1":
+            root = RootArtifact(
+                artifact_id=row["artifact_id"],
+                artifact_type=row["artifact_type"],
+                schema_version=row["schema_version"],
+                sha256=row["sha256"],
+                attempt_id=row["artifact_attempt_id"],
+                supersedes_artifact_id=row["supersedes_artifact_id"],
+                payload=payload,
+            )
+            if artifact_refs != [row["artifact_id"]]:
+                raise ModeExecutionAdapterError(
+                    "single-source proof root has unexpected Artifact membership"
+                )
+            step_engine_mode = step_input.get("engine_mode")
+            if not isinstance(step_engine_mode, str):
+                raise ModeExecutionAdapterError(
+                    "proof-root producing step is missing engine_mode"
+                )
+            validate_mode_proof_step_root(
+                step_output,
+                run_id=run_id,
+                attempt=attempt_id,
+                engine_mode=step_engine_mode,
+                artifacts=(root,),
+            )
+            bound.append(_bound_from_root(root))
+            continue
+        if (
+            not isinstance(output_refs, list)
+            or any(not isinstance(item, str) for item in output_refs)
             or sorted(output_refs) != sorted(artifact_refs)
         ):
             raise ModeExecutionAdapterError("producing step hash root mismatch")
