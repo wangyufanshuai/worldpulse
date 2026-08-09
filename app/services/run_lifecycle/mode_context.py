@@ -78,6 +78,7 @@ def build_resolved_mock_agent_batch(
     run_id: str,
     effective_seed: int,
     context: ResolvedModeContext,
+    turn: int = 1,
 ) -> MockAgentBatch:
     """Bind deterministic mock proposals to the resolved Agent capability set."""
 
@@ -87,6 +88,7 @@ def build_resolved_mock_agent_batch(
         result,
         run_id=run_id,
         seed=effective_seed,
+        turn=turn,
     )
     proposals: list[AgentActionProposal] = []
     for source in legacy.proposals:

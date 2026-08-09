@@ -1143,6 +1143,55 @@ def _append_supersedes(
     })
 
 
+def test_controlled_retry_admits_supersedes_only_as_final_ar_relationship():
+    references = list(_audit_references("controlled_agent", ("proposal-1",)))
+    references[0] = _append_supersedes(references[0])
+
+    record = finalize_execution(
+        _execution_request("controlled_agent", tuple(references))
+    )
+
+    assert record.authority_path == "controlled_action_adapter_deterministic"
+
+
+def test_controlled_retry_rejects_nonfinal_ar_supersedes():
+    references = list(_audit_references("controlled_agent", ("proposal-1",)))
+    superseded = _append_supersedes(references[0])
+    with pytest.raises(ValidationError, match="must be last"):
+        superseded.model_copy(
+            update={
+                "relationships": (
+                    *superseded.relationships,
+                    KernelModeProofRelationship(
+                        relationship_type="generated_by",
+                        target_artifact_id="unexpected-artifact",
+                        target_content_hash="e" * 64,
+                    ),
+                )
+            }
+        )
+
+
+@pytest.mark.parametrize("reference_index", [1, 2, 3])
+def test_controlled_retry_rejects_supersedes_outside_ar(reference_index):
+    references = list(_audit_references("controlled_agent", ("proposal-1",)))
+    references[reference_index] = _append_supersedes(references[reference_index])
+
+    with pytest.raises(KernelModeFinalizationError, match="only on AR"):
+        finalize_execution(_execution_request("controlled_agent", tuple(references)))
+
+
+def test_controlled_retry_rejects_current_attempt_supersedes_target():
+    references = list(_audit_references("controlled_agent", ("proposal-1",)))
+    references[0] = _append_supersedes(
+        references[0],
+        target_attempt="attempt-1",
+    )
+
+    with pytest.raises(KernelModeFinalizationError, match="differ from the current"):
+        finalize_execution(_execution_request("controlled_agent", tuple(references)))
+
+
 def _supersede_retry_tick(
     references: tuple[KernelModeProofReference, ...],
     tick: int,

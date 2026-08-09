@@ -9,13 +9,16 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.models import WarRoomRun
+from app.services.agent_contract.models import AgentActionProposal
 from app.services.consistency import evaluate_war_room_result
 from app.services.consistency.hashing import stable_hash
 from app.services.negotiation import (
+    AgentRuntimeResultSource,
     KernelProposalBatchSource,
     build_audit_only_projection_source,
     build_consistency_audit_source,
     build_kernel_proposal_batch_source,
+    extract_ar_claims,
     extract_consistency_claims,
     extract_pa_claims,
     extract_pb_claims,
@@ -100,6 +103,120 @@ class _BoundArtifact:
     schema_version: str
     sha256: str
     payload: dict[str, Any]
+    attempt_id: str | None = None
+    supersedes_artifact_id: str | None = None
+
+
+@dataclass(frozen=True)
+class HistoricalRuntimeSource:
+    artifact_id: str
+    artifact_sha256: str
+    content_hash: str
+    attempt_id: str
+    attempt_number: int
+    payload: dict[str, Any]
+
+
+def load_controlled_retry_runtime(
+    run_id: str,
+    *,
+    current_attempt_id: str,
+) -> HistoricalRuntimeSource:
+    """Authenticate the unique latest failed-attempt AR for provider-free retry."""
+
+    with connect() as connection:
+        current = connection.execute(
+            """
+            SELECT job.engine_mode, attempt.attempt_number
+            FROM run_jobs AS job
+            JOIN run_attempts AS attempt
+              ON attempt.attempt_id = job.current_attempt_id
+             AND attempt.run_id = job.run_id
+            WHERE job.run_id = ? AND attempt.attempt_id = ?
+            """,
+            (run_id, current_attempt_id),
+        ).fetchone()
+        if (
+            current is None
+            or current["engine_mode"] != "controlled_agent"
+            or int(current["attempt_number"]) <= 1
+        ):
+            raise ModeExecutionAdapterError(
+                "controlled retry requires a later current attempt"
+            )
+        candidates = connection.execute(
+            """
+            SELECT attempt_id, attempt_number
+            FROM run_attempts
+            WHERE run_id = ?
+              AND status IN ('failed', 'abandoned')
+              AND attempt_number < ?
+            ORDER BY attempt_number DESC
+            """,
+            (run_id, int(current["attempt_number"])),
+        ).fetchall()
+        if not candidates:
+            raise ModeExecutionAdapterError(
+                "controlled retry has no eligible failed historical attempt"
+            )
+        selected_number = int(candidates[0]["attempt_number"])
+        selected = [
+            item
+            for item in candidates
+            if int(item["attempt_number"]) == selected_number
+        ]
+        if len(selected) != 1:
+            raise ModeExecutionAdapterError(
+                "controlled retry historical attempt is ambiguous"
+            )
+        historical_attempt = selected[0]["attempt_id"]
+        step, artifacts = _load_rooted_step(
+            connection,
+            run_id=run_id,
+            attempt_id=historical_attempt,
+            step_key="consistency_audit",
+            step_version="consistency-audit-step.v1",
+        )
+        raw_refs = step["output"].get("artifact_refs")
+        if not isinstance(raw_refs, list):
+            raise ModeExecutionAdapterError(
+                "historical controlled proof root has malformed refs"
+            )
+        ordered_ids = tuple(
+            item[1]
+            for item in raw_refs
+            if isinstance(item, list) and len(item) == 6
+        )
+        by_id = {item.artifact_id: item for item in artifacts}
+        if len(ordered_ids) != len(raw_refs) or set(ordered_ids) != set(by_id):
+            raise ModeExecutionAdapterError(
+                "historical controlled proof root membership mismatch"
+            )
+        ordered = tuple(by_id[item] for item in ordered_ids)
+        validate_mode_proof_step_root(
+            step["output"],
+            run_id=run_id,
+            attempt=historical_attempt,
+            engine_mode="controlled_agent",
+            artifacts=ordered,
+        )
+        runtime_sources = [
+            item for item in ordered if item.artifact_type == "agent_runtime_audit"
+        ]
+        if len(runtime_sources) != 1:
+            raise ModeExecutionAdapterError(
+                "historical controlled proof must contain exactly one AR"
+            )
+        runtime = runtime_sources[0]
+        source = AgentRuntimeResultSource.model_validate(runtime.payload)
+        return HistoricalRuntimeSource(
+            artifact_id=runtime.artifact_id,
+            artifact_sha256=runtime.sha256,
+            content_hash=source.runtime_hash,
+            attempt_id=historical_attempt,
+            attempt_number=selected_number,
+            payload=source.model_dump(mode="json"),
+        )
 
 
 class StoredModeExecutionAdapter:
@@ -125,8 +242,12 @@ class StoredModeExecutionAdapter:
                        job.engine_mode, job.status, job.current_attempt_id,
                        job.worker_id, job.seed, job.rule_pack_id,
                        job.rule_pack_hash, job.runtime_profile_json,
-                       job.runtime_profile_hash, job.scenario_json
+                       job.runtime_profile_hash, job.scenario_json,
+                       active_attempt.attempt_number
                 FROM run_jobs AS job
+                JOIN run_attempts AS active_attempt
+                  ON active_attempt.attempt_id = job.current_attempt_id
+                 AND active_attempt.run_id = job.run_id
                 JOIN organization_resources AS ownership
                   ON ownership.resource_type = 'project'
                  AND ownership.resource_id = job.project_id
@@ -155,9 +276,13 @@ class StoredModeExecutionAdapter:
                 or job["worker_id"] != fencing_epoch.worker_id
             ):
                 raise ModeExecutionAdapterError("fencing epoch ownership mismatch")
-            if job["engine_mode"] not in {"deterministic", "mock_agent"}:
+            if job["engine_mode"] not in {
+                "deterministic",
+                "mock_agent",
+                "controlled_agent",
+            }:
                 raise ModeExecutionAdapterError(
-                    "this reconstruction slice currently admits deterministic and mock_agent modes only"
+                    "this reconstruction slice does not admit the requested engine mode"
                 )
             if type(job["seed"]) is not int or job["seed"] != selection.profile.effective_seed:
                 raise ModeExecutionAdapterError("job seed does not match V2 runtime profile")
@@ -168,6 +293,7 @@ class StoredModeExecutionAdapter:
             context_artifact = None
             proposal_artifact = None
             projection_audit_artifact = None
+            runtime_artifact = None
             if job["engine_mode"] == "deterministic":
                 baseline_artifact = _load_exact_bound_artifact(
                     connection,
@@ -188,7 +314,7 @@ class StoredModeExecutionAdapter:
                     producing_step_version="consistency-audit-step.v1",
                 )
             else:
-                rooted = _load_mock_source_roots(
+                rooted = _load_audit_only_source_roots(
                     connection,
                     job=job,
                     profile=selection.profile,
@@ -203,6 +329,10 @@ class StoredModeExecutionAdapter:
                 proposal_artifact = _bound_from_root(
                     rooted["agent_action_proposals"]
                 )
+                if job["engine_mode"] == "controlled_agent":
+                    runtime_artifact = _bound_from_root(
+                        rooted["agent_runtime_audit"]
+                    )
                 consistency_artifact = _bound_from_root(
                     rooted["consistency_audit"]
                 )
@@ -223,6 +353,7 @@ class StoredModeExecutionAdapter:
         agent_pack_id: str | None = None
         agent_pack_hash: str | None = None
         constraint_context_hash: str | None = None
+        historical_runtime_source: HistoricalRuntimeSource | None = None
         references: list[KernelModeProofReference] = []
         if job["engine_mode"] == "deterministic":
             claims = extract_consistency_claims(
@@ -253,7 +384,7 @@ class StoredModeExecutionAdapter:
                 or context_artifact is None
                 or proposal_artifact is None
             ):
-                raise ModeExecutionAdapterError("mock_agent resolver/PB sources are incomplete")
+                raise ModeExecutionAdapterError("audit-only resolver/PB sources are incomplete")
             resolved = resolve_mode_context(
                 baseline,
                 effective_seed=selection.profile.effective_seed,
@@ -268,43 +399,94 @@ class StoredModeExecutionAdapter:
             )
             if stored_agent_pack != resolved.agent_pack or stored_context != resolved.constraint_context:
                 raise ModeExecutionAdapterError(
-                    "stored mock_agent resolver payload differs from provider-free reconstruction"
+                    "stored audit-only resolver payload differs from provider-free reconstruction"
                 )
             agent_pack_id = resolved.agent_pack.agent_pack_id
             agent_pack_hash = resolved.agent_pack_hash
             constraint_context_hash = resolved.constraint_context_hash
 
-            mock_batch = build_resolved_mock_agent_batch(
-                baseline,
-                run_id=run_id,
-                effective_seed=selection.profile.effective_seed,
-                context=resolved,
-            )
             stored_pb = KernelProposalBatchSource.model_validate(
                 proposal_artifact.payload
             )
-            expected_pb = build_kernel_proposal_batch_source(
-                run_id=run_id,
-                proposals=tuple(mock_batch.proposals),
-                source_kind="mock_batch",
-                mock_batch=mock_batch,
-            )
+            if job["engine_mode"] == "mock_agent":
+                mock_batch = build_resolved_mock_agent_batch(
+                    baseline,
+                    run_id=run_id,
+                    effective_seed=selection.profile.effective_seed,
+                    context=resolved,
+                )
+                authoritative_proposals = tuple(mock_batch.proposals)
+                expected_pb = build_kernel_proposal_batch_source(
+                    run_id=run_id,
+                    proposals=authoritative_proposals,
+                    source_kind="mock_batch",
+                    mock_batch=mock_batch,
+                )
+                pb_claims = extract_pb_claims(
+                    proposal_artifact.payload,
+                    run_id=run_id,
+                    mock_batch_payload=mock_batch.model_dump(mode="json"),
+                )
+            else:
+                if runtime_artifact is None:
+                    raise ModeExecutionAdapterError(
+                        "controlled_agent proof is missing AR"
+                    )
+                stored_runtime = AgentRuntimeResultSource.model_validate(
+                    runtime_artifact.payload
+                )
+                if stable_hash(stored_runtime.constraint_context) != stable_hash(
+                    resolved.runtime_constraint_context.model_dump(mode="json")
+                ):
+                    raise ModeExecutionAdapterError(
+                        "controlled_agent AR context differs from the resolver"
+                    )
+                if int(job["attempt_number"]) > 1:
+                    historical_runtime_source = load_controlled_retry_runtime(
+                        run_id,
+                        current_attempt_id=fencing_epoch.current_attempt_id,
+                    )
+                    if (
+                        runtime_artifact.supersedes_artifact_id
+                        != historical_runtime_source.artifact_id
+                        or runtime_artifact.payload
+                        != historical_runtime_source.payload
+                        or stored_runtime.runtime_hash
+                        != historical_runtime_source.content_hash
+                    ):
+                        raise ModeExecutionAdapterError(
+                            "controlled_agent AR retry lineage/payload mismatch"
+                        )
+                elif runtime_artifact.supersedes_artifact_id is not None:
+                    raise ModeExecutionAdapterError(
+                        "first controlled_agent attempt may not supersede AR"
+                    )
+                authoritative_proposals = tuple(
+                    AgentActionProposal.model_validate(item)
+                    for item in stored_runtime.proposals
+                )
+                expected_pb = build_kernel_proposal_batch_source(
+                    run_id=run_id,
+                    proposals=authoritative_proposals,
+                    source_kind="agent_runtime",
+                    runtime_hash=stored_runtime.runtime_hash,
+                )
+                pb_claims = extract_pb_claims(
+                    proposal_artifact.payload,
+                    run_id=run_id,
+                    expected_runtime_hash=stored_runtime.runtime_hash,
+                )
             if stored_pb.model_dump(mode="json") != expected_pb.model_dump(mode="json"):
                 raise ModeExecutionAdapterError(
-                    "stored mock_agent PB differs from deterministic reconstruction"
+                    "stored audit-only PB differs from its authenticated source"
                 )
             complete_proposals = tuple(stored_pb.proposals)
-            pb_claims = extract_pb_claims(
-                proposal_artifact.payload,
-                run_id=run_id,
-                mock_batch_payload=mock_batch.model_dump(mode="json"),
-            )
 
             recomputed_report = evaluate_war_room_result(
                 baseline,
                 run_id=run_id,
                 created_at="2000-01-01T00:00:00.000Z",
-                proposals=list(mock_batch.proposals),
+                proposals=list(authoritative_proposals),
                 constraint_context=resolved.runtime_constraint_context,
             )
             expected_fc = build_consistency_audit_source(
@@ -316,11 +498,11 @@ class StoredModeExecutionAdapter:
                 agent_pack_id=agent_pack_id,
                 agent_pack_hash=agent_pack_hash,
                 constraint_context_hash=constraint_context_hash,
-                complete_proposals=tuple(mock_batch.proposals),
+                complete_proposals=authoritative_proposals,
             )
             if consistency_artifact.payload != expected_fc.model_dump(mode="json"):
                 raise ModeExecutionAdapterError(
-                    "stored mock_agent FC differs from evaluator reconstruction"
+                    "stored audit-only FC differs from evaluator reconstruction"
                 )
             fc_claims = extract_consistency_claims(
                 consistency_artifact.payload,
@@ -333,6 +515,47 @@ class StoredModeExecutionAdapter:
                 constraint_context_hash=constraint_context_hash,
                 complete_proposals=complete_proposals,
             )
+            pb_relationships: tuple[KernelModeProofRelationship, ...] = ()
+            if job["engine_mode"] == "controlled_agent":
+                if runtime_artifact is None:
+                    raise ModeExecutionAdapterError(
+                        "controlled_agent proof is missing AR"
+                    )
+                ar_claims = extract_ar_claims(
+                    runtime_artifact.payload,
+                    run_id=run_id,
+                )
+                ar_reference = _proof_reference(
+                    artifact=runtime_artifact,
+                    proof_schema="kp.agent-runtime.v1",
+                    claims=ar_claims,
+                    content_hash=ar_claims.runtime_hash,
+                    run_id=run_id,
+                    attempt=fencing_epoch.current_attempt_id,
+                    ordinal=0,
+                    relationships=(
+                        (
+                            KernelModeProofRelationship(
+                                relationship_type="supersedes",
+                                target_artifact_id=(
+                                    historical_runtime_source.artifact_id
+                                ),
+                                target_content_hash=(
+                                    historical_runtime_source.content_hash
+                                ),
+                                target_attempt=(
+                                    historical_runtime_source.attempt_id
+                                ),
+                            ),
+                        )
+                        if historical_runtime_source is not None
+                        else ()
+                    ),
+                )
+                references.append(ar_reference)
+                pb_relationships = (
+                    _relationship("generated_by", ar_reference),
+                )
             pb_reference = _proof_reference(
                 artifact=proposal_artifact,
                 proof_schema="kp.proposal-batch.v1",
@@ -340,8 +563,10 @@ class StoredModeExecutionAdapter:
                 content_hash=pb_claims.batch_hash,
                 run_id=run_id,
                 attempt=fencing_epoch.current_attempt_id,
-                ordinal=0,
+                ordinal=len(references),
+                relationships=pb_relationships,
             )
+            references.append(pb_reference)
             fc_reference = _proof_reference(
                 artifact=consistency_artifact,
                 proof_schema="kp.final-consistency.v1",
@@ -349,33 +574,33 @@ class StoredModeExecutionAdapter:
                 content_hash=fc_claims.audit_hash,
                 run_id=run_id,
                 attempt=fencing_epoch.current_attempt_id,
-                ordinal=1,
+                ordinal=len(references),
                 relationships=(
                     _relationship("evaluates", pb_reference),
                 ),
             )
-            references.extend((pb_reference, fc_reference))
+            references.append(fc_reference)
 
             if pb_claims.proposal_count == 0:
                 if projection_audit_artifact is not None:
                     raise ModeExecutionAdapterError(
-                        "zero-proposal mock_agent proof may not contain PA"
+                        "zero-proposal audit-only proof may not contain PA"
                     )
             else:
                 if projection_audit_artifact is None:
                     raise ModeExecutionAdapterError(
-                        "nonzero-proposal mock_agent proof requires PA"
+                        "nonzero-proposal audit-only proof requires PA"
                     )
                 expected_pa = build_audit_only_projection_source(
                     run_id=run_id,
                     consistency_audit_hash=expected_fc.audit_hash,
                     final_result_hash=stable_hash(baseline.model_dump(mode="json")),
-                    proposals=tuple(mock_batch.proposals),
+                    proposals=authoritative_proposals,
                     decisions=tuple(recomputed_report.proposal_decisions),
                 )
                 if projection_audit_artifact.payload != expected_pa.model_dump(mode="json"):
                     raise ModeExecutionAdapterError(
-                        "stored mock_agent PA differs from audit-only reconstruction"
+                        "stored PA differs from audit-only reconstruction"
                     )
                 pa_claims = extract_pa_claims(
                     projection_audit_artifact.payload,
@@ -395,7 +620,7 @@ class StoredModeExecutionAdapter:
                         content_hash=pa_claims.audit_hash,
                         run_id=run_id,
                         attempt=fencing_epoch.current_attempt_id,
-                        ordinal=2,
+                        ordinal=len(references),
                         relationships=(
                             _relationship("covers", pb_reference),
                             _relationship("governed_by", fc_reference),
@@ -526,10 +751,12 @@ def _bound_from_root(artifact: RootArtifact) -> _BoundArtifact:
         schema_version=artifact.schema_version,
         sha256=artifact.sha256,
         payload=artifact.payload,
+        attempt_id=artifact.attempt_id,
+        supersedes_artifact_id=artifact.supersedes_artifact_id,
     )
 
 
-def _load_mock_source_roots(
+def _load_audit_only_source_roots(
     connection,
     *,
     job,
@@ -615,7 +842,9 @@ def _load_mock_source_roots(
     combined = (*resolver_artifacts, *ordered_proof_artifacts)
     by_type = {item.artifact_type: item for item in combined}
     if len(by_type) != len(combined):
-        raise ModeExecutionAdapterError("mock source roots contain duplicate Artifact types")
+        raise ModeExecutionAdapterError(
+            "audit-only source roots contain duplicate Artifact types"
+        )
     return by_type
 
 
@@ -834,6 +1063,8 @@ def _load_bound_artifacts(
                     schema_version=row["schema_version"],
                     sha256=row["sha256"],
                     payload=payload,
+                    attempt_id=row["artifact_attempt_id"],
+                    supersedes_artifact_id=row["supersedes_artifact_id"],
                 )
             )
     return tuple(bound)

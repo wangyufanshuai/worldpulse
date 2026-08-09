@@ -6,7 +6,11 @@ from fastapi import HTTPException
 
 from app.core.models import RunJobStatus, WarRoomRun, WarRoomScenarioRequest
 from app.services.agent_contract import build_mock_agent_batch
-from app.services.agent_runtime import run_agent_runtime, runtime_config_from_env
+from app.services.agent_runtime import (
+    AgentRuntimeResult,
+    run_agent_runtime,
+    runtime_config_from_env,
+)
 from app.services.consistency import evaluate_war_room_result
 from app.services.consistency.hashing import stable_hash
 from app.services.consistency.projector import project_consistency_audit
@@ -42,7 +46,10 @@ from .finalization_uow import (
     commit_replay_archive_v2,
     commit_report_generate_v2,
 )
-from .mode_execution_adapter import StoredModeExecutionAdapter
+from .mode_execution_adapter import (
+    StoredModeExecutionAdapter,
+    load_controlled_retry_runtime,
+)
 from .mode_context import build_resolved_mock_agent_batch, resolve_mode_context
 from .source_roots import (
     build_mode_proof_step_output,
@@ -74,6 +81,68 @@ def lifecycle_fault_hook(phase: str, moment: str) -> None:
     """Test-only fault injection seam; production is a no-op."""
 
     return None
+
+
+def _persist_v2_resolver_context(
+    *,
+    run_id: str,
+    attempt_id: str,
+    result: WarRoomRun,
+    scenario: WarRoomScenarioRequest,
+    rule_pack_hash: str,
+    profile,
+):
+    resolved = resolve_mode_context(
+        result,
+        effective_seed=profile.effective_seed,
+    )
+    agent_pack_artifact = repository.add_artifact(
+        run_id,
+        "agent_pack",
+        "agent-pack-resolver-output.v1",
+        resolved.agent_pack.model_dump(mode="json"),
+        auto_supersede=False,
+    )
+    context_artifact = repository.add_artifact(
+        run_id,
+        "agent_constraint_context",
+        "constraint-context-resolver-output.v1",
+        resolved.constraint_context.model_dump(mode="json"),
+        auto_supersede=False,
+    )
+    agent_root = root_artifact_from_summary(
+        agent_pack_artifact,
+        resolved.agent_pack.model_dump(mode="json"),
+    )
+    context_root = root_artifact_from_summary(
+        context_artifact,
+        resolved.constraint_context.model_dump(mode="json"),
+    )
+    resolver_output = build_deterministic_run_resolver_output(
+        run_id=run_id,
+        attempt=attempt_id,
+        agent_pack_resolver_version=profile.agent_pack_resolver_version,
+        constraint_context_resolver_version=(
+            profile.constraint_context_resolver_version
+        ),
+        effective_seed=profile.effective_seed,
+        baseline_result_hash=stable_hash(result.model_dump(mode="json")),
+        scenario_hash=stable_hash(scenario.model_dump(mode="json")),
+        rule_pack_hash=rule_pack_hash,
+        agent_pack=resolved.agent_pack,
+        constraint_context=resolved.constraint_context,
+        agent_pack_artifact_ref=resolver_reference_from_artifact(
+            agent_root,
+            content_hash=resolved.agent_pack_hash,
+            resolver_schema="agent-pack-resolver-output.v1",
+        ),
+        constraint_context_artifact_ref=resolver_reference_from_artifact(
+            context_root,
+            content_hash=resolved.constraint_context_hash,
+            resolver_schema="constraint-context-resolver-output.v1",
+        ),
+    )
+    return resolved, resolver_output.model_dump(mode="json")
 
 
 def process_one_queued_job(worker_id: str | None = None, *, prefer_evaluation: bool | None = None) -> RunJobStatus | None:
@@ -115,6 +184,7 @@ def process_job(run_id: str) -> RunJobStatus:
     if execution_contract.is_v2 and job.engine_mode not in {
         "deterministic",
         "mock_agent",
+        "controlled_agent",
     }:
         raise V2ExecutionPathNotEnabledError(
             "kernel-mode-execution.v2 execution mode is not enabled on this worker"
@@ -122,11 +192,11 @@ def process_job(run_id: str) -> RunJobStatus:
     kernel_shadow_policy = kernel_shadow_policy_for_job(job)
     if (
         execution_contract.is_v2
-        and job.engine_mode == "mock_agent"
+        and job.engine_mode in {"mock_agent", "controlled_agent"}
         and kernel_shadow_policy is not None
     ):
         raise V2ExecutionPathNotEnabledError(
-            "mock_agent V2 resolver roots do not admit a Kernel shadow auxiliary Artifact"
+            "Agent-capable V2 resolver roots do not admit a Kernel shadow auxiliary Artifact"
         )
     worker_id = job.worker_id
     projected_run_id = repository.get_projected_result_run_id(run_id)
@@ -198,7 +268,11 @@ def process_job(run_id: str) -> RunJobStatus:
     result_run_id = checkpoint.result_run_id
     previous_step = checkpoint.previous_step
     resolved_mode_context = None
-    if execution_contract.is_v2 and job.engine_mode == "mock_agent" and result is not None:
+    if (
+        execution_contract.is_v2
+        and job.engine_mode in {"mock_agent", "controlled_agent"}
+        and result is not None
+    ):
         resolved_mode_context = resolve_mode_context(
             result,
             effective_seed=execution_contract.profile.effective_seed,
@@ -324,7 +398,21 @@ def process_job(run_id: str) -> RunJobStatus:
                         "integration_duration_ms": round(shadow_duration_ms, 6),
                     },
                 )
-            if job.engine_mode == "mock_agent":
+            if job.engine_mode == "controlled_agent" and execution_contract.is_v2:
+                resolved_mode_context, step_output_override = (
+                    _persist_v2_resolver_context(
+                        run_id=run_id,
+                        attempt_id=attempt_id,
+                        result=result,
+                        scenario=scenario,
+                        rule_pack_hash=job.rule_pack_hash,
+                        profile=execution_contract.profile,
+                    )
+                )
+                constraint_context = (
+                    resolved_mode_context.runtime_constraint_context
+                )
+            elif job.engine_mode == "mock_agent":
                 if execution_contract.is_v2:
                     resolved_mode_context = resolve_mode_context(
                         result,
@@ -476,6 +564,9 @@ def process_job(run_id: str) -> RunJobStatus:
             proposal_source = None
             proposal_artifact = None
             projection_audit_artifact = None
+            runtime = None
+            runtime_artifact = None
+            historical_runtime = None
             if execution_contract.is_v2 and job.engine_mode == "mock_agent":
                 if resolved_mode_context is None:
                     resolved_mode_context = resolve_mode_context(
@@ -503,6 +594,116 @@ def process_job(run_id: str) -> RunJobStatus:
                     proposal_source.model_dump(mode="json"),
                     auto_supersede=False,
                 )
+            elif execution_contract.is_v2 and job.engine_mode == "controlled_agent":
+                if resolved_mode_context is None:
+                    resolved_mode_context = resolve_mode_context(
+                        result,
+                        effective_seed=execution_contract.profile.effective_seed,
+                    )
+                controlled_context = resolved_mode_context
+
+                def resolved_batch_factory(
+                    source_result,
+                    *,
+                    run_id: str,
+                    seed: int,
+                    turn: int,
+                ):
+                    if seed != execution_contract.profile.effective_seed:
+                        raise ValueError("controlled Agent template seed drift")
+                    return build_resolved_mock_agent_batch(
+                        source_result,
+                        run_id=run_id,
+                        effective_seed=seed,
+                        context=controlled_context,
+                        turn=turn,
+                    )
+
+                if job.attempt_count > 1:
+                    historical_runtime = load_controlled_retry_runtime(
+                        run_id,
+                        current_attempt_id=attempt_id,
+                    )
+                    runtime = AgentRuntimeResult.model_validate(
+                        historical_runtime.payload
+                    )
+                    if runtime.run_id != run_id:
+                        raise V2ExecutionPathNotEnabledError(
+                            "historical controlled AR run identity mismatch"
+                        )
+                else:
+                    runtime = run_agent_runtime(
+                        result,
+                        run_id=run_id,
+                        config=runtime_config_from_env(
+                            execution_contract.profile.effective_seed,
+                            job.runtime_profile,
+                        ),
+                        should_stop=lambda: repository.get_job(run_id).status
+                        in {"pausing", "paused", "cancelling", "cancelled"},
+                        template_batch_factory=resolved_batch_factory,
+                    )
+                if runtime.constraint_context.model_dump(
+                    mode="json"
+                ) != resolved_mode_context.runtime_constraint_context.model_dump(
+                    mode="json"
+                ):
+                    raise V2ExecutionPathNotEnabledError(
+                        "controlled Agent Runtime context drifted from the resolver"
+                    )
+                proposals = runtime.proposals
+                constraint_context = runtime.constraint_context
+                runtime_artifact = repository.add_artifact(
+                    run_id,
+                    "agent_runtime_audit",
+                    runtime.schema_version,
+                    runtime.model_dump(mode="json"),
+                    supersedes_artifact_id=(
+                        historical_runtime.artifact_id
+                        if historical_runtime is not None
+                        else None
+                    ),
+                    auto_supersede=False,
+                )
+                proposal_source = build_kernel_proposal_batch_source(
+                    run_id=run_id,
+                    proposals=tuple(proposals),
+                    source_kind="agent_runtime",
+                    runtime_hash=runtime.runtime_hash,
+                )
+                proposal_artifact = repository.add_artifact(
+                    run_id,
+                    "agent_action_proposals",
+                    proposal_source.schema_version,
+                    proposal_source.model_dump(mode="json"),
+                    auto_supersede=False,
+                )
+                repository.append_event(
+                    run_id,
+                    "AGENT",
+                    "consistency_audit",
+                    (
+                        "Controlled Agent Runtime re-emitted"
+                        if historical_runtime is not None
+                        else "Controlled Agent Runtime completed"
+                    ),
+                    (
+                        "Authenticated historical transcript was re-emitted without Provider access."
+                        if historical_runtime is not None
+                        else "Controlled Agent transcript was rooted before Consistency evaluation."
+                    ),
+                    payload={
+                        "provider": runtime.provider,
+                        "model": runtime.model,
+                        "mode": runtime.mode,
+                        "proposal_count": len(proposals),
+                        "call_count": runtime.total_calls,
+                        "failed_calls": runtime.failed_calls,
+                        "runtime_hash": runtime.runtime_hash,
+                        "runtime_artifact_id": runtime_artifact.artifact_id,
+                        "proposal_artifact_id": proposal_artifact.artifact_id,
+                    },
+                )
             if job.engine_mode == "negotiation":
                 result, negotiation_summary = run_negotiation(
                     result,
@@ -524,7 +725,7 @@ def process_job(run_id: str) -> RunJobStatus:
                 constraint_context=constraint_context,
             )
             if execution_contract.is_v2:
-                if job.engine_mode == "mock_agent":
+                if job.engine_mode in {"mock_agent", "controlled_agent"}:
                     if resolved_mode_context is None:
                         resolved_mode_context = resolve_mode_context(
                             result,
@@ -641,7 +842,10 @@ def process_job(run_id: str) -> RunJobStatus:
                 )
                 result = outcome.final_result
             elif proposals and report is not None:
-                if execution_contract.is_v2 and job.engine_mode == "mock_agent":
+                if execution_contract.is_v2 and job.engine_mode in {
+                    "mock_agent",
+                    "controlled_agent",
+                }:
                     projection_audit = build_audit_only_projection_source(
                         run_id=run_id,
                         consistency_audit_hash=consistency_source.audit_hash,
@@ -704,6 +908,59 @@ def process_job(run_id: str) -> RunJobStatus:
                     attempt=attempt_id,
                     engine_mode="mock_agent",
                     references=tuple(proof_references),
+                ).model_dump(mode="json")
+            elif execution_contract.is_v2 and job.engine_mode == "controlled_agent":
+                if (
+                    runtime is None
+                    or runtime_artifact is None
+                    or proposal_source is None
+                    or proposal_artifact is None
+                ):
+                    raise V2ExecutionPathNotEnabledError(
+                        "controlled_agent V2 consistency step is missing AR/PB"
+                    )
+                controlled_references = [
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            runtime_artifact,
+                            runtime.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.agent-runtime.v1",
+                        content_hash=runtime.runtime_hash,
+                    ),
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            proposal_artifact,
+                            proposal_source.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.proposal-batch.v1",
+                        content_hash=proposal_source.batch_hash,
+                    ),
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            consistency_artifact,
+                            consistency_source.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.final-consistency.v1",
+                        content_hash=consistency_source.audit_hash,
+                    ),
+                ]
+                if projection_audit_artifact is not None:
+                    controlled_references.append(
+                        build_proof_artifact_ref(
+                            root_artifact_from_summary(
+                                projection_audit_artifact,
+                                projection_audit.model_dump(mode="json"),
+                            ),
+                            proof_schema="kp.projection-audit.v1",
+                            content_hash=projection_audit.audit_hash,
+                        )
+                    )
+                step_output_override = build_mode_proof_step_output(
+                    run_id=run_id,
+                    attempt=attempt_id,
+                    engine_mode="controlled_agent",
+                    references=tuple(controlled_references),
                 ).model_dump(mode="json")
             elif execution_contract.is_v2 and job.engine_mode == "deterministic":
                 deterministic_reference = build_proof_artifact_ref(

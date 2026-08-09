@@ -227,10 +227,10 @@ def _validate_reference_identities(
         if reference.artifact_id in artifact_ids:
             _fail("duplicate proof artifact reference")
         artifact_ids.add(reference.artifact_id)
-        if request.engine_mode != "negotiation" and any(
+        if request.engine_mode in {"deterministic", "mock_agent"} and any(
             item.relationship_type == "supersedes" for item in reference.relationships
         ):
-            _fail("supersedes is only admitted by negotiation finalization")
+            _fail("supersedes is not admitted by this execution mode")
         _validate_supersedes_relationships(request, reference)
 
 
@@ -1136,10 +1136,17 @@ def _validate_supersedes_relationships(
     )
     if not supersedes:
         return
-    if request.engine_mode != "negotiation":
-        _fail("supersedes is only admitted by negotiation finalization")
     if len(supersedes) != 1 or reference.relationships[-1] != supersedes[0]:
         _fail("supersedes must be the sole final retry relationship")
+    if request.engine_mode == "controlled_agent":
+        if reference.token != "AR" or reference.tick is not None:
+            _fail("controlled_agent supersedes is allowed only on AR")
+        target_attempt = supersedes[0].target_attempt
+        if target_attempt == request.attempt:
+            _fail("supersedes target attempt must differ from the current attempt")
+        return
+    if request.engine_mode != "negotiation":
+        _fail("supersedes is not admitted by this execution mode")
     if reference.token not in {"RR", "NP", "AC", "CL", "EL", "PC", "MB", "ND", "PA"} or reference.tick is None:
         _fail("supersedes is only allowed on ticked negotiation proof references")
     target_attempt = supersedes[0].target_attempt

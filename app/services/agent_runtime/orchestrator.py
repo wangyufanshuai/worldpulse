@@ -7,7 +7,11 @@ from collections.abc import Callable
 
 from app.core.models import WarRoomRun
 from app.services.agent_contract import build_mock_agent_batch
-from app.services.agent_contract.models import AgentActionProposal, AgentConstraintContext
+from app.services.agent_contract.models import (
+    AgentActionProposal,
+    AgentConstraintContext,
+    MockAgentBatch,
+)
 from app.services.consistency.hashing import stable_hash
 
 from .action_parser import parse_action_proposal
@@ -75,10 +79,18 @@ def run_agent_runtime(
     config: AgentRuntimeConfig | None = None,
     provider: AgentProvider | None = None,
     should_stop: Callable[[], bool] | None = None,
+    template_batch_factory: Callable[..., MockAgentBatch] | None = None,
 ) -> AgentRuntimeResult:
     config = config or runtime_config_from_env()
     selected, fallback_reason = _select_provider(config, provider)
-    proposals, context, invocations, budget = _execute(result, run_id, config, selected, should_stop=should_stop)
+    proposals, context, invocations, budget = _execute(
+        result,
+        run_id,
+        config,
+        selected,
+        should_stop=should_stop,
+        template_batch_factory=template_batch_factory,
+    )
 
     stopped = bool(should_stop and should_stop())
     if not stopped and not proposals and selected.name != "mock" and config.fallback_mode == "mock" and budget.calls < config.max_calls:
@@ -90,6 +102,7 @@ def run_agent_runtime(
             DeterministicMockProvider(),
             budget=budget,
             should_stop=should_stop,
+            template_batch_factory=template_batch_factory,
         )
         proposals.extend(mock_proposals)
         invocations.extend(mock_invocations)
@@ -162,6 +175,7 @@ def _execute(
     *,
     budget: RuntimeBudget | None = None,
     should_stop: Callable[[], bool] | None = None,
+    template_batch_factory: Callable[..., MockAgentBatch] | None = None,
 ) -> tuple[list[AgentActionProposal], AgentConstraintContext, list[AgentInvocationAudit], RuntimeBudget]:
     budget = budget or RuntimeBudget(config.max_calls, config.token_budget)
     proposals: list[AgentActionProposal] = []
@@ -172,14 +186,26 @@ def _execute(
     known_evidence: set[str] = set()
 
     if not provider.enabled:
-        empty = build_mock_agent_batch(result, run_id=run_id, seed=config.seed)
+        empty = _template_batch(
+            result,
+            run_id=run_id,
+            seed=config.seed,
+            turn=1,
+            factory=template_batch_factory,
+        )
         return [], empty.constraint_context, [], budget
 
     stop_for_budget = False
     for turn in range(1, config.max_turns + 1):
         if should_stop and should_stop():
             break
-        batch = build_mock_agent_batch(result, run_id=run_id, seed=config.seed, turn=turn)
+        batch = _template_batch(
+            result,
+            run_id=run_id,
+            seed=config.seed,
+            turn=turn,
+            factory=template_batch_factory,
+        )
         combined_capabilities.update(batch.constraint_context.actor_capabilities)
         combined_budgets.update(batch.constraint_context.action_budgets)
         known_entities.update(batch.constraint_context.known_entities)
@@ -270,6 +296,29 @@ def _execute(
         source_label="explicit simulation capability envelope",
     )
     return proposals, context, invocations, budget
+
+
+def _template_batch(
+    result: WarRoomRun,
+    *,
+    run_id: str,
+    seed: int,
+    turn: int,
+    factory: Callable[..., MockAgentBatch] | None,
+) -> MockAgentBatch:
+    if factory is None:
+        return build_mock_agent_batch(
+            result,
+            run_id=run_id,
+            seed=seed,
+            turn=turn,
+        )
+    return factory(
+        result,
+        run_id=run_id,
+        seed=seed,
+        turn=turn,
+    )
 
 
 def _invoke_with_timeout(provider: AgentProvider, request, timeout_seconds: float):

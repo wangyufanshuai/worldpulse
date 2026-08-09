@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.services.consistency.hashing import stable_hash
 from app.services.negotiation import (
+    AgentRuntimeResultSource,
     ConsistencyAuditSource,
     KernelProposalBatchSource,
     ProjectionAuditSource,
@@ -297,9 +298,16 @@ def validate_mode_proof_step_root(
             reference.proof_schema,
             artifact.payload,
         )
+        supersedes_allowed = (
+            engine_mode == "controlled_agent"
+            and reference.proof_schema == "kp.agent-runtime.v1"
+        )
+        if artifact.supersedes_artifact_id is not None and not supersedes_allowed:
+            raise SourceRootError(
+                "implicit or mode-inapplicable proof supersedes is forbidden"
+            )
         if (
             artifact.attempt_id != attempt
-            or artifact.supersedes_artifact_id is not None
             or artifact.artifact_type != expected_type
             or artifact.schema_version != expected_schema
             or artifact.sha256 != reference.artifact_sha256
@@ -320,6 +328,20 @@ def validate_mode_proof_step_root(
         ),
     }:
         raise SourceRootError("mock_agent proof-step sequence is not canonical")
+    if engine_mode == "controlled_agent" and tokens not in {
+        (
+            "kp.agent-runtime.v1",
+            "kp.proposal-batch.v1",
+            "kp.final-consistency.v1",
+        ),
+        (
+            "kp.agent-runtime.v1",
+            "kp.proposal-batch.v1",
+            "kp.final-consistency.v1",
+            "kp.projection-audit.v1",
+        ),
+    }:
+        raise SourceRootError("controlled_agent proof-step sequence is not canonical")
     return output
 
 
@@ -327,6 +349,9 @@ def _proof_source_identity(
     proof_schema: str,
     payload: dict[str, Any],
 ) -> tuple[str, str, str]:
+    if proof_schema == "kp.agent-runtime.v1":
+        source = AgentRuntimeResultSource.model_validate(payload)
+        return "agent_runtime_audit", source.schema_version, source.runtime_hash
     if proof_schema == "kp.proposal-batch.v1":
         source = KernelProposalBatchSource.model_validate(payload)
         return "agent_action_proposals", source.schema_version, source.batch_hash

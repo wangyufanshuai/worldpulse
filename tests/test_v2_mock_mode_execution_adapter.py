@@ -578,7 +578,7 @@ def test_mock_pb_substitution_fails_before_report_or_research_writes(
     pb_payload["batch_hash"] = stable_hash(pb_core)
     _rewrite_bound_artifact(pb_summary.artifact_id, pb_payload)
 
-    with pytest.raises(ModeExecutionAdapterError, match="PB differs"):
+    with pytest.raises(ValueError, match="PB|proposals drift"):
         process_job(job.run_id)
 
     assert (
