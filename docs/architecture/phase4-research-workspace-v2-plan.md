@@ -1,7 +1,8 @@
 # Phase 4 Research Workspace V2 migration plan
 
-Status: planning checkpoint; no Phase 4 production code is authorized by this
-document alone
+Status: active; Slice 4A completed by local checkpoint
+`98811eff4f2d113cbfba9a35226583dd4e0620e8`; Slice 4B is the next bounded
+implementation slice
 
 This plan follows [ADR-0009](adr/0009-research-workspace-v2-guided-flow.md).
 It is a progressive extraction and projection program, not a frontend rewrite,
@@ -83,14 +84,18 @@ public Kernel branch/replay endpoint.
 
 ## Phase 4A — GuidedResearchProjection and ordinary-research host extraction
 
+Status: completed by local checkpoint
+`98811eff4f2d113cbfba9a35226583dd4e0620e8`.
+
 ### What to implement
 
 Copy the route façade from `ResearchWorkspaceView.vue:1-9` and the pure
 projection style from `scenarioCompilerProjection.js:1-37` to create:
 
 - a typed `GuidedResearchProjection`/`GuidedSurfaceDescriptor` contract;
-- a `useGuidedResearchProjection` composable with explicit inputs and no
-  arbitrary `ctx` object;
+- an equivalent pure `buildGuidedResearchProjection()` builder, consumed by a
+  page-level computed projection with explicit inputs and no arbitrary `ctx`
+  object;
 - a `GuidedResearchHost.vue` presentational host for the ordinary research
   branch currently embedded in `ResearchWorkspacePage.vue:399-501`;
 - a five-stage rail with deterministic `ready/blocked/in_progress/complete`
@@ -311,5 +316,7 @@ Pause and ask before any of the following:
 4. A new V2 public non-deterministic creation path, separate service, queue or
    deployment model.
 
-The next execution slice is 4A only: typed GuidedResearchProjection, ordinary
-research host extraction, stage gates and report uncertainty/citation display.
+The next execution slice is 4B only: expose the existing governed Evidence and
+Scenario Draft context through the Guided Flow, including explicit draft,
+review, approved/frozen, permission and gate-reason projections. This status
+does not authorize a new API, migration or expansion of the Phase 4B scope.

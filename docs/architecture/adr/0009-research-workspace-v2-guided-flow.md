@@ -1,7 +1,7 @@
 # ADR-0009: governed Research Workspace V2 Guided Flow
 
-Status: accepted for Phase 4 bounded planning; Slice 4A code is not yet
-committed
+Status: accepted; Slice 4A completed by local checkpoint
+`98811eff4f2d113cbfba9a35226583dd4e0620e8`; Phase 4 remains active
 
 ## Context
 
