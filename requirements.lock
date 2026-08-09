@@ -101,7 +101,7 @@ pydantic-core==2.46.4
     # via pydantic
 pygments==2.20.0
     # via pytest
-pypdf==6.14.2
+pypdf==6.15.0
     # via -r requirements.txt
 pytest==9.1.1
     # via
