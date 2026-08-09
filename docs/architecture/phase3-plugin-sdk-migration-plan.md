@@ -20,6 +20,9 @@ full suite.
 
 ## Slice 3B — connector and extractor adapters
 
+Status: completed by local checkpoint `cc1f7b9`; production world-data routing
+remains on the V1 compatibility path.
+
 Wrap three existing read-only data paths behind the connector/extractor ports:
 FRED, World Bank and NOAA/NASA. The adapters keep current cache, timeout,
 SSRF, cutoff and fallback behavior. Each output carries source identity,
@@ -76,6 +79,8 @@ must reject missing or mismatched plugin manifest/configuration hashes.
 
 ## First implementation checkpoint
 
-The next code checkpoint is Slice 3A only. It should add contracts and tests,
-not dispatch production connectors or alter runtime behavior. After 3A passes,
-the implementation agent must re-run the full Phase 0/2 gate set before 3B.
+Slice 3A was the pure contract checkpoint `5d7a51a`; Slice 3B is the first
+real built-in implementation checkpoint `cc1f7b9`. After 3B passes, the next
+authorized code slice is 3C (the controlled Agent Provider adapter). Production
+world-data routing must remain unchanged until the adapter lineage is adopted
+by an explicit application port and its replay/organization gates are complete.
