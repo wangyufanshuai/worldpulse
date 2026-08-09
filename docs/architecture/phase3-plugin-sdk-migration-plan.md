@@ -65,11 +65,39 @@ stability.
 
 ## Slice 3E — renderer and lineage completion
 
+Status: completed by local checkpoint `4f27bea`; Renderer execution remains a
+built-in application adapter and does not authorize dynamic third-party plugin
+loading.
+
 Wrap the Chinese War Room Markdown renderer as a `report_renderer` plugin while
 preserving all existing routes, Chinese semantics and `data-testid` values.
 Reports must display evidence, deterministic derivation, Agent observation and
 uncertainty as distinct typed sections. Report and Replay Pack verification
 must reject missing or mismatched plugin manifest/configuration hashes.
+
+The installed `report_renderer.markdown` adapter injects the existing Project
+and War Room Replay renderers behind one closed request/output envelope. It
+records manifest, configuration, input, invocation, output and content hashes
+with `provider_calls = 0`. New Project and War Room reports persist identical
+Renderer lineage in both a typed citation and the owning Run snapshot. Report
+reads join the Run lineage and fail closed on downgrade, duplicate, malformed,
+mismatched or content-tampered lineage; reports created before Slice 3E remain
+readable only when both the report and Run lack Renderer lineage.
+
+Replay Pack rendering uses the same adapter from stored state. The renderer
+receives the pre-lineage manifest, then its output lineage is added and the
+final Replay manifest hash is computed, avoiding a circular digest. Stored
+verification authenticates the final manifest, installed Renderer identity,
+Markdown content and output payload without executing a Renderer or Provider.
+
+Rollback: revert `4f27bea`. Slice 3E adds no migration, route or public model;
+the V1-compatible render functions remain intact, so rollback restores direct
+rendering without rewriting stored reports or runs.
+
+Exit evidence: Renderer byte-compatibility and Chinese-semantics tests,
+Report/Run lineage and database tamper tests, Replay manifest/Markdown/provider
+tamper tests, Plugin SDK Ruff/Mypy/contract ratchet, boundary verification and
+the complete backend/frontend/E2E/security/release gates.
 
 ## Global migration rules
 
@@ -88,8 +116,8 @@ must reject missing or mismatched plugin manifest/configuration hashes.
 Slice 3A was the pure contract checkpoint `5d7a51a`; Slice 3B is the first
 real built-in implementation checkpoint `cc1f7b9`; Slice 3C wraps the existing
 controlled Agent Runtime in `a28145a`; Slice 3D adds governed Rule Pack and
-Evaluator adapters in `1f253ad`. The next authorized code slice is 3E: Chinese
-War Room report renderer adaptation and end-to-end plugin lineage completion.
-Production world-data and Agent lifecycle routing must remain unchanged until
-their plugin lineage is adopted by explicit application ports and
-replay/organization gates.
+Evaluator adapters in `1f253ad`; Slice 3E binds the existing report and Replay
+renderers into formal lineage in `4f27bea`. Phase 3 is complete. The next
+authorized program phase is Phase 4 Research Workspace V2; production
+world-data and Agent lifecycle routing remain unchanged until their plugin
+lineage is adopted by explicit application ports and replay/organization gates.
