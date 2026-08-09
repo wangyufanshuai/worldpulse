@@ -11,6 +11,7 @@ from app.services import project_store
 from app.services.consistency.hashing import stable_hash
 from app.services.negotiation.proof_materialization import (
     materialize_negotiation_proof,
+    negotiation_proof_artifact_specs,
 )
 from app.services.negotiation.proof_sources import extract_rr_claims
 from app.services.negotiation.repository import NegotiationRepository
@@ -62,6 +63,11 @@ def test_materializer_rebuilds_closed_proof_and_ignores_v1_decision_payloads(
     projected_ticks = tuple(item.tick for item in proof.ticks if item.projected)
     assert len(proof.ticks) == 6
     assert len(proof.ordered_sources()) == 38 + 3 * len(projected_ticks)
+    specs = negotiation_proof_artifact_specs(proof)
+    assert len(specs) == len(proof.ordered_sources())
+    assert [item.source for item in specs] == list(proof.ordered_sources())
+    assert specs[0].proof_schema == "kp.negotiation-round.v1"
+    assert specs[-1].proof_schema == "kp.negotiation-replay.v1"
     assert stable_hash(proof.final.model_dump(mode="json")) == proof.replay.final_result_hash
     assert proof.replay.provider_calls_required == 0
     assert any(

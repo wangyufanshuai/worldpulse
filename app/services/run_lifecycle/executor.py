@@ -4,7 +4,12 @@ from time import perf_counter
 
 from fastapi import HTTPException
 
-from app.core.models import RunJobStatus, WarRoomRun, WarRoomScenarioRequest
+from app.core.models import (
+    RunArtifactSummary,
+    RunJobStatus,
+    WarRoomRun,
+    WarRoomScenarioRequest,
+)
 from app.services.agent_contract import build_mock_agent_batch
 from app.services.agent_runtime import (
     AgentRuntimeResult,
@@ -32,7 +37,14 @@ from app.services.negotiation import (
     build_hybrid_projection_source,
     build_hybrid_replay_source,
     build_kernel_proposal_batch_source,
+    materialize_negotiation_proof,
+    negotiation_proof_artifact_specs,
+    negotiation_read_service,
     run_negotiation,
+)
+from app.services.negotiation.proof_materialization import (
+    NegotiationProofArtifactSpec,
+    NegotiationProofMaterialization,
 )
 
 from . import checkpoints, repository, steps
@@ -195,6 +207,7 @@ def process_job(run_id: str) -> RunJobStatus:
         "controlled_agent",
         "hybrid",
         "hybrid_recorded",
+        "negotiation",
     }:
         raise V2ExecutionPathNotEnabledError(
             "kernel-mode-execution.v2 execution mode is not enabled on this worker"
@@ -202,7 +215,7 @@ def process_job(run_id: str) -> RunJobStatus:
     kernel_shadow_policy = kernel_shadow_policy_for_job(job)
     if (
         execution_contract.is_v2
-        and job.engine_mode in {"mock_agent", *V2_RUNTIME_MODES}
+        and job.engine_mode in {"mock_agent", "negotiation", *V2_RUNTIME_MODES}
         and kernel_shadow_policy is not None
     ):
         raise V2ExecutionPathNotEnabledError(
@@ -280,7 +293,7 @@ def process_job(run_id: str) -> RunJobStatus:
     resolved_mode_context = None
     if (
         execution_contract.is_v2
-        and job.engine_mode in {"mock_agent", *V2_RUNTIME_MODES}
+        and job.engine_mode in {"mock_agent", "negotiation", *V2_RUNTIME_MODES}
         and result is not None
     ):
         resolved_mode_context = resolve_mode_context(
@@ -408,7 +421,19 @@ def process_job(run_id: str) -> RunJobStatus:
                         "integration_duration_ms": round(shadow_duration_ms, 6),
                     },
                 )
-            if (
+            if execution_contract.is_v2 and job.engine_mode == "negotiation":
+                resolved_mode_context, step_output_override = (
+                    _persist_v2_resolver_context(
+                        run_id=run_id,
+                        attempt_id=attempt_id,
+                        result=result,
+                        scenario=scenario,
+                        rule_pack_hash=job.rule_pack_hash,
+                        profile=execution_contract.profile,
+                    )
+                )
+                constraint_context = resolved_mode_context.runtime_constraint_context
+            elif (
                 job.engine_mode in V2_RUNTIME_MODES
                 and execution_contract.is_v2
             ):
@@ -728,27 +753,104 @@ def process_job(run_id: str) -> RunJobStatus:
                         "proposal_artifact_id": proposal_artifact.artifact_id,
                     },
                 )
+            negotiation_materialization: NegotiationProofMaterialization | None = None
+            negotiation_specs: tuple[NegotiationProofArtifactSpec, ...] = ()
+            negotiation_artifacts: tuple[RunArtifactSummary, ...] = ()
             if job.engine_mode == "negotiation":
+                negotiation_baseline = result
                 result, negotiation_summary = run_negotiation(
                     result,
                     run_id=run_id,
                     seed=job.seed or 42,
                     runtime_profile=job.runtime_profile,
+                    persist_legacy_artifacts=not execution_contract.is_v2,
                     should_stop=lambda: repository.get_job(run_id).status in {"pausing", "paused", "cancelling", "cancelled"},
                 )
                 interrupted = _apply_boundary_control(run_id)
                 if interrupted:
                     return interrupted
-                repository.add_artifact(run_id, "negotiation_summary", "negotiation-summary.v1", negotiation_summary)
-                repository.add_artifact(run_id, "negotiation_final_result", "war-room-result.negotiation.v1", result.model_dump(mode="json"))
-            report = evaluate_war_room_result(
-                result,
-                run_id=run_id,
-                created_at=repository.now_iso(),
-                proposals=proposals,
-                constraint_context=constraint_context,
-            )
-            if execution_contract.is_v2:
+                if not execution_contract.is_v2:
+                    repository.add_artifact(run_id, "negotiation_summary", "negotiation-summary.v1", negotiation_summary)
+                    repository.add_artifact(run_id, "negotiation_final_result", "war-room-result.negotiation.v1", result.model_dump(mode="json"))
+                if execution_contract.is_v2:
+                    if negotiation_baseline is None:
+                        raise V2ExecutionPathNotEnabledError(
+                            "negotiation V2 baseline is missing"
+                        )
+                    if resolved_mode_context is None:
+                        resolved_mode_context = resolve_mode_context(
+                            negotiation_baseline,
+                            effective_seed=execution_contract.profile.effective_seed,
+                        )
+                    negotiation_materialization = materialize_negotiation_proof(
+                        run_id,
+                        negotiation_baseline,
+                        repository=negotiation_read_service,
+                        simulation_runtime=simulation_runtime,
+                        evaluator_version=execution_contract.profile.evaluator_version,
+                        agent_pack_id=resolved_mode_context.agent_pack.agent_pack_id,
+                        agent_pack_hash=resolved_mode_context.agent_pack_hash,
+                        constraint_context_hash=(
+                            resolved_mode_context.constraint_context_hash
+                        ),
+                    )
+                    result = negotiation_materialization.final
+                    negotiation_specs = negotiation_proof_artifact_specs(
+                        negotiation_materialization
+                    )
+                    persisted_specs: list[RunArtifactSummary] = []
+                    for spec in negotiation_specs:
+                        persisted_specs.append(
+                            repository.add_artifact(
+                                run_id,
+                                spec.artifact_type,
+                                spec.schema_version,
+                                spec.source.model_dump(mode="json"),
+                                auto_supersede=False,
+                            )
+                        )
+                    negotiation_artifacts = tuple(persisted_specs)
+                    report = negotiation_materialization.final_audit.inner_report()
+                    consistency_source = negotiation_materialization.final_audit
+                    consistency_artifact = next(
+                        artifact
+                        for artifact, spec in zip(
+                            negotiation_artifacts,
+                            negotiation_specs,
+                            strict=True,
+                        )
+                        if spec.source is negotiation_materialization.final_audit
+                    )
+                    repository.append_event(
+                        run_id,
+                        "CONSISTENCY",
+                        "consistency_audit",
+                        "Negotiation V2 proof sources materialized",
+                        "Negotiation facts were re-evaluated and rooted into the closed V2 proof matrix.",
+                        payload={
+                            "source_count": len(negotiation_specs),
+                            "final_audit_hash": consistency_source.audit_hash,
+                            "replay_hash": negotiation_materialization.replay.replay_hash,
+                            "provider_calls_required": 0,
+                        },
+                    )
+                else:
+                    report = evaluate_war_room_result(
+                        result,
+                        run_id=run_id,
+                        created_at=repository.now_iso(),
+                        proposals=proposals,
+                        constraint_context=constraint_context,
+                    )
+            else:
+                report = evaluate_war_room_result(
+                    result,
+                    run_id=run_id,
+                    created_at=repository.now_iso(),
+                    proposals=proposals,
+                    constraint_context=constraint_context,
+                )
+            if execution_contract.is_v2 and negotiation_materialization is None:
                 if job.engine_mode in {"mock_agent", *V2_RUNTIME_MODES}:
                     if resolved_mode_context is None:
                         resolved_mode_context = resolve_mode_context(
@@ -801,7 +903,7 @@ def process_job(run_id: str) -> RunJobStatus:
                         "read_only": True,
                     },
                 )
-            else:
+            elif not execution_contract.is_v2:
                 project_consistency_audit(run_id, report, repository)
             for decision in report.proposal_decisions:
                 if decision.outcome in {"constrained", "rejected", "expired"}:
@@ -820,7 +922,29 @@ def process_job(run_id: str) -> RunJobStatus:
                             "projection_status": decision.projection_status,
                         },
                     )
-            if execution_contract.is_v2 and job.engine_mode in V2_HYBRID_MODES:
+            if execution_contract.is_v2 and negotiation_materialization is not None:
+                negotiation_references = tuple(
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            artifact,
+                            spec.source.model_dump(mode="json"),
+                        ),
+                        proof_schema=spec.proof_schema,
+                        content_hash=spec.content_hash,
+                    )
+                    for artifact, spec in zip(
+                        negotiation_artifacts,
+                        negotiation_specs,
+                        strict=True,
+                    )
+                )
+                step_output_override = build_mode_proof_step_output(
+                    run_id=run_id,
+                    attempt=attempt_id,
+                    engine_mode="negotiation",
+                    references=negotiation_references,
+                ).model_dump(mode="json")
+            elif execution_contract.is_v2 and job.engine_mode in V2_HYBRID_MODES:
                 if (
                     proposal_source is None
                     or proposal_artifact is None

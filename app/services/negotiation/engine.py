@@ -41,6 +41,7 @@ def run_negotiation(
     should_stop=None,
     repository: NegotiationRepository | None = None,
     runtime_profile: dict | None = None,
+    persist_legacy_artifacts: bool = True,
 ) -> tuple[WarRoomRun, dict]:
     repo = repository or NegotiationRepository()
     runtime = _runtime_config(runtime_profile)
@@ -152,10 +153,11 @@ def run_negotiation(
         }
         completed = repo.complete_round(round_record.round_id, output, modifier_hash, result_hash)
         session = repo.update_session(session.session_id, tick=tick, result_hash=result_hash, patch={"narrative_deltas": cumulative_deltas, "semantic_keys": sorted(semantic_keys)}, applied_ids=sorted(applied_ids), completed=tick == 6)
-        lifecycle_repository.add_artifact(run_id, "negotiation_round", "negotiation-round.v1", completed.model_dump(mode="json"))
-        lifecycle_repository.add_artifact(run_id, "negotiation_checkpoint", "negotiation-checkpoint.v1", {"session_id": session.session_id, "tick": tick, "round_output_hash": completed.output_hash, "result_state_hash": result_hash})
-        lifecycle_repository.add_artifact(run_id, "commitment_ledger", "commitment-ledger.v1", {"tick": tick, "commitments": [item.model_dump(mode="json") for item in repo.list_commitments(session.session_id)]})
-        lifecycle_repository.add_artifact(run_id, "narrative_diffusion", "narrative-diffusion.v1", diffusion_payload)
+        if persist_legacy_artifacts:
+            lifecycle_repository.add_artifact(run_id, "negotiation_round", "negotiation-round.v1", completed.model_dump(mode="json"))
+            lifecycle_repository.add_artifact(run_id, "negotiation_checkpoint", "negotiation-checkpoint.v1", {"session_id": session.session_id, "tick": tick, "round_output_hash": completed.output_hash, "result_state_hash": result_hash})
+            lifecycle_repository.add_artifact(run_id, "commitment_ledger", "commitment-ledger.v1", {"tick": tick, "commitments": [item.model_dump(mode="json") for item in repo.list_commitments(session.session_id)]})
+            lifecycle_repository.add_artifact(run_id, "narrative_diffusion", "narrative-diffusion.v1", diffusion_payload)
         lifecycle_repository.append_event(
             run_id, "SNAPSHOT", "consistency_audit", f"Negotiation tick {tick} committed",
             f"D+{day} 协商检查点已固化；通过准入的行动已由确定性适配器投影。", tick=tick,
@@ -192,19 +194,20 @@ def run_negotiation(
             if decision.get("proposal_id")
         }
         active_commitment_types = sorted({item.action_type for item in commitments if item.status == "active"})
-        lifecycle_repository.add_artifact(
-            run_id,
-            "negotiation_action_observation",
-            "agent-outcome-observation-source.v1",
-            {
-                "proposal_types": proposal_types,
-                "decision_outcomes": decision_outcomes,
-                "applied_proposal_ids": sorted(applied_ids),
-                "applied_action_types": applied_types,
-                "active_commitment_types": active_commitment_types,
-            },
-        )
-        lifecycle_repository.add_artifact(run_id, "negotiation_replay", replay.schema_version, replay.model_dump(mode="json"))
+        if persist_legacy_artifacts:
+            lifecycle_repository.add_artifact(
+                run_id,
+                "negotiation_action_observation",
+                "agent-outcome-observation-source.v1",
+                {
+                    "proposal_types": proposal_types,
+                    "decision_outcomes": decision_outcomes,
+                    "applied_proposal_ids": sorted(applied_ids),
+                    "applied_action_types": applied_types,
+                    "active_commitment_types": active_commitment_types,
+                },
+            )
+            lifecycle_repository.add_artifact(run_id, "negotiation_replay", replay.schema_version, replay.model_dump(mode="json"))
     summary = {
         "session": repo.get_session(run_id).model_dump(mode="json"),
         "agent_pack": pack.model_dump(mode="json"),

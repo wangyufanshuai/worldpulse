@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 from app.core.models import WarRoomRun, WarRoomScenarioRequest
 from app.core.negotiation_models import (
@@ -87,7 +88,7 @@ class NegotiationTickMaterialization:
         return self.projection_consistency is not None
 
 
-NegotiationProofSource = (
+NegotiationProofSource: TypeAlias = (
     NegotiationRoundSource
     | NegotiationProposalBatchSource
     | ConsistencyAuditSource
@@ -137,6 +138,81 @@ class NegotiationProofMaterialization:
 
 
 @dataclass(frozen=True)
+class NegotiationProofArtifactSpec:
+    """Lifecycle persistence identity for one ordered closed source."""
+
+    source: NegotiationProofSource
+    proof_schema: str
+    artifact_type: str
+    schema_version: str
+    content_hash: str
+    tick: int | None
+
+
+def negotiation_proof_artifact_specs(
+    materialization: NegotiationProofMaterialization,
+) -> tuple[NegotiationProofArtifactSpec, ...]:
+    """Map materialized sources to the one canonical lifecycle Artifact identity."""
+
+    result: list[NegotiationProofArtifactSpec] = []
+    for source in materialization.ordered_sources():
+        if isinstance(source, NegotiationRoundSource):
+            proof_schema = "kp.negotiation-round.v1"
+            artifact_type = "negotiation_round"
+            content_hash = source.round_hash
+        elif isinstance(source, NegotiationProposalBatchSource):
+            proof_schema = "kp.negotiation-proposal-batch.v1"
+            artifact_type = "negotiation_proposal_batch"
+            content_hash = source.batch_hash
+        elif isinstance(source, ConsistencyAuditSource):
+            if source.role == "admission":
+                proof_schema = "kp.negotiation-admission-consistency.v1"
+            elif source.role == "projection":
+                proof_schema = "kp.negotiation-projection-consistency.v1"
+            else:
+                proof_schema = "kp.final-consistency.v1"
+            artifact_type = "consistency_audit"
+            content_hash = source.audit_hash
+        elif isinstance(source, CommitmentLedgerSource):
+            proof_schema = "kp.commitment-ledger.v1"
+            artifact_type = "commitment_ledger"
+            content_hash = source.ledger_hash
+        elif isinstance(source, NegotiationEligibilitySource):
+            proof_schema = "kp.negotiation-eligibility.v1"
+            artifact_type = "negotiation_eligibility"
+            content_hash = source.eligibility_hash
+        elif isinstance(source, HybridModifierBundleSource):
+            proof_schema = "kp.action-modifier-bundle.v1"
+            artifact_type = "deterministic_action_modifiers"
+            content_hash = source.bundle_hash
+        elif isinstance(source, NarrativeDiffusionSource):
+            proof_schema = "kp.narrative-diffusion.v1"
+            artifact_type = "narrative_diffusion"
+            content_hash = source.diffusion_evidence_hash
+        elif isinstance(source, ProjectionAuditSource):
+            proof_schema = "kp.projection-audit.v1"
+            artifact_type = "negotiation_projection_audit"
+            content_hash = source.audit_hash
+        elif isinstance(source, NegotiationReplaySource):
+            proof_schema = "kp.negotiation-replay.v1"
+            artifact_type = "negotiation_replay"
+            content_hash = source.replay_hash
+        else:  # pragma: no cover - the closed union is exhaustive
+            raise TypeError(f"Unsupported negotiation proof source: {type(source)!r}")
+        result.append(
+            NegotiationProofArtifactSpec(
+                source=source,
+                proof_schema=proof_schema,
+                artifact_type=artifact_type,
+                schema_version=source.schema_version,
+                content_hash=content_hash,
+                tick=getattr(source, "tick", None),
+            )
+        )
+    return tuple(result)
+
+
+@dataclass(frozen=True)
 class _CommitmentEventFact:
     tick: int
     status: str
@@ -179,6 +255,10 @@ def materialize_negotiation_proof(
     *,
     repository: NegotiationReadApplicationPort | None = None,
     simulation_runtime: SimulationRuntimeApplicationPort | None = None,
+    evaluator_version: str = CONSISTENCY_EVALUATOR_VERSION,
+    agent_pack_id: str | None = None,
+    agent_pack_hash: str | None = None,
+    constraint_context_hash: str | None = None,
 ) -> NegotiationProofMaterialization:
     """Rebuild a complete V2 negotiation proof without invoking a Provider.
 
@@ -192,7 +272,12 @@ def materialize_negotiation_proof(
     repo = repository
     runtime = simulation_runtime or simulation_runtime_service
     session = repo.get_session(run_id)
-    if session.run_id != run_id or session.status != "completed" or session.current_tick != 6:
+    if (
+        session.run_id != run_id
+        or session.status not in {"running", "completed"}
+        or session.current_tick != 6
+        or session.final_result_hash is None
+    ):
         raise ValueError("Negotiation V2 materialization requires one completed six-tick session")
     pack = repo.get_agent_pack(session.agent_pack_id)
     _validate_agent_pack(pack, baseline, session)
@@ -212,7 +297,11 @@ def materialize_negotiation_proof(
         messages=messages,
     )
     context = _constraint_context(baseline, pack)
-    context_hash = stable_hash(context.model_dump(mode="json"))
+    resolved_agent_pack_id = agent_pack_id or pack.agent_pack_id
+    resolved_agent_pack_hash = agent_pack_hash or pack.manifest_hash
+    resolved_context_hash = constraint_context_hash or stable_hash(
+        context.model_dump(mode="json")
+    )
 
     state = baseline
     cumulative_deltas: dict[str, float] = {}
@@ -245,10 +334,10 @@ def materialize_negotiation_proof(
             run_id=run_id,
             role="admission",
             tick=tick,
-            evaluator_version=CONSISTENCY_EVALUATOR_VERSION,
-            agent_pack_id=pack.agent_pack_id,
-            agent_pack_hash=pack.manifest_hash,
-            constraint_context_hash=context_hash,
+            evaluator_version=evaluator_version,
+            agent_pack_id=resolved_agent_pack_id,
+            agent_pack_hash=resolved_agent_pack_hash,
+            constraint_context_hash=resolved_context_hash,
             complete_proposals=current_proposals,
         )
         _apply_commitment_facts(
@@ -310,10 +399,10 @@ def materialize_negotiation_proof(
                 run_id=run_id,
                 role="projection",
                 tick=tick,
-                evaluator_version=CONSISTENCY_EVALUATOR_VERSION,
-                agent_pack_id=pack.agent_pack_id,
-                agent_pack_hash=pack.manifest_hash,
-                constraint_context_hash=context_hash,
+                evaluator_version=evaluator_version,
+                agent_pack_id=resolved_agent_pack_id,
+                agent_pack_hash=resolved_agent_pack_hash,
+                constraint_context_hash=resolved_context_hash,
                 complete_proposals=candidates,
             )
             projection_decisions = tuple(projection_consistency.inner_report().proposal_decisions)
@@ -431,10 +520,10 @@ def materialize_negotiation_proof(
         run_id=run_id,
         role="final",
         tick=None,
-        evaluator_version=CONSISTENCY_EVALUATOR_VERSION,
-        agent_pack_id=pack.agent_pack_id,
-        agent_pack_hash=pack.manifest_hash,
-        constraint_context_hash=context_hash,
+        evaluator_version=evaluator_version,
+        agent_pack_id=resolved_agent_pack_id,
+        agent_pack_hash=resolved_agent_pack_hash,
+        constraint_context_hash=resolved_context_hash,
         complete_proposals=(),
     )
     tick_sources = tuple(materialized_ticks)

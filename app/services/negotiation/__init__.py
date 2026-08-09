@@ -64,6 +64,15 @@ def materialize_negotiation_proof(*args: Any, **kwargs: Any):
     return implementation(*args, **kwargs)
 
 
+def negotiation_proof_artifact_specs(*args: Any, **kwargs: Any):
+    """Lazy export for canonical negotiation lifecycle Artifact identities."""
+    from .proof_materialization import (
+        negotiation_proof_artifact_specs as implementation,
+    )
+
+    return implementation(*args, **kwargs)
+
+
 __all__ = [
     "NegotiationReadApplicationPort",
     "NegotiationReadApplicationService",
@@ -105,6 +114,7 @@ __all__ = [
     "extract_rr_claims",
     "mock_agent_batch_source_hash",
     "materialize_negotiation_proof",
+    "negotiation_proof_artifact_specs",
     "negotiation_read_service",
     "replay_negotiation_from_storage",
     "run_negotiation",

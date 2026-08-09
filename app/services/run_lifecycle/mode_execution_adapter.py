@@ -30,6 +30,14 @@ from app.services.negotiation import (
     extract_mb_claims,
     extract_pa_claims,
     extract_pb_claims,
+    extract_el_claims,
+    extract_nd_claims,
+    extract_np_claims,
+    extract_nr_claims,
+    extract_rr_claims,
+    materialize_negotiation_proof,
+    negotiation_proof_artifact_specs,
+    negotiation_read_service,
 )
 from app.services.project_store import connect, dumps
 from app.services.simulation_kernel import (
@@ -113,6 +121,14 @@ class _BoundArtifact:
     payload: dict[str, Any]
     attempt_id: str | None = None
     supersedes_artifact_id: str | None = None
+
+
+@dataclass(frozen=True)
+class _NegotiationModeRoots:
+    baseline: RootArtifact
+    agent_pack: RootArtifact
+    context: RootArtifact
+    proof: tuple[RootArtifact, ...]
 
 
 @dataclass(frozen=True)
@@ -305,6 +321,7 @@ class StoredModeExecutionAdapter:
                 "controlled_agent",
                 "hybrid",
                 "hybrid_recorded",
+                "negotiation",
             }:
                 raise ModeExecutionAdapterError(
                     "this reconstruction slice does not admit the requested engine mode"
@@ -322,6 +339,7 @@ class StoredModeExecutionAdapter:
             modifier_artifact = None
             ledger_artifact = None
             replay_artifact = None
+            negotiation_proof_artifacts: tuple[RootArtifact, ...] = ()
             if job["engine_mode"] == "deterministic":
                 baseline_artifact = _load_exact_bound_artifact(
                     connection,
@@ -341,6 +359,16 @@ class StoredModeExecutionAdapter:
                     producing_step_key="consistency_audit",
                     producing_step_version="consistency-audit-step.v1",
                 )
+            elif job["engine_mode"] == "negotiation":
+                negotiation_rooted = _load_negotiation_mode_source_roots(
+                    connection,
+                    job=job,
+                    profile=selection.profile,
+                    run_id=run_id,
+                    attempt_id=fencing_epoch.current_attempt_id,
+                )
+                baseline_artifact = _bound_from_root(negotiation_rooted.baseline)
+                negotiation_proof_artifacts = negotiation_rooted.proof
             else:
                 rooted = _load_agent_mode_source_roots(
                     connection,
@@ -394,6 +422,16 @@ class StoredModeExecutionAdapter:
         )
         final_result = baseline
         final_projection = projection
+        if job["engine_mode"] == "negotiation":
+            return self._reconstruct_negotiation(
+                run_id=run_id,
+                job=job,
+                profile=selection.profile,
+                fencing_epoch=fencing_epoch,
+                baseline_artifact=baseline_artifact,
+                proof_artifacts=negotiation_proof_artifacts,
+                caller_record=caller_record,
+            )
         agent_pack_id: str | None = None
         agent_pack_hash: str | None = None
         constraint_context_hash: str | None = None
@@ -895,6 +933,458 @@ class StoredModeExecutionAdapter:
             final_result=final_result,
         )
 
+    def _reconstruct_negotiation(
+        self,
+        *,
+        run_id: str,
+        job,
+        profile,
+        fencing_epoch: KernelModeFencingEpoch,
+        baseline_artifact: _BoundArtifact,
+        proof_artifacts: tuple[RootArtifact, ...],
+        caller_record: KernelModeExecutionRecord | dict[str, Any] | None,
+    ) -> ModeExecutionReconstruction:
+        """Rebuild the complete 38 + 3P negotiation proof without Provider access."""
+
+        baseline = WarRoomRun.model_validate(baseline_artifact.payload)
+        resolved = resolve_mode_context(
+            baseline,
+            effective_seed=profile.effective_seed,
+        )
+        materialization = materialize_negotiation_proof(
+            run_id,
+            baseline,
+            repository=negotiation_read_service,
+            evaluator_version=profile.evaluator_version,
+            agent_pack_id=resolved.agent_pack.agent_pack_id,
+            agent_pack_hash=resolved.agent_pack_hash,
+            constraint_context_hash=resolved.constraint_context_hash,
+        )
+        specs = negotiation_proof_artifact_specs(materialization)
+        if len(specs) != len(proof_artifacts):
+            raise ModeExecutionAdapterError(
+                "stored negotiation proof count differs from rematerialization"
+            )
+        artifact_by_source: dict[int, RootArtifact] = {}
+        spec_by_source = {id(item.source): item for item in specs}
+        for artifact, spec in zip(proof_artifacts, specs, strict=True):
+            source_payload = spec.source.model_dump(mode="json")
+            if (
+                artifact.artifact_type != spec.artifact_type
+                or artifact.schema_version != spec.schema_version
+                or artifact.attempt_id != fencing_epoch.current_attempt_id
+                or artifact.supersedes_artifact_id is not None
+                or artifact.payload != source_payload
+            ):
+                raise ModeExecutionAdapterError(
+                    "stored negotiation proof source differs from rematerialization"
+                )
+            artifact_by_source[id(spec.source)] = artifact
+
+        tick_claims: list[dict[str, Any]] = []
+        expected_first_seq = 1
+        expected_previous_hash: str | None = None
+        for item in materialization.ticks:
+            rr = extract_rr_claims(
+                item.round.model_dump(mode="json"),
+                run_id=run_id,
+                session_id=materialization.session.session_id,
+                tick=item.tick,
+                expected_first_seq=expected_first_seq,
+                expected_previous_hash=expected_previous_hash,
+            )
+            if rr.message_tuples:
+                expected_first_seq += rr.message_count
+                expected_previous_hash = rr.message_tuples[-1][2]
+            proposal_by_id = {
+                payload["proposal_id"]: payload
+                for payload in item.proposals.proposals
+            }
+            current_proposals = tuple(
+                proposal_by_id[claim[0]]
+                for claim in item.proposals.proposal_claim_tuples
+                if claim[7] == "current_message"
+            )
+            ac = extract_consistency_claims(
+                item.admission.model_dump(mode="json"),
+                run_id=run_id,
+                role="admission",
+                tick=item.tick,
+                evaluator_version=profile.evaluator_version,
+                agent_pack_id=resolved.agent_pack.agent_pack_id,
+                agent_pack_hash=resolved.agent_pack_hash,
+                constraint_context_hash=resolved.constraint_context_hash,
+                complete_proposals=current_proposals,
+            )
+            cl = extract_cl_claims(
+                item.ledger.model_dump(mode="json"),
+                run_id=run_id,
+                session_id=materialization.session.session_id,
+                tick=item.tick,
+            )
+            np = extract_np_claims(
+                item.proposals.model_dump(mode="json"),
+                run_id=run_id,
+                session_id=materialization.session.session_id,
+                tick=item.tick,
+                messages_hash=rr.messages_hash,
+                admission_audit_hash=ac.audit_hash,
+                ledger_hash=cl.ledger_hash,
+            )
+            el = extract_el_claims(
+                item.eligibility.model_dump(mode="json"),
+                run_id=run_id,
+                session_id=materialization.session.session_id,
+                tick=item.tick,
+                proposal_claims=np,
+            )
+            nd = extract_nd_claims(
+                item.diffusion.model_dump(mode="json"),
+                run_id=run_id,
+                session_id=materialization.session.session_id,
+                tick=item.tick,
+                effective_seed=profile.effective_seed,
+            )
+            pc = None
+            mb = None
+            pa = None
+            if item.projected:
+                if (
+                    item.projection_consistency is None
+                    or item.modifier_bundle is None
+                    or item.projection_audit is None
+                ):
+                    raise ModeExecutionAdapterError(
+                        "materialized negotiation projection is incomplete"
+                    )
+                candidates = tuple(
+                    proposal_by_id[proposal_id]
+                    for proposal_id in el.eligible_proposal_ids
+                )
+                pc = extract_consistency_claims(
+                    item.projection_consistency.model_dump(mode="json"),
+                    run_id=run_id,
+                    role="projection",
+                    tick=item.tick,
+                    evaluator_version=profile.evaluator_version,
+                    agent_pack_id=resolved.agent_pack.agent_pack_id,
+                    agent_pack_hash=resolved.agent_pack_hash,
+                    constraint_context_hash=resolved.constraint_context_hash,
+                    complete_proposals=candidates,
+                )
+                mb = extract_mb_claims(
+                    item.modifier_bundle.model_dump(mode="json"),
+                    run_id=run_id,
+                    tick=item.tick,
+                    consistency_audit_hash=pc.audit_hash,
+                )
+                pa = extract_pa_claims(
+                    item.projection_audit.model_dump(mode="json"),
+                    run_id=run_id,
+                    session_id=materialization.session.session_id,
+                    tick=item.tick,
+                    projection_mode="negotiation",
+                    consistency_audit_hash=pc.audit_hash,
+                    complete_proposals=candidates,
+                    modifier_claims=mb,
+                )
+            tick_claims.append(
+                {
+                    "rr": rr,
+                    "np": np,
+                    "ac": ac,
+                    "cl": cl,
+                    "el": el,
+                    "pc": pc,
+                    "mb": mb,
+                    "nd": nd,
+                    "pa": pa,
+                }
+            )
+
+        fc = extract_consistency_claims(
+            materialization.final_audit.model_dump(mode="json"),
+            run_id=run_id,
+            role="final",
+            tick=None,
+            evaluator_version=profile.evaluator_version,
+            agent_pack_id=resolved.agent_pack.agent_pack_id,
+            agent_pack_hash=resolved.agent_pack_hash,
+            constraint_context_hash=resolved.constraint_context_hash,
+            complete_proposals=(),
+        )
+        nr = extract_nr_claims(
+            materialization.replay.model_dump(mode="json"),
+            run_id=run_id,
+            session_id=materialization.session.session_id,
+        )
+
+        def reference_for(
+            source,
+            claims,
+            *,
+            tick: int | None,
+            relationships: tuple[KernelModeProofRelationship, ...] = (),
+        ) -> KernelModeProofReference:
+            spec = spec_by_source[id(source)]
+            return _proof_reference(
+                artifact=_bound_from_root(artifact_by_source[id(source)]),
+                proof_schema=spec.proof_schema,
+                claims=claims,
+                content_hash=spec.content_hash,
+                run_id=run_id,
+                session_id=materialization.session.session_id,
+                attempt=fencing_epoch.current_attempt_id,
+                ordinal=0,
+                tick=tick,
+                relationships=relationships,
+            )
+
+        rr_refs: list[KernelModeProofReference] = []
+        for index, item in enumerate(materialization.ticks):
+            relationships = (
+                (_relationship("previous_round", rr_refs[-1]),)
+                if rr_refs
+                else ()
+            )
+            rr_refs.append(
+                reference_for(
+                    item.round,
+                    tick_claims[index]["rr"],
+                    tick=item.tick,
+                    relationships=relationships,
+                )
+            )
+        np_refs = [
+            reference_for(
+                item.proposals,
+                tick_claims[index]["np"],
+                tick=item.tick,
+                relationships=(_relationship("source_for", rr_refs[index]),),
+            )
+            for index, item in enumerate(materialization.ticks)
+        ]
+        ac_refs = [
+            reference_for(
+                item.admission,
+                tick_claims[index]["ac"],
+                tick=item.tick,
+                relationships=(_relationship("evaluates", np_refs[index]),),
+            )
+            for index, item in enumerate(materialization.ticks)
+        ]
+        cl_refs = [
+            reference_for(
+                item.ledger,
+                tick_claims[index]["cl"],
+                tick=item.tick,
+                relationships=(_relationship("snapshot_after", ac_refs[index]),),
+            )
+            for index, item in enumerate(materialization.ticks)
+        ]
+        el_refs = [
+            reference_for(
+                item.eligibility,
+                tick_claims[index]["el"],
+                tick=item.tick,
+                relationships=(
+                    _relationship("sources", np_refs[index]),
+                    _relationship("admitted_by", ac_refs[index]),
+                    _relationship("current_ledger", cl_refs[index]),
+                ),
+            )
+            for index, item in enumerate(materialization.ticks)
+        ]
+
+        projected_ticks = tuple(
+            item.tick for item in materialization.ticks if item.projected
+        )
+        pc_refs: dict[int, KernelModeProofReference] = {}
+        for tick in projected_ticks:
+            item = materialization.ticks[tick - 1]
+            pc_refs[tick] = reference_for(
+                item.projection_consistency,
+                tick_claims[tick - 1]["pc"],
+                tick=tick,
+                relationships=(_relationship("filters", el_refs[tick - 1]),),
+            )
+        final_ref = reference_for(
+            materialization.final_audit,
+            fc,
+            tick=None,
+            relationships=(_relationship("evaluates", rr_refs[-1]),),
+        )
+        mb_refs: dict[int, KernelModeProofReference] = {}
+        for tick in projected_ticks:
+            item = materialization.ticks[tick - 1]
+            mb_refs[tick] = reference_for(
+                item.modifier_bundle,
+                tick_claims[tick - 1]["mb"],
+                tick=tick,
+                relationships=(_relationship("admitted_by", pc_refs[tick]),),
+            )
+        nd_refs: list[KernelModeProofReference] = []
+        for index, item in enumerate(materialization.ticks):
+            nd_relationships: list[KernelModeProofRelationship] = [
+                _relationship("inputs", el_refs[index])
+            ]
+            if item.tick in mb_refs:
+                nd_relationships.append(
+                    _relationship("bounded_by", mb_refs[item.tick])
+                )
+            nd_refs.append(
+                reference_for(
+                    item.diffusion,
+                    tick_claims[index]["nd"],
+                    tick=item.tick,
+                    relationships=tuple(nd_relationships),
+                )
+            )
+        pa_refs: dict[int, KernelModeProofReference] = {}
+        for tick in projected_ticks:
+            item = materialization.ticks[tick - 1]
+            pa_refs[tick] = reference_for(
+                item.projection_audit,
+                tick_claims[tick - 1]["pa"],
+                tick=tick,
+                relationships=(
+                    _relationship("round", rr_refs[tick - 1]),
+                    _relationship("governed_by", pc_refs[tick]),
+                    _relationship("audits", mb_refs[tick]),
+                    _relationship("diffusion", nd_refs[tick - 1]),
+                    _relationship("ledger_snapshot", cl_refs[tick - 1]),
+                ),
+            )
+        for index, item in enumerate(materialization.ticks):
+            origin_ticks = sorted(
+                {
+                    claim[9]
+                    for claim in tick_claims[index]["np"].proposal_claim_tuples
+                    if claim[7] == "active_commitment_origin"
+                }
+            )
+            relationships = (
+                _relationship("sources", np_refs[index]),
+                _relationship("admitted_by", ac_refs[index]),
+                _relationship("current_ledger", cl_refs[index]),
+                *(
+                    _relationship("prior_projection", pa_refs[tick])
+                    for tick in projected_ticks
+                    if tick < item.tick
+                ),
+                *(
+                    _relationship("origin_admission", ac_refs[tick - 1])
+                    for tick in origin_ticks
+                ),
+            )
+            el_refs[index] = el_refs[index].model_copy(
+                update={"relationships": relationships}
+            )
+
+        replay_relationships = (
+            *(_relationship("replays", item) for item in rr_refs),
+            *(_relationship("proposal_sources", item) for item in np_refs),
+            *(_relationship("admission", item) for item in ac_refs),
+            *(_relationship("ledgers", item) for item in cl_refs),
+            *(_relationship("eligibility", item) for item in el_refs),
+            *(
+                _relationship("projection", pc_refs[tick])
+                for tick in projected_ticks
+            ),
+            _relationship("final_audit", final_ref),
+            *(
+                _relationship("modifiers", mb_refs[tick])
+                for tick in projected_ticks
+            ),
+            *(_relationship("diffusion", item) for item in nd_refs),
+            *(
+                _relationship("audits", pa_refs[tick])
+                for tick in projected_ticks
+            ),
+        )
+        replay_ref = reference_for(
+            materialization.replay,
+            nr,
+            tick=None,
+            relationships=replay_relationships,
+        )
+        references = (
+            *rr_refs,
+            *np_refs,
+            *ac_refs,
+            *cl_refs,
+            *el_refs,
+            *(pc_refs[tick] for tick in projected_ticks),
+            final_ref,
+            *(mb_refs[tick] for tick in projected_ticks),
+            *nd_refs,
+            *(pa_refs[tick] for tick in projected_ticks),
+            replay_ref,
+        )
+        references = tuple(
+            reference.model_copy(update={"ordinal": ordinal})
+            for ordinal, reference in enumerate(references)
+        )
+        proof_payload = {
+            "schema_version": "kernel-mode-execution-proof.v1",
+            "references": [item.model_dump(mode="json") for item in references],
+        }
+        proof = KernelModeExecutionProof.model_validate(
+            {**proof_payload, "proof_hash": stable_hash(proof_payload)}
+        )
+        baseline_projection = build_war_room_projection(
+            baseline,
+            run_id=run_id,
+            seed=profile.effective_seed,
+            rule_pack_hash=job["rule_pack_hash"],
+        )
+        final_projection = build_war_room_projection(
+            materialization.final,
+            run_id=run_id,
+            seed=profile.effective_seed,
+            rule_pack_hash=job["rule_pack_hash"],
+        )
+        request_payload = {
+            "schema_version": "kernel-mode-execution-request.v1",
+            "execution_contract_version": "kernel-mode-execution.v2",
+            "organization_id": job["organization_id"],
+            "project_id": job["project_id"],
+            "lifecycle_job_id": run_id,
+            "run_id": run_id,
+            "session_id": materialization.session.session_id,
+            "attempt": fencing_epoch.current_attempt_id,
+            "engine_mode": "negotiation",
+            "kernel_mode": "negotiation",
+            "effective_seed": profile.effective_seed,
+            "rule_pack_id": job["rule_pack_id"],
+            "rule_pack_hash": job["rule_pack_hash"],
+            "agent_pack_id": resolved.agent_pack.agent_pack_id,
+            "agent_pack_hash": resolved.agent_pack_hash,
+            "constraint_context_hash": resolved.constraint_context_hash,
+            "evaluator_version": profile.evaluator_version,
+            "runtime_profile_hash": job["runtime_profile_hash"],
+            "fencing_epoch_hash": fencing_epoch.fencing_epoch_hash,
+            "baseline_projection": baseline_projection.model_dump(mode="json"),
+            "final_projection": final_projection.model_dump(mode="json"),
+            "proof": proof.model_dump(mode="json"),
+            "proof_hash": proof.proof_hash,
+        }
+        request = KernelModeExecutionRequest.model_validate(
+            {**request_payload, "request_hash": stable_hash(request_payload)}
+        )
+        record = self._kernel.finalize_execution(request)
+        if caller_record is not None:
+            supplied = KernelModeExecutionRecord.model_validate(caller_record)
+            if supplied != record:
+                raise ModeExecutionAdapterError(
+                    "caller execution record does not match reconstructed authority"
+                )
+        return ModeExecutionReconstruction(
+            request=request,
+            record=record,
+            final_result=materialization.final,
+        )
+
 
 def _relationship(
     relationship_type: Any,
@@ -917,6 +1407,8 @@ def _proof_reference(
     run_id: str,
     attempt: str,
     ordinal: int,
+    session_id: str | None = None,
+    tick: int | None = None,
     relationships: tuple[KernelModeProofRelationship, ...] = (),
 ) -> KernelModeProofReference:
     claims_hash = stable_hash(
@@ -931,10 +1423,10 @@ def _proof_reference(
         schema_version=artifact.schema_version,
         artifact_id=artifact.artifact_id,
         run_id=run_id,
-        session_id=None,
+        session_id=session_id,
         attempt=attempt,
         ordinal=ordinal,
-        tick=None,
+        tick=tick,
         artifact_sha256=artifact.sha256,
         content_hash=content_hash,
         claims=claims,
@@ -1065,6 +1557,108 @@ def _load_agent_mode_source_roots(
             "Agent-mode source roots contain duplicate Artifact types"
         )
     return by_type
+
+
+def _load_negotiation_mode_source_roots(
+    connection,
+    *,
+    job,
+    profile,
+    run_id: str,
+    attempt_id: str,
+) -> _NegotiationModeRoots:
+    """Load resolver and multi-instance negotiation proof roots separately."""
+
+    resolver_step, resolver_artifacts = _load_rooted_step(
+        connection,
+        run_id=run_id,
+        attempt_id=attempt_id,
+        step_key="deterministic_run",
+        step_version="deterministic-run.v1",
+    )
+    scenario = _strict_json_object(job["scenario_json"], "stored scenario")
+    scenario_hash = stable_hash(scenario)
+    if (
+        resolver_step["input"].get("run_id") != run_id
+        or resolver_step["input"].get("engine_mode") != "negotiation"
+        or resolver_step["input"].get("scenario_hash") != scenario_hash
+        or resolver_step["input"].get("rule_pack_id") != job["rule_pack_id"]
+        or resolver_step["input"].get("rule_pack_hash") != job["rule_pack_hash"]
+    ):
+        raise ModeExecutionAdapterError("negotiation resolver-step input drift")
+    validate_resolver_step_root(
+        resolver_step["output"],
+        run_id=run_id,
+        attempt=attempt_id,
+        engine_mode="negotiation",
+        effective_seed=profile.effective_seed,
+        agent_pack_resolver_version=profile.agent_pack_resolver_version,
+        constraint_context_resolver_version=(
+            profile.constraint_context_resolver_version
+        ),
+        scenario_hash=scenario_hash,
+        rule_pack_hash=job["rule_pack_hash"],
+        artifacts=resolver_artifacts,
+    )
+    resolver_by_type = {item.artifact_type: item for item in resolver_artifacts}
+    if set(resolver_by_type) != {
+        "war_room_result",
+        "agent_pack",
+        "agent_constraint_context",
+    }:
+        raise ModeExecutionAdapterError("negotiation resolver root membership drift")
+
+    proof_step, proof_artifacts = _load_rooted_step(
+        connection,
+        run_id=run_id,
+        attempt_id=attempt_id,
+        step_key="consistency_audit",
+        step_version="consistency-audit-step.v1",
+    )
+    proof_refs = proof_step["output"].get("artifact_refs")
+    if not isinstance(proof_refs, list):
+        raise ModeExecutionAdapterError("negotiation proof refs must be an array")
+    proof_ids = tuple(
+        item[1]
+        for item in proof_refs
+        if isinstance(item, list) and len(item) == 6
+    )
+    proof_by_id = {item.artifact_id: item for item in proof_artifacts}
+    if (
+        len(proof_ids) != len(proof_refs)
+        or len(proof_by_id) != len(proof_artifacts)
+        or set(proof_ids) != set(proof_by_id)
+    ):
+        raise ModeExecutionAdapterError("negotiation proof root membership drift")
+    ordered_proof = tuple(proof_by_id[item] for item in proof_ids)
+    validate_mode_proof_step_root(
+        proof_step["output"],
+        run_id=run_id,
+        attempt=attempt_id,
+        engine_mode="negotiation",
+        artifacts=ordered_proof,
+    )
+    proof_input = proof_step["input"]
+    if (
+        proof_input.get("run_id") != run_id
+        or proof_input.get("engine_mode") != "negotiation"
+        or proof_input.get("scenario_hash") != scenario_hash
+        or proof_input.get("rule_pack_id") != job["rule_pack_id"]
+        or proof_input.get("rule_pack_hash") != job["rule_pack_hash"]
+        or proof_input.get("previous_step_id") != resolver_step["step_id"]
+        or proof_input.get("previous_output_hash") != resolver_step["output_hash"]
+        or proof_input.get("previous_artifact_refs")
+        != resolver_step["artifact_refs"]
+    ):
+        raise ModeExecutionAdapterError(
+            "negotiation proof step does not extend the resolver root"
+        )
+    return _NegotiationModeRoots(
+        baseline=resolver_by_type["war_room_result"],
+        agent_pack=resolver_by_type["agent_pack"],
+        context=resolver_by_type["agent_constraint_context"],
+        proof=ordered_proof,
+    )
 
 
 def _load_rooted_step(
