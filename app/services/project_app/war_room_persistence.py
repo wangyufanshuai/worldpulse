@@ -17,7 +17,7 @@ from app.core.models import (
     RiskPoint,
     WarRoomRun,
 )
-from app.services.project_app.report_application import report_service
+from app.services.project_app.report_application import report_renderer_lineage, report_service
 from app.services.project_app.reports import chain_pressure
 from app.services.project_store import connect, dumps
 from app.services.rule_packs import trust_manifest_for_job
@@ -109,6 +109,9 @@ def prepare_war_room_result(
     )
     graph = build_war_room_graph_snapshot(project.project_id, run_id, result, now_factory)
     report = report_service.build_war_room(project, run, graph, result)
+    renderer_lineage = report_renderer_lineage(report)
+    if renderer_lineage is not None:
+        run.data_snapshot.setdefault("plugin_lineage", {})["report_renderer"] = renderer_lineage
     return PreparedWarRoomResult(
         project=project,
         run=run,

@@ -54,7 +54,7 @@ from app.services.project_app.diffing import (
     risk_score as diff_risk_score,
 )
 from app.services.project_app.replay_application import replay_pack_service
-from app.services.project_app.report_application import report_service
+from app.services.project_app.report_application import report_renderer_lineage, report_service
 from app.services.project_app.project_queries import (
     get_project_detail as query_project_detail,
     list_projects as query_projects,
@@ -227,6 +227,9 @@ def run_project(project_id: str, mode: str = "fast") -> ProjectDetail:
     )
     graph = _graph_snapshot(project.project_id, run_id, chain, backtest)
     report = _project_report(project, run, graph, causal)
+    renderer_lineage = report_renderer_lineage(report)
+    if renderer_lineage is not None:
+        run.data_snapshot.setdefault("plugin_lineage", {})["report_renderer"] = renderer_lineage
     _append_workflow_event(workflow_events, "report", "AI 报告", "completed", f"生成报告：{report.title}，模式 {report.mode}。")
     run.data_snapshot["workflow_events"] = workflow_events
 

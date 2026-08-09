@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import hashlib
 
@@ -107,6 +108,9 @@ def _replay_pack_manifest(project_id: str, project_title: str, target: ResearchR
     from app.services.evidence import evidence_service
 
     trust_manifest = (target.data_snapshot or {}).get("trust_manifest") or (target.simulation_snapshot or {}).get("trust_manifest")
+    plugin_lineage = deepcopy((target.data_snapshot or {}).get("plugin_lineage") or {})
+    if not isinstance(plugin_lineage, dict):
+        raise ValueError("Run plugin lineage must be an object")
     return {
         "pack_version": "war-room-replay-pack.audit.v1",
         "project_id": project_id,
@@ -124,6 +128,7 @@ def _replay_pack_manifest(project_id: str, project_title: str, target: ResearchR
         "disclaimer": WAR_ROOM_DISCLAIMER,
         "trust_manifest": trust_manifest,
         "evidence_manifest": evidence_service.evidence_manifest_for_run(project_id, target.run_id),
+        "plugin_lineage": plugin_lineage,
     }
 
 

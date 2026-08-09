@@ -1,5 +1,8 @@
 """Installed, auditable WorldPulse Plugin SDK implementations."""
 
+from importlib import import_module
+from typing import Any
+
 from .data_connectors import (
     FredConnector,
     NoaaNasaConnector,
@@ -21,13 +24,32 @@ from .rule_pack import (
     built_in_rule_pack,
     built_in_rule_pack_registry,
 )
-from .evaluator import (
-    EvaluationReportAdapter,
-    EvaluationReportOutputV1,
-    EvaluationReportRequestV1,
-    built_in_evaluator,
-    built_in_evaluator_registry,
+from .report_renderer import (
+    MarkdownRenderOutputV1,
+    MarkdownRenderRequestV1,
+    ReportRendererAdapter,
+    build_renderer_lineage,
+    built_in_report_renderer_registry,
+    installed_report_renderer_manifest,
+    verify_renderer_lineage,
 )
+
+
+_LAZY_EVALUATOR_EXPORTS = {
+    "EvaluationReportAdapter",
+    "EvaluationReportOutputV1",
+    "EvaluationReportRequestV1",
+    "built_in_evaluator",
+    "built_in_evaluator_registry",
+}
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _LAZY_EVALUATOR_EXPORTS:
+        raise AttributeError(name)
+    value = getattr(import_module(".evaluator", __name__), name)
+    globals()[name] = value
+    return value
 
 __all__ = [
     "FredConnector",
@@ -50,4 +72,11 @@ __all__ = [
     "EvaluationReportRequestV1",
     "built_in_evaluator",
     "built_in_evaluator_registry",
+    "MarkdownRenderOutputV1",
+    "MarkdownRenderRequestV1",
+    "ReportRendererAdapter",
+    "build_renderer_lineage",
+    "built_in_report_renderer_registry",
+    "installed_report_renderer_manifest",
+    "verify_renderer_lineage",
 ]

@@ -20,7 +20,14 @@ from app.services.ai_analysis import analyze_current_risk, render_ai_markdown
 from app.services.world_model import WORLD_MODEL_DISCLAIMER as WAR_ROOM_DISCLAIMER
 
 
-def build_project_report(project: ResearchProject, run: ResearchRun, graph: CausalGraphSnapshot, causal, analyze_fn=analyze_current_risk) -> ProjectAIReport:
+def build_project_report(
+    project: ResearchProject,
+    run: ResearchRun,
+    graph: CausalGraphSnapshot,
+    causal,
+    analyze_fn=analyze_current_risk,
+    render_fn=None,
+) -> ProjectAIReport:
     run_mode = str(run.data_snapshot.get("run_mode", "fast"))
     ai = fast_ai_report(project, run, graph) if run_mode == "fast" else analyze_fn(AIAnalysisRequest(focus=project.question, window_days=project.event_window_days))
     ai.title = f"{project.title} 研究报告"
@@ -32,7 +39,7 @@ def build_project_report(project: ResearchProject, run: ResearchRun, graph: Caus
     ]
     ai.key_findings = dedupe_texts([*leading_findings, *ai.key_findings])[:6]
     citations = build_report_citations(ai.key_findings, ai.evidence, graph, run.backtest_snapshot)
-    markdown = render_project_markdown(ai, citations)
+    markdown = (render_fn or render_project_markdown)(ai, citations)
     return ProjectAIReport(
         report_id=f"report_{uuid4().hex[:12]}",
         project_id=project.project_id,
@@ -52,7 +59,14 @@ def build_project_report(project: ResearchProject, run: ResearchRun, graph: Caus
     )
 
 
-def build_war_room_project_report(project: ResearchProject, run: ResearchRun, graph: CausalGraphSnapshot, result: WarRoomRun) -> ProjectAIReport:
+def build_war_room_project_report(
+    project: ResearchProject,
+    run: ResearchRun,
+    graph: CausalGraphSnapshot,
+    result: WarRoomRun,
+    *,
+    render_fn=None,
+) -> ProjectAIReport:
     trust_manifest = (run.data_snapshot or {}).get("trust_manifest") or {}
     top_agents = result.country_agents[:3]
     top_chains = result.supply_chains[:3]
@@ -97,14 +111,11 @@ def build_war_room_project_report(project: ResearchProject, run: ResearchRun, gr
         ],
         disclaimer=WAR_ROOM_DISCLAIMER,
     )
-    markdown = render_project_markdown(ai, citations)
-    if trust_manifest:
-        markdown += (
-            "\n\n## Trust Manifest\n"
-            f"- Rule Pack: `{trust_manifest.get('rule_pack_version')}`\n"
-            f"- Rule Pack ID: `{trust_manifest.get('rule_pack_id')}`\n"
-            f"- Manifest Hash: `{trust_manifest.get('rule_pack_hash')}`"
-        )
+    markdown = (
+        render_fn(ai, citations)
+        if render_fn
+        else render_war_room_project_markdown(ai, citations, trust_manifest)
+    )
     return ProjectAIReport(
         report_id=f"report_{uuid4().hex[:12]}",
         project_id=project.project_id,
@@ -122,6 +133,22 @@ def build_war_room_project_report(project: ResearchProject, run: ResearchRun, gr
         markdown=markdown,
         disclaimer=ai.disclaimer,
     )
+
+
+def render_war_room_project_markdown(
+    analysis: AIAnalysisResult,
+    citations: list[ReportCitation],
+    trust_manifest: dict,
+) -> str:
+    markdown = render_project_markdown(analysis, citations)
+    if trust_manifest:
+        markdown += (
+            "\n\n## Trust Manifest\n"
+            f"- Rule Pack: `{trust_manifest.get('rule_pack_version')}`\n"
+            f"- Rule Pack ID: `{trust_manifest.get('rule_pack_id')}`\n"
+            f"- Manifest Hash: `{trust_manifest.get('rule_pack_hash')}`"
+        )
+    return markdown
 
 
 def build_report_citations(

@@ -24,6 +24,7 @@ from .ports import (
     AgentProviderPluginPort,
     DataConnectorPluginPort,
     EvaluatorPluginPort,
+    ReportRendererPluginPort,
     RulePackPluginPort,
 )
 
@@ -48,5 +49,6 @@ __all__ = [
     "AgentProviderPluginPort",
     "DataConnectorPluginPort",
     "EvaluatorPluginPort",
+    "ReportRendererPluginPort",
     "RulePackPluginPort",
 ]
