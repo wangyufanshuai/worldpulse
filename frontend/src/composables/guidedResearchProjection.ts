@@ -1,5 +1,6 @@
 import type {
   GuidedGateVerdict,
+  GuidedGovernanceProjection,
   GuidedResearchProjection,
   GuidedStageStatus,
   GuidedSurfaceDescriptor,
@@ -28,6 +29,7 @@ interface StageInput {
 
 export interface GuidedResearchProjectionContext {
   runDiff?: ResearchRunDiff | null
+  governance?: GuidedGovernanceProjection | null
 }
 
 function stage({
@@ -132,12 +134,18 @@ export function buildGuidedResearchProjection(
   const graphMatchesRun = Boolean(run && graph && graph.run_id === run.run_id)
   const reportMatchesRun = Boolean(run && report && report.run_id === run.run_id)
   const hasWorldModel = Boolean(graphMatchesRun && graph?.nodes?.length && graph?.edges?.length)
-  const hasEvidence = Boolean(
-    graphMatchesRun && (
-      graph?.evidence_sources?.length
-      || (reportMatchesRun && hasSubstantiveCitation(citations))
-    ),
+  const governance = context.governance
+  const governanceLoaded = Boolean(governance)
+  const evidenceSummary = governance?.evidence.summary || null
+  const governedEvidenceReady = Boolean(
+    evidenceSummary
+    && evidenceSummary.integrity_status === 'verified'
+    && evidenceSummary.cutoff_safe
+    && (evidenceSummary.snapshot_count || evidenceSummary.claim_count),
   )
+  const hasEvidence = Boolean(graphMatchesRun && (governanceLoaded
+    ? governedEvidenceReady
+    : (graph?.evidence_sources?.length || (reportMatchesRun && hasSubstantiveCitation(citations)))))
   const hasBrief = Boolean(reportMatchesRun && report?.markdown?.trim() && report?.key_findings?.length)
   const runActive = isRunInProgress(run)
   const runTerminal = isTerminalRun(run)
@@ -168,6 +176,11 @@ export function buildGuidedResearchProjection(
     evidenceStatus = 'complete'
     evidenceVerdict = 'pass'
     evidenceReasons = []
+  } else if (governanceLoaded && governance?.evidence.gate_reasons.length) {
+    evidenceStatus = runActive ? 'in_progress' : 'blocked'
+    evidenceVerdict = 'unavailable'
+    evidenceReasons = [...governance.evidence.gate_reasons]
+    if (!hasWorldModel) evidenceReasons.push('缺少与当前运行绑定的完整世界模型投影。')
   } else if (runActive) {
     evidenceStatus = 'in_progress'
     evidenceVerdict = 'unavailable'
@@ -194,24 +207,61 @@ export function buildGuidedResearchProjection(
     verdict: evidenceVerdict,
     dependsOn: evidenceDependencies,
     reasons: evidenceReasons,
-    sourceContracts: ['CausalGraphSnapshot', 'ReportCitation'],
-    lineage: graphMatchesRun && graph ? { graph_id: graph.graph_id, run_id: graph.run_id } : {},
+    sourceContracts: ['CausalGraphSnapshot', 'ReportCitation', 'ProjectEvidenceSummary'],
+    lineage: {
+      ...(graphMatchesRun && graph ? { graph_id: graph.graph_id, run_id: graph.run_id } : {}),
+      ...(evidenceSummary?.latest_pack ? {
+        evidence_pack_id: evidenceSummary.latest_pack.pack_id,
+        evidence_pack_hash: evidenceSummary.latest_pack.manifest_hash,
+      } : {}),
+    },
   }))
 
   const scenarioDependencies = ['evidence-world-model']
   const scenarioBlockedBy = dependencyBlocked(stages, scenarioDependencies)
+  const approvedDraft = governance?.scenario.approvedDraft || null
+  const scenarioGovernanceReasons = governance?.scenario.gate_reasons || []
+  const approvedScenarioReady = Boolean(approvedDraft && !scenarioGovernanceReasons.length)
+  let scenarioStatus: GuidedStageStatus
+  let scenarioVerdict: GuidedGateVerdict
+  let scenarioReasons: string[]
+  if (scenarioBlockedBy) {
+    scenarioStatus = 'blocked'
+    scenarioVerdict = 'block'
+    scenarioReasons = [dependencyReason(scenarioBlockedBy)]
+  } else if (approvedScenarioReady) {
+    scenarioStatus = 'complete'
+    scenarioVerdict = 'pass'
+    scenarioReasons = []
+  } else if (governanceLoaded) {
+    scenarioStatus = 'ready'
+    scenarioVerdict = 'unavailable'
+    scenarioReasons = scenarioGovernanceReasons.length
+      ? [...scenarioGovernanceReasons]
+      : ['尚未绑定真实 approved/frozen Scenario Draft。']
+  } else {
+    scenarioStatus = 'ready'
+    scenarioVerdict = 'unavailable'
+    scenarioReasons = ['4A 尚无真实场景治理投影；当前为兼容研究路径，不能声明已批准场景修订。']
+  }
   stages.push(stage({
     key: 'scenario-matrix',
     index: '03',
     title: '场景与实验矩阵',
     description: '绑定受治理的场景修订；矩阵能力按显式合同逐步开放。',
-    status: scenarioBlockedBy ? 'blocked' : 'ready',
-    verdict: scenarioBlockedBy ? 'block' : 'unavailable',
+    status: scenarioStatus,
+    verdict: scenarioVerdict,
     dependsOn: scenarioDependencies,
-    reasons: scenarioBlockedBy
-      ? [dependencyReason(scenarioBlockedBy)]
-      : ['当前为兼容研究路径；4A 尚无真实场景治理投影，不能声明已批准场景修订。'],
-    sourceContracts: ['ScenarioDraft', 'EvaluationBatch'],
+    reasons: scenarioReasons,
+    sourceContracts: ['ScenarioCandidate', 'ScenarioDraft'],
+    lineage: approvedScenarioReady && approvedDraft ? {
+      scenario_draft_id: approvedDraft.draft_id,
+      scenario_draft_hash: approvedDraft.draft_hash,
+      scenario_evidence_pack_id: approvedDraft.evidence_pack_id || '',
+      scenario_evidence_pack_hash: approvedDraft.evidence_pack_hash || '',
+      scenario_parent_draft_id: approvedDraft.parent_draft_id || '',
+      scenario_version: String(approvedDraft.version),
+    } : {},
   }))
 
   const compareDependencies = ['evidence-world-model']

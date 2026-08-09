@@ -39,6 +39,7 @@ export function useWorkspaceRunController(ctx) {
     await ctx.loadContinuousIntelligence()
     await ctx.loadScenarioCompiler()
     await ctx.loadOperationsCenter()
+    if (!ctx.isWarRoom.value && ctx.loadGuidedGovernance) await ctx.loadGuidedGovernance()
     if (ctx.activeSection.value === 'negotiation') await ctx.negotiation.load()
     await ctx.loadEvaluationCenter()
     await nextTick()
@@ -60,6 +61,7 @@ export function useWorkspaceRunController(ctx) {
       ctx.syncScenarioDraft()
       ctx.prepareCompareDefaults(true)
       await ctx.loadRunDiff()
+      if (ctx.loadGuidedGovernance) await ctx.loadGuidedGovernance()
       await nextTick()
       ctx.renderGraph()
     } finally { ctx.running.value = false }

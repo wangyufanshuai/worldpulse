@@ -71,6 +71,11 @@ export async function createEvidencePack(payload) {
   return data
 }
 
+export async function getEvidencePack(packId) {
+  const { data } = await api.get(`/v4/evidence/packs/${packId}`)
+  return data
+}
+
 export async function syncCalibrationEvidence() {
   const { data } = await api.post('/v4/evidence/calibration/sync')
   return data
@@ -334,6 +339,11 @@ export async function decideScenarioCandidate(organizationId, projectId, candida
 
 export async function listScenarioDrafts(organizationId, projectId) {
   const { data } = await api.get(`/v8/organizations/${organizationId}/projects/${projectId}/scenario-drafts`)
+  return data
+}
+
+export async function getScenarioDraft(organizationId, projectId, draftId) {
+  const { data } = await api.get(`/v8/organizations/${organizationId}/projects/${projectId}/scenario-drafts/${draftId}`)
   return data
 }
 

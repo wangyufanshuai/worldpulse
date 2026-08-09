@@ -405,6 +405,12 @@
       @send="send"
       @open-evidence="openEvidenceDrawer($event.finding, $event.index)"
       @close-evidence="evidenceDrawer = null"
+      @sync-evidence="syncGuidedEvidence"
+      @search-evidence="searchGuidedEvidence"
+      @select-draft="selectGuidedDraft"
+      @submit-draft="submitGuidedDraft"
+      @review-draft="reviewGuidedDraft"
+      @clone-draft="cloneGuidedDraft"
     >
       <template #graph><div ref="graphEl" class="graph-canvas"></div></template>
     </GuidedResearchHost>
@@ -561,6 +567,7 @@ import { useWorkspaceGovernanceController } from '../../composables/useWorkspace
 import { useWorkspaceRunController } from '../../composables/useWorkspaceRunController'
 import { useWorkspaceShell } from '../../composables/useWorkspaceShell'
 import { buildGuidedResearchProjection, citationKindLabel } from '../../composables/guidedResearchProjection'
+import { useGuidedResearchGovernance } from '../../composables/useGuidedResearchGovernance'
 import { decisionLabels, eventFilterOptions, graphTypeOptions, localizedText, prompts } from './warRoomWorkspaceConfig'
 
 const props = defineProps({ projectId: String, section: String })
@@ -589,6 +596,13 @@ const {
 const warRoomData = useWarRoomData(() => props.projectId)
 const runLifecycle = useRunLifecycle(() => props.projectId)
 const auth = useAuthSession()
+const guidedGovernance = useGuidedResearchGovernance(
+  () => props.projectId,
+  () => ({
+    canWrite: auth.permissions.value.canWrite,
+    canReview: auth.permissions.value.canReview,
+  }),
+)
 const detail = ref(null)
 const workspaceState = ref(null)
 const graphEl = ref(null)
@@ -1044,7 +1058,9 @@ const activeEntityDetail = computed(() => {
 })
 const statusText = computed(() => ({ created: '已创建', completed: '已完成' }[detail.value?.project?.status] || detail.value?.project?.status || '未知'))
 const currentModeText = computed(() => isWarRoom.value ? 'War Room' : (detail.value?.latest_run?.data_snapshot?.run_mode === 'full' ? '完整真实数据' : '快速研究'))
-const guidedProjection = computed(() => buildGuidedResearchProjection(detail.value))
+const guidedProjection = computed(() => buildGuidedResearchProjection(detail.value, {
+  governance: isWarRoom.value ? null : guidedGovernance.projection.value,
+}))
 const warRoomSteps = computed(() => [
   { index: '01', key: 'scenario', title: '场景设定', desc: '锁定场景、持续天数和传播参数', done: !!detail.value?.project },
   { index: '02', key: 'agents', title: '国家 Agent', desc: '计算国家压力与行动倾向', done: !!warRoom.value?.agent_decisions?.length },
@@ -1156,9 +1172,28 @@ function openEvidenceDrawer(finding, findingIndex = 0) {
     citations: citations.map(item => ({ ...item, kind_label: citationKindLabel(item.kind) })),
   }
 }
+function syncGuidedEvidence() {
+  guidedGovernance.syncEvidence(detail.value?.latest_run?.run_id || null).then(() => showToast('Evidence 已重新同步')).catch(() => {})
+}
+function searchGuidedEvidence(query) {
+  guidedGovernance.searchEvidence(query).catch(() => {})
+}
+function selectGuidedDraft(draftId) {
+  guidedGovernance.selectDraft(draftId).catch(() => {})
+}
+function submitGuidedDraft(draftId) {
+  guidedGovernance.submitDraft(draftId).then(() => showToast('Scenario Draft 已提交审阅')).catch(() => {})
+}
+function reviewGuidedDraft({ draftId, decision }) {
+  guidedGovernance.reviewDraft(draftId, { decision }).then(() => showToast(decision === 'approve' ? 'Scenario Draft 已批准' : '已请求修订')).catch(() => {})
+}
+function cloneGuidedDraft(draftId) {
+  guidedGovernance.cloneDraft(draftId).then(() => showToast('已通过 clone 创建新修订')).catch(() => {})
+}
 const guidedHostModel = computed(() => ({
   detail: detail.value,
   projection: guidedProjection.value,
+  governance: guidedGovernance.projection.value,
   statusText: statusText.value,
   currentModeText: currentModeText.value,
   runMode: runMode.value,
@@ -1208,6 +1243,7 @@ const { load, loadWorkspaceState, loadPresets, run, send } = useWorkspaceRunCont
   activeSection, negotiation, loadEvaluationCenter, renderGraph, auth, running,
   runLifecycle, lifecycleEngineMode, scenarioPayload, runMode,
   resetReplayArtifacts, showToast, chatting, message,
+  loadGuidedGovernance: () => guidedGovernance.load().catch(() => null),
 })
 reloadWorkspace = load
 
