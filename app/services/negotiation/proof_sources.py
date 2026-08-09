@@ -1067,6 +1067,28 @@ class CommitmentLedgerSource(ClosedSource):
         )
 
 
+def build_empty_commitment_ledger_source(
+    *,
+    run_id: str,
+) -> CommitmentLedgerSource:
+    """Build the one canonical non-negotiation empty Commitment Ledger."""
+
+    payload = {
+        "schema_version": "commitment-ledger.v2",
+        "run_id": run_id,
+        "session_id": None,
+        "tick": None,
+        "entries": (),
+        "ledger_entry_count": 0,
+    }
+    hash_payload = {
+        key: value for key, value in payload.items() if key != "ledger_entry_count"
+    }
+    return CommitmentLedgerSource.model_validate(
+        {**payload, "ledger_hash": stable_hash(hash_payload)}
+    )
+
+
 ConsistencyRole: TypeAlias = Literal["final", "admission", "projection"]
 
 
@@ -1385,6 +1407,59 @@ class HybridModifierBundleSource(ClosedSource):
         )
 
 
+def build_hybrid_modifier_bundle_source(
+    *,
+    run_id: str,
+    consistency_audit_hash: str,
+    bundle: HybridModifierBundle,
+) -> HybridModifierBundleSource:
+    """Wrap a verified production Action Adapter result as a closed V2 MB."""
+
+    verify_modifier_bundle(bundle)
+    accepted_proposal_ids = tuple(
+        sorted(
+            set(bundle.accepted_proposal_ids),
+            key=lambda value: value.encode("utf-8"),
+        )
+    )
+    if len(accepted_proposal_ids) != len(bundle.accepted_proposal_ids):
+        raise ValueError("hybrid MB accepted proposal IDs must be unique")
+    ordered_modifiers = tuple(
+        sorted(
+            bundle.modifiers,
+            key=lambda item: item.proposal_id.encode("utf-8"),
+        )
+    )
+    modifiers = tuple(item.model_dump(mode="json") for item in ordered_modifiers)
+    modifier_tuples = tuple(
+        ModifierReference(
+            proposal_id=item.proposal_id,
+            modifier_id=item.modifier_id,
+            modifier_hash=item.modifier_hash,
+        )
+        for item in ordered_modifiers
+    )
+    modifier_tuple_payload = tuple(
+        item.model_dump(mode="json") for item in modifier_tuples
+    )
+    payload = {
+        "schema_version": "hybrid-modifier-bundle.v2",
+        "run_id": run_id,
+        "tick": None,
+        "consistency_audit_hash": consistency_audit_hash,
+        "inner_bundle": bundle.model_dump(mode="json"),
+        "inner_bundle_hash": bundle.bundle_hash,
+        "accepted_proposal_ids": accepted_proposal_ids,
+        "modifiers": modifiers,
+        "scenario_patch": bundle.scenario_patch,
+        "modifier_tuples": modifier_tuple_payload,
+        "modifier_count": len(modifier_tuples),
+    }
+    return HybridModifierBundleSource.model_validate(
+        {**payload, "bundle_hash": stable_hash(payload)}
+    )
+
+
 class ProjectionAuditRecordSource(ClosedSource):
     proposal_id: str = Field(min_length=1, max_length=160)
     proposal_hash: Digest
@@ -1652,6 +1727,128 @@ def build_audit_only_projection_source(
         "records": tuple(records),
         "record_count": len(records),
         "before_result_hash": final_result_hash,
+        "final_result_hash": final_result_hash,
+    }
+    return ProjectionAuditSource.model_validate(
+        {**payload, "audit_hash": stable_hash(payload)}
+    )
+
+
+def build_hybrid_projection_source(
+    *,
+    run_id: str,
+    consistency_audit_hash: str,
+    before_result_hash: str,
+    final_result_hash: str,
+    proposals: tuple[AgentActionProposal, ...],
+    decisions: tuple[AgentActionDecision, ...],
+    modifier_bundle: HybridModifierBundleSource,
+) -> ProjectionAuditSource:
+    """Build the mandatory closed PA for a deterministic hybrid rerun."""
+
+    ordered = tuple(
+        sorted(proposals, key=lambda item: item.proposal_id.encode("utf-8"))
+    )
+    proposal_ids = tuple(item.proposal_id for item in ordered)
+    if len(set(proposal_ids)) != len(proposal_ids):
+        raise ValueError("hybrid PA proposals must have unique IDs")
+    decisions_by_id = {item.proposal_id: item for item in decisions}
+    if len(decisions_by_id) != len(decisions) or set(decisions_by_id) != set(
+        proposal_ids
+    ):
+        raise ValueError("hybrid PA decisions must equal proposal membership")
+    if modifier_bundle.run_id != run_id or (
+        modifier_bundle.consistency_audit_hash != consistency_audit_hash
+    ):
+        raise ValueError("hybrid PA modifier source coordinate mismatch")
+
+    proposal_hashes = tuple(
+        stable_hash(item.model_dump(mode="json")) for item in ordered
+    )
+    proposal_by_id = {item.proposal_id: item for item in ordered}
+    modifier_by_id = {
+        item.proposal_id: item for item in modifier_bundle.modifier_tuples
+    }
+    projected_ids = modifier_bundle.accepted_proposal_ids
+    if set(projected_ids) != set(modifier_by_id):
+        raise ValueError("hybrid PA projected IDs must equal modifier membership")
+    projected_semantics = tuple(
+        stable_hash(
+            {
+                "actor_id": proposal_by_id[proposal_id].actor_id,
+                "action_type": proposal_by_id[proposal_id].action_type,
+                "target_ids": tuple(proposal_by_id[proposal_id].target_ids),
+                "parameters": proposal_by_id[proposal_id].parameters,
+            }
+        )
+        for proposal_id in projected_ids
+    )
+    records: list[dict[str, object]] = []
+    status_by_outcome = {
+        "rejected": "blocked",
+        "constrained": "constrained",
+        "expired": "expired",
+    }
+    for index, proposal in enumerate(ordered):
+        if proposal.schema_version != "agent-action-proposal.v1" or proposal.run_id != run_id:
+            raise ValueError("hybrid PA proposal identity mismatch")
+        target_ids = tuple(proposal.target_ids)
+        if target_ids != tuple(
+            sorted(set(target_ids), key=lambda value: value.encode("utf-8"))
+        ):
+            raise ValueError("hybrid PA proposal targets are not canonical")
+        decision = decisions_by_id[proposal.proposal_id]
+        proposal_hash = proposal_hashes[index]
+        if decision.input_hash != proposal_hash:
+            raise ValueError("hybrid PA decision input hash mismatch")
+        modifier = modifier_by_id.get(proposal.proposal_id)
+        if modifier is not None:
+            if decision.decision != "accepted" or decision.outcome != "accepted":
+                raise ValueError("hybrid PA modifier requires an accepted decision")
+            projection_status = "projected"
+        else:
+            if decision.outcome == "accepted":
+                raise ValueError("hybrid PA accepted decision requires a modifier")
+            projection_status = status_by_outcome[decision.outcome]
+        records.append(
+            {
+                "proposal_id": proposal.proposal_id,
+                "proposal_hash": proposal_hash,
+                "input_hash": proposal_hash,
+                "decision": decision.decision,
+                "rule_version": decision.rule_version,
+                "outcome": decision.outcome,
+                "rejection_reason": decision.rejection_reason,
+                "projection_status": projection_status,
+                "projection_hash": (
+                    modifier.modifier_hash if modifier is not None else None
+                ),
+                "modifier_id": modifier.modifier_id if modifier is not None else None,
+                "final_result_hash": final_result_hash,
+            }
+        )
+    payload = {
+        "schema_version": "agent-action-projection-audit.v2",
+        "run_id": run_id,
+        "session_id": None,
+        "tick": None,
+        "projection_mode": "hybrid",
+        "consistency_audit_hash": consistency_audit_hash,
+        "modifier_bundle_hash": modifier_bundle.bundle_hash,
+        "proposal_ids": proposal_ids,
+        "proposal_hashes": proposal_hashes,
+        "proposal_count": len(proposal_ids),
+        "projected_proposal_ids": projected_ids,
+        "projected_semantic_key_hashes": projected_semantics,
+        "projected_count": len(projected_ids),
+        "modifier_tuples": tuple(
+            item.model_dump(mode="json")
+            for item in modifier_bundle.modifier_tuples
+        ),
+        "modifier_count": modifier_bundle.modifier_count,
+        "records": tuple(records),
+        "record_count": len(records),
+        "before_result_hash": before_result_hash,
         "final_result_hash": final_result_hash,
     }
     return ProjectionAuditSource.model_validate(
@@ -1962,6 +2159,43 @@ class HybridReplaySource(ClosedSource):
             ledger_hash=self.ledger_hash,
             accepted_proposal_ids=self.accepted_proposal_ids,
         )
+
+
+def build_hybrid_replay_source(
+    *,
+    run_id: str,
+    engine_mode: Literal["hybrid", "hybrid_recorded"],
+    baseline_result_hash: str,
+    final_result_hash: str,
+    full_source_run_hash: str,
+    proposal_batch_hash: str,
+    consistency_audit_hash: str,
+    modifier_bundle_hash: str,
+    projection_audit_hash: str,
+    ledger_hash: str,
+    accepted_proposal_ids: tuple[str, ...],
+) -> HybridReplaySource:
+    """Build the stored-only provider-free replay root for a hybrid run."""
+
+    payload = {
+        "schema_version": "hybrid-replay-record.v2",
+        "run_id": run_id,
+        "engine_mode": engine_mode,
+        "replay_source_kind": "stored_only",
+        "provider_calls_required": 0,
+        "baseline_result_hash": baseline_result_hash,
+        "final_result_hash": final_result_hash,
+        "full_source_run_hash": full_source_run_hash,
+        "proposal_batch_hash": proposal_batch_hash,
+        "consistency_audit_hash": consistency_audit_hash,
+        "modifier_bundle_hash": modifier_bundle_hash,
+        "projection_audit_hash": projection_audit_hash,
+        "ledger_hash": ledger_hash,
+        "accepted_proposal_ids": accepted_proposal_ids,
+    }
+    return HybridReplaySource.model_validate(
+        {**payload, "replay_hash": stable_hash(payload)}
+    )
 
 
 class NegotiationReplaySource(ClosedSource):

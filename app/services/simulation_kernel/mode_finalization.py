@@ -481,14 +481,17 @@ def _finalize_negotiation(
     admission_refs = references[12:18]
     ledger_refs = references[18:24]
     eligibility_refs = references[24:30]
-    for block, token in (
+    required_blocks: tuple[
+        tuple[Sequence[KernelModeProofReference], ProofToken], ...
+    ] = (
         (round_refs, "RR"),
         (proposal_refs, "NP"),
         (admission_refs, "AC"),
         (ledger_refs, "CL"),
         (eligibility_refs, "EL"),
-    ):
-        _require_token_ticks(block, token)  # type: ignore[arg-type]
+    )
+    for block, token in required_blocks:
+        _require_token_ticks(block, token)
 
     cursor = fixed_prefix_count
     projection_refs: list[KernelModeProofReference] = []
@@ -548,15 +551,16 @@ def _finalize_negotiation(
     ):
         _fail("negotiation Consistency context identity mismatch")
 
-    for claims, token in (
+    required_claims: tuple[tuple[Sequence[_TickedClaim], ProofToken], ...] = (
         (rounds, "RR"),
         (proposals, "NP"),
         (admissions, "AC"),
         (ledgers, "CL"),
         (eligibilities, "EL"),
         (diffusions, "ND"),
-    ):
-        _require_claim_ticks(claims, tuple(range(1, 7)), token)  # type: ignore[arg-type]
+    )
+    for claims, token in required_claims:
+        _require_claim_ticks(claims, tuple(range(1, 7)), token)
     _require_claim_ticks(projections, tuple(reference.tick for reference in projection_refs), "PC")
     _require_claim_ticks(modifiers, tuple(reference.tick for reference in modifier_refs), "MB")
     _require_claim_ticks(projection_audits, tuple(reference.tick for reference in projection_audit_refs), "PA")
@@ -1138,9 +1142,9 @@ def _validate_supersedes_relationships(
         return
     if len(supersedes) != 1 or reference.relationships[-1] != supersedes[0]:
         _fail("supersedes must be the sole final retry relationship")
-    if request.engine_mode == "controlled_agent":
+    if request.engine_mode in {"controlled_agent", "hybrid", "hybrid_recorded"}:
         if reference.token != "AR" or reference.tick is not None:
-            _fail("controlled_agent supersedes is allowed only on AR")
+            _fail("Agent-capable supersedes is allowed only on AR")
         target_attempt = supersedes[0].target_attempt
         if target_attempt == request.attempt:
             _fail("supersedes target attempt must differ from the current attempt")

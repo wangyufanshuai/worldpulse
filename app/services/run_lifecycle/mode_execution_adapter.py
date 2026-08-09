@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -12,14 +12,22 @@ from app.core.models import WarRoomRun
 from app.services.agent_contract.models import AgentActionProposal
 from app.services.consistency import evaluate_war_room_result
 from app.services.consistency.hashing import stable_hash
+from app.services.hybrid_simulation import run_hybrid_simulation
 from app.services.negotiation import (
     AgentRuntimeResultSource,
     KernelProposalBatchSource,
     build_audit_only_projection_source,
     build_consistency_audit_source,
+    build_empty_commitment_ledger_source,
+    build_hybrid_modifier_bundle_source,
+    build_hybrid_projection_source,
+    build_hybrid_replay_source,
     build_kernel_proposal_batch_source,
     extract_ar_claims,
+    extract_cl_claims,
     extract_consistency_claims,
+    extract_hr_claims,
+    extract_mb_claims,
     extract_pa_claims,
     extract_pb_claims,
 )
@@ -117,12 +125,13 @@ class HistoricalRuntimeSource:
     payload: dict[str, Any]
 
 
-def load_controlled_retry_runtime(
+def load_agent_retry_runtime(
     run_id: str,
     *,
     current_attempt_id: str,
+    engine_mode: Literal["controlled_agent", "hybrid", "hybrid_recorded"],
 ) -> HistoricalRuntimeSource:
-    """Authenticate the unique latest failed-attempt AR for provider-free retry."""
+    """Authenticate the unique latest failed-attempt AR for Agent-mode retry."""
 
     with connect() as connection:
         current = connection.execute(
@@ -138,7 +147,7 @@ def load_controlled_retry_runtime(
         ).fetchone()
         if (
             current is None
-            or current["engine_mode"] != "controlled_agent"
+            or current["engine_mode"] != engine_mode
             or int(current["attempt_number"]) <= 1
         ):
             raise ModeExecutionAdapterError(
@@ -197,7 +206,7 @@ def load_controlled_retry_runtime(
             step["output"],
             run_id=run_id,
             attempt=historical_attempt,
-            engine_mode="controlled_agent",
+            engine_mode=engine_mode,
             artifacts=ordered,
         )
         runtime_sources = [
@@ -217,6 +226,20 @@ def load_controlled_retry_runtime(
             attempt_number=selected_number,
             payload=source.model_dump(mode="json"),
         )
+
+
+def load_controlled_retry_runtime(
+    run_id: str,
+    *,
+    current_attempt_id: str,
+) -> HistoricalRuntimeSource:
+    """Compatibility wrapper for the first Agent-capable V2 slice."""
+
+    return load_agent_retry_runtime(
+        run_id,
+        current_attempt_id=current_attempt_id,
+        engine_mode="controlled_agent",
+    )
 
 
 class StoredModeExecutionAdapter:
@@ -280,6 +303,8 @@ class StoredModeExecutionAdapter:
                 "deterministic",
                 "mock_agent",
                 "controlled_agent",
+                "hybrid",
+                "hybrid_recorded",
             }:
                 raise ModeExecutionAdapterError(
                     "this reconstruction slice does not admit the requested engine mode"
@@ -294,6 +319,9 @@ class StoredModeExecutionAdapter:
             proposal_artifact = None
             projection_audit_artifact = None
             runtime_artifact = None
+            modifier_artifact = None
+            ledger_artifact = None
+            replay_artifact = None
             if job["engine_mode"] == "deterministic":
                 baseline_artifact = _load_exact_bound_artifact(
                     connection,
@@ -314,7 +342,7 @@ class StoredModeExecutionAdapter:
                     producing_step_version="consistency-audit-step.v1",
                 )
             else:
-                rooted = _load_audit_only_source_roots(
+                rooted = _load_agent_mode_source_roots(
                     connection,
                     job=job,
                     profile=selection.profile,
@@ -329,7 +357,11 @@ class StoredModeExecutionAdapter:
                 proposal_artifact = _bound_from_root(
                     rooted["agent_action_proposals"]
                 )
-                if job["engine_mode"] == "controlled_agent":
+                if job["engine_mode"] in {
+                    "controlled_agent",
+                    "hybrid",
+                    "hybrid_recorded",
+                }:
                     runtime_artifact = _bound_from_root(
                         rooted["agent_runtime_audit"]
                     )
@@ -342,6 +374,16 @@ class StoredModeExecutionAdapter:
                     if projection_root is not None
                     else None
                 )
+                if job["engine_mode"] in {"hybrid", "hybrid_recorded"}:
+                    modifier_artifact = _bound_from_root(
+                        rooted["deterministic_action_modifiers"]
+                    )
+                    ledger_artifact = _bound_from_root(
+                        rooted["commitment_ledger"]
+                    )
+                    replay_artifact = _bound_from_root(
+                        rooted["hybrid_replay_record"]
+                    )
 
         baseline = WarRoomRun.model_validate(baseline_artifact.payload)
         projection = build_war_room_projection(
@@ -350,6 +392,8 @@ class StoredModeExecutionAdapter:
             seed=selection.profile.effective_seed,
             rule_pack_hash=job["rule_pack_hash"],
         )
+        final_result = baseline
+        final_projection = projection
         agent_pack_id: str | None = None
         agent_pack_hash: str | None = None
         constraint_context_hash: str | None = None
@@ -442,9 +486,10 @@ class StoredModeExecutionAdapter:
                         "controlled_agent AR context differs from the resolver"
                     )
                 if int(job["attempt_number"]) > 1:
-                    historical_runtime_source = load_controlled_retry_runtime(
+                    historical_runtime_source = load_agent_retry_runtime(
                         run_id,
                         current_attempt_id=fencing_epoch.current_attempt_id,
+                        engine_mode=job["engine_mode"],
                     )
                     if (
                         runtime_artifact.supersedes_artifact_id
@@ -516,7 +561,11 @@ class StoredModeExecutionAdapter:
                 complete_proposals=complete_proposals,
             )
             pb_relationships: tuple[KernelModeProofRelationship, ...] = ()
-            if job["engine_mode"] == "controlled_agent":
+            if job["engine_mode"] in {
+                "controlled_agent",
+                "hybrid",
+                "hybrid_recorded",
+            }:
                 if runtime_artifact is None:
                     raise ModeExecutionAdapterError(
                         "controlled_agent proof is missing AR"
@@ -581,7 +630,177 @@ class StoredModeExecutionAdapter:
             )
             references.append(fc_reference)
 
-            if pb_claims.proposal_count == 0:
+            if job["engine_mode"] in {"hybrid", "hybrid_recorded"}:
+                if (
+                    modifier_artifact is None
+                    or ledger_artifact is None
+                    or projection_audit_artifact is None
+                    or replay_artifact is None
+                ):
+                    raise ModeExecutionAdapterError(
+                        "hybrid proof is missing MB/CL/PA/HR"
+                    )
+                authoritative_report = expected_fc.inner_report()
+                outcome = run_hybrid_simulation(
+                    baseline,
+                    list(authoritative_proposals),
+                    authoritative_report,
+                    seed=selection.profile.effective_seed,
+                )
+                hybrid_final_result = (
+                    baseline
+                    if not outcome.modifier_bundle.accepted_proposal_ids
+                    else outcome.final_result
+                )
+                expected_mb = build_hybrid_modifier_bundle_source(
+                    run_id=run_id,
+                    consistency_audit_hash=expected_fc.audit_hash,
+                    bundle=outcome.modifier_bundle,
+                )
+                if modifier_artifact.payload != expected_mb.model_dump(mode="json"):
+                    raise ModeExecutionAdapterError(
+                        "stored hybrid MB differs from Action Adapter reconstruction"
+                    )
+                mb_claims = extract_mb_claims(
+                    modifier_artifact.payload,
+                    run_id=run_id,
+                    tick=None,
+                    consistency_audit_hash=expected_fc.audit_hash,
+                )
+                mb_reference = _proof_reference(
+                    artifact=modifier_artifact,
+                    proof_schema="kp.action-modifier-bundle.v1",
+                    claims=mb_claims,
+                    content_hash=mb_claims.bundle_hash,
+                    run_id=run_id,
+                    attempt=fencing_epoch.current_attempt_id,
+                    ordinal=len(references),
+                    relationships=(
+                        _relationship("maps", pb_reference),
+                        _relationship("admitted_by", fc_reference),
+                    ),
+                )
+                references.append(mb_reference)
+
+                expected_cl = build_empty_commitment_ledger_source(run_id=run_id)
+                if ledger_artifact.payload != expected_cl.model_dump(mode="json"):
+                    raise ModeExecutionAdapterError(
+                        "stored hybrid CL differs from the canonical empty ledger"
+                    )
+                cl_claims = extract_cl_claims(
+                    ledger_artifact.payload,
+                    run_id=run_id,
+                    session_id=None,
+                    tick=None,
+                )
+                cl_reference = _proof_reference(
+                    artifact=ledger_artifact,
+                    proof_schema="kp.commitment-ledger.v1",
+                    claims=cl_claims,
+                    content_hash=cl_claims.ledger_hash,
+                    run_id=run_id,
+                    attempt=fencing_epoch.current_attempt_id,
+                    ordinal=len(references),
+                    relationships=(
+                        _relationship("ledger_for", mb_reference),
+                    ),
+                )
+                references.append(cl_reference)
+
+                expected_pa = build_hybrid_projection_source(
+                    run_id=run_id,
+                    consistency_audit_hash=expected_fc.audit_hash,
+                    before_result_hash=stable_hash(
+                        baseline.model_dump(mode="json")
+                    ),
+                    final_result_hash=outcome.replay_record.final_result_hash,
+                    proposals=authoritative_proposals,
+                    decisions=tuple(authoritative_report.proposal_decisions),
+                    modifier_bundle=expected_mb,
+                )
+                if projection_audit_artifact.payload != expected_pa.model_dump(mode="json"):
+                    raise ModeExecutionAdapterError(
+                        "stored hybrid PA differs from deterministic replay"
+                    )
+                pa_claims = extract_pa_claims(
+                    projection_audit_artifact.payload,
+                    run_id=run_id,
+                    session_id=None,
+                    tick=None,
+                    projection_mode="hybrid",
+                    consistency_audit_hash=expected_fc.audit_hash,
+                    complete_proposals=complete_proposals,
+                    modifier_claims=mb_claims,
+                )
+                pa_reference = _proof_reference(
+                    artifact=projection_audit_artifact,
+                    proof_schema="kp.projection-audit.v1",
+                    claims=pa_claims,
+                    content_hash=pa_claims.audit_hash,
+                    run_id=run_id,
+                    attempt=fencing_epoch.current_attempt_id,
+                    ordinal=len(references),
+                    relationships=(
+                        _relationship("covers", pb_reference),
+                        _relationship("governed_by", fc_reference),
+                        _relationship("audits", mb_reference),
+                        _relationship("ledger_snapshot", cl_reference),
+                    ),
+                )
+                references.append(pa_reference)
+
+                expected_hr = build_hybrid_replay_source(
+                    run_id=run_id,
+                    engine_mode=job["engine_mode"],
+                    baseline_result_hash=stable_hash(
+                        baseline.model_dump(mode="json")
+                    ),
+                    final_result_hash=outcome.replay_record.final_result_hash,
+                    full_source_run_hash=stable_hash(
+                        hybrid_final_result.model_dump(mode="json")
+                    ),
+                    proposal_batch_hash=stored_pb.batch_hash,
+                    consistency_audit_hash=expected_fc.audit_hash,
+                    modifier_bundle_hash=expected_mb.bundle_hash,
+                    projection_audit_hash=expected_pa.audit_hash,
+                    ledger_hash=expected_cl.ledger_hash,
+                    accepted_proposal_ids=expected_mb.accepted_proposal_ids,
+                )
+                if replay_artifact.payload != expected_hr.model_dump(mode="json"):
+                    raise ModeExecutionAdapterError(
+                        "stored hybrid HR differs from provider-free replay"
+                    )
+                hr_claims = extract_hr_claims(
+                    replay_artifact.payload,
+                    run_id=run_id,
+                    engine_mode=job["engine_mode"],
+                )
+                references.append(
+                    _proof_reference(
+                        artifact=replay_artifact,
+                        proof_schema="kp.hybrid-replay.v1",
+                        claims=hr_claims,
+                        content_hash=hr_claims.replay_hash,
+                        run_id=run_id,
+                        attempt=fencing_epoch.current_attempt_id,
+                        ordinal=len(references),
+                        relationships=(
+                            _relationship("observations", pb_reference),
+                            _relationship("governed_by", fc_reference),
+                            _relationship("replays", mb_reference),
+                            _relationship("ledger_snapshot", cl_reference),
+                            _relationship("audit", pa_reference),
+                        ),
+                    )
+                )
+                final_result = hybrid_final_result
+                final_projection = build_war_room_projection(
+                    final_result,
+                    run_id=run_id,
+                    seed=selection.profile.effective_seed,
+                    rule_pack_hash=job["rule_pack_hash"],
+                )
+            elif pb_claims.proposal_count == 0:
                 if projection_audit_artifact is not None:
                     raise ModeExecutionAdapterError(
                         "zero-proposal audit-only proof may not contain PA"
@@ -656,7 +875,7 @@ class StoredModeExecutionAdapter:
             "runtime_profile_hash": job["runtime_profile_hash"],
             "fencing_epoch_hash": fencing_epoch.fencing_epoch_hash,
             "baseline_projection": projection.model_dump(mode="json"),
-            "final_projection": projection.model_dump(mode="json"),
+            "final_projection": final_projection.model_dump(mode="json"),
             "proof": proof.model_dump(mode="json"),
             "proof_hash": proof.proof_hash,
         }
@@ -673,7 +892,7 @@ class StoredModeExecutionAdapter:
         return ModeExecutionReconstruction(
             request=request,
             record=record,
-            final_result=baseline,
+            final_result=final_result,
         )
 
 
@@ -756,7 +975,7 @@ def _bound_from_root(artifact: RootArtifact) -> _BoundArtifact:
     )
 
 
-def _load_audit_only_source_roots(
+def _load_agent_mode_source_roots(
     connection,
     *,
     job,
@@ -843,7 +1062,7 @@ def _load_audit_only_source_roots(
     by_type = {item.artifact_type: item for item in combined}
     if len(by_type) != len(combined):
         raise ModeExecutionAdapterError(
-            "audit-only source roots contain duplicate Artifact types"
+            "Agent-mode source roots contain duplicate Artifact types"
         )
     return by_type
 

@@ -1143,18 +1143,27 @@ def _append_supersedes(
     })
 
 
-def test_controlled_retry_admits_supersedes_only_as_final_ar_relationship():
-    references = list(_audit_references("controlled_agent", ("proposal-1",)))
+@pytest.mark.parametrize("engine_mode", ["controlled_agent", "hybrid", "hybrid_recorded"])
+def test_agent_retry_admits_supersedes_only_as_final_ar_relationship(engine_mode):
+    references = list(
+        _audit_references("controlled_agent", ("proposal-1",))
+        if engine_mode == "controlled_agent"
+        else _hybrid_references(engine_mode=engine_mode)
+    )
     references[0] = _append_supersedes(references[0])
 
     record = finalize_execution(
-        _execution_request("controlled_agent", tuple(references))
+        _execution_request(engine_mode, tuple(references))
     )
 
-    assert record.authority_path == "controlled_action_adapter_deterministic"
+    assert record.authority_path == {
+        "controlled_agent": "controlled_action_adapter_deterministic",
+        "hybrid": "hybrid_action_adapter_replay",
+        "hybrid_recorded": "hybrid_recorded_action_adapter_replay",
+    }[engine_mode]
 
 
-def test_controlled_retry_rejects_nonfinal_ar_supersedes():
+def test_agent_retry_rejects_nonfinal_ar_supersedes():
     references = list(_audit_references("controlled_agent", ("proposal-1",)))
     superseded = _append_supersedes(references[0])
     with pytest.raises(ValidationError, match="must be last"):
@@ -1172,24 +1181,34 @@ def test_controlled_retry_rejects_nonfinal_ar_supersedes():
         )
 
 
+@pytest.mark.parametrize("engine_mode", ["controlled_agent", "hybrid", "hybrid_recorded"])
 @pytest.mark.parametrize("reference_index", [1, 2, 3])
-def test_controlled_retry_rejects_supersedes_outside_ar(reference_index):
-    references = list(_audit_references("controlled_agent", ("proposal-1",)))
+def test_agent_retry_rejects_supersedes_outside_ar(engine_mode, reference_index):
+    references = list(
+        _audit_references("controlled_agent", ("proposal-1",))
+        if engine_mode == "controlled_agent"
+        else _hybrid_references(engine_mode=engine_mode)
+    )
     references[reference_index] = _append_supersedes(references[reference_index])
 
     with pytest.raises(KernelModeFinalizationError, match="only on AR"):
-        finalize_execution(_execution_request("controlled_agent", tuple(references)))
+        finalize_execution(_execution_request(engine_mode, tuple(references)))
 
 
-def test_controlled_retry_rejects_current_attempt_supersedes_target():
-    references = list(_audit_references("controlled_agent", ("proposal-1",)))
+@pytest.mark.parametrize("engine_mode", ["controlled_agent", "hybrid", "hybrid_recorded"])
+def test_agent_retry_rejects_current_attempt_supersedes_target(engine_mode):
+    references = list(
+        _audit_references("controlled_agent", ("proposal-1",))
+        if engine_mode == "controlled_agent"
+        else _hybrid_references(engine_mode=engine_mode)
+    )
     references[0] = _append_supersedes(
         references[0],
         target_attempt="attempt-1",
     )
 
     with pytest.raises(KernelModeFinalizationError, match="differ from the current"):
-        finalize_execution(_execution_request("controlled_agent", tuple(references)))
+        finalize_execution(_execution_request(engine_mode, tuple(references)))
 
 
 def _supersede_retry_tick(

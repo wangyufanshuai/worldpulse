@@ -27,6 +27,10 @@ from app.services.reviews import create_review_case
 from app.services.negotiation import (
     build_audit_only_projection_source,
     build_consistency_audit_source,
+    build_empty_commitment_ledger_source,
+    build_hybrid_modifier_bundle_source,
+    build_hybrid_projection_source,
+    build_hybrid_replay_source,
     build_kernel_proposal_batch_source,
     run_negotiation,
 )
@@ -48,7 +52,7 @@ from .finalization_uow import (
 )
 from .mode_execution_adapter import (
     StoredModeExecutionAdapter,
-    load_controlled_retry_runtime,
+    load_agent_retry_runtime,
 )
 from .mode_context import build_resolved_mock_agent_batch, resolve_mode_context
 from .source_roots import (
@@ -60,6 +64,10 @@ from .source_roots import (
 
 
 simulation_runtime: SimulationRuntimeApplicationPort = simulation_runtime_service
+V2_RUNTIME_MODES = frozenset(
+    {"controlled_agent", "hybrid", "hybrid_recorded"}
+)
+V2_HYBRID_MODES = frozenset({"hybrid", "hybrid_recorded"})
 
 
 def run_war_room(request: WarRoomScenarioRequest) -> WarRoomRun:
@@ -185,6 +193,8 @@ def process_job(run_id: str) -> RunJobStatus:
         "deterministic",
         "mock_agent",
         "controlled_agent",
+        "hybrid",
+        "hybrid_recorded",
     }:
         raise V2ExecutionPathNotEnabledError(
             "kernel-mode-execution.v2 execution mode is not enabled on this worker"
@@ -192,7 +202,7 @@ def process_job(run_id: str) -> RunJobStatus:
     kernel_shadow_policy = kernel_shadow_policy_for_job(job)
     if (
         execution_contract.is_v2
-        and job.engine_mode in {"mock_agent", "controlled_agent"}
+        and job.engine_mode in {"mock_agent", *V2_RUNTIME_MODES}
         and kernel_shadow_policy is not None
     ):
         raise V2ExecutionPathNotEnabledError(
@@ -270,7 +280,7 @@ def process_job(run_id: str) -> RunJobStatus:
     resolved_mode_context = None
     if (
         execution_contract.is_v2
-        and job.engine_mode in {"mock_agent", "controlled_agent"}
+        and job.engine_mode in {"mock_agent", *V2_RUNTIME_MODES}
         and result is not None
     ):
         resolved_mode_context = resolve_mode_context(
@@ -398,7 +408,10 @@ def process_job(run_id: str) -> RunJobStatus:
                         "integration_duration_ms": round(shadow_duration_ms, 6),
                     },
                 )
-            if job.engine_mode == "controlled_agent" and execution_contract.is_v2:
+            if (
+                job.engine_mode in V2_RUNTIME_MODES
+                and execution_contract.is_v2
+            ):
                 resolved_mode_context, step_output_override = (
                     _persist_v2_resolver_context(
                         run_id=run_id,
@@ -563,6 +576,13 @@ def process_job(run_id: str) -> RunJobStatus:
                 raise HTTPException(status_code=500, detail="Consistency audit requires a deterministic War Room result")
             proposal_source = None
             proposal_artifact = None
+            modifier_source = None
+            modifier_artifact = None
+            ledger_source = None
+            ledger_artifact = None
+            replay_source = None
+            replay_artifact = None
+            projection_audit = None
             projection_audit_artifact = None
             runtime = None
             runtime_artifact = None
@@ -594,7 +614,10 @@ def process_job(run_id: str) -> RunJobStatus:
                     proposal_source.model_dump(mode="json"),
                     auto_supersede=False,
                 )
-            elif execution_contract.is_v2 and job.engine_mode == "controlled_agent":
+            elif (
+                execution_contract.is_v2
+                and job.engine_mode in V2_RUNTIME_MODES
+            ):
                 if resolved_mode_context is None:
                     resolved_mode_context = resolve_mode_context(
                         result,
@@ -620,9 +643,10 @@ def process_job(run_id: str) -> RunJobStatus:
                     )
 
                 if job.attempt_count > 1:
-                    historical_runtime = load_controlled_retry_runtime(
+                    historical_runtime = load_agent_retry_runtime(
                         run_id,
                         current_attempt_id=attempt_id,
+                        engine_mode=job.engine_mode,
                     )
                     runtime = AgentRuntimeResult.model_validate(
                         historical_runtime.payload
@@ -649,7 +673,7 @@ def process_job(run_id: str) -> RunJobStatus:
                     mode="json"
                 ):
                     raise V2ExecutionPathNotEnabledError(
-                        "controlled Agent Runtime context drifted from the resolver"
+                        "Agent Runtime context drifted from the resolver"
                     )
                 proposals = runtime.proposals
                 constraint_context = runtime.constraint_context
@@ -683,14 +707,14 @@ def process_job(run_id: str) -> RunJobStatus:
                     "AGENT",
                     "consistency_audit",
                     (
-                        "Controlled Agent Runtime re-emitted"
+                        "Agent Runtime re-emitted"
                         if historical_runtime is not None
-                        else "Controlled Agent Runtime completed"
+                        else "Agent Runtime completed"
                     ),
                     (
                         "Authenticated historical transcript was re-emitted without Provider access."
                         if historical_runtime is not None
-                        else "Controlled Agent transcript was rooted before Consistency evaluation."
+                        else "Agent transcript was rooted before Consistency evaluation."
                     ),
                     payload={
                         "provider": runtime.provider,
@@ -725,7 +749,7 @@ def process_job(run_id: str) -> RunJobStatus:
                 constraint_context=constraint_context,
             )
             if execution_contract.is_v2:
-                if job.engine_mode in {"mock_agent", "controlled_agent"}:
+                if job.engine_mode in {"mock_agent", *V2_RUNTIME_MODES}:
                     if resolved_mode_context is None:
                         resolved_mode_context = resolve_mode_context(
                             result,
@@ -796,7 +820,110 @@ def process_job(run_id: str) -> RunJobStatus:
                             "projection_status": decision.projection_status,
                         },
                     )
-            if job.engine_mode == "hybrid":
+            if execution_contract.is_v2 and job.engine_mode in V2_HYBRID_MODES:
+                if (
+                    proposal_source is None
+                    or proposal_artifact is None
+                    or runtime is None
+                    or runtime_artifact is None
+                ):
+                    raise V2ExecutionPathNotEnabledError(
+                        "hybrid V2 consistency step is missing AR/PB"
+                    )
+                baseline_result = result
+                authoritative_report = consistency_source.inner_report()
+                outcome = run_hybrid_simulation(
+                    baseline_result,
+                    proposals,
+                    authoritative_report,
+                    seed=execution_contract.profile.effective_seed,
+                )
+                hybrid_final_result = (
+                    baseline_result
+                    if not outcome.modifier_bundle.accepted_proposal_ids
+                    else outcome.final_result
+                )
+                modifier_source = build_hybrid_modifier_bundle_source(
+                    run_id=run_id,
+                    consistency_audit_hash=consistency_source.audit_hash,
+                    bundle=outcome.modifier_bundle,
+                )
+                modifier_artifact = repository.add_artifact(
+                    run_id,
+                    "deterministic_action_modifiers",
+                    modifier_source.schema_version,
+                    modifier_source.model_dump(mode="json"),
+                    auto_supersede=False,
+                )
+                ledger_source = build_empty_commitment_ledger_source(run_id=run_id)
+                ledger_artifact = repository.add_artifact(
+                    run_id,
+                    "commitment_ledger",
+                    ledger_source.schema_version,
+                    ledger_source.model_dump(mode="json"),
+                    auto_supersede=False,
+                )
+                projection_audit = build_hybrid_projection_source(
+                    run_id=run_id,
+                    consistency_audit_hash=consistency_source.audit_hash,
+                    before_result_hash=stable_hash(
+                        baseline_result.model_dump(mode="json")
+                    ),
+                    final_result_hash=outcome.replay_record.final_result_hash,
+                    proposals=tuple(proposals),
+                    decisions=tuple(authoritative_report.proposal_decisions),
+                    modifier_bundle=modifier_source,
+                )
+                projection_audit_artifact = repository.add_artifact(
+                    run_id,
+                    "agent_action_projection_audit",
+                    projection_audit.schema_version,
+                    projection_audit.model_dump(mode="json"),
+                    auto_supersede=False,
+                )
+                replay_source = build_hybrid_replay_source(
+                    run_id=run_id,
+                    engine_mode=job.engine_mode,
+                    baseline_result_hash=stable_hash(
+                        baseline_result.model_dump(mode="json")
+                    ),
+                    final_result_hash=outcome.replay_record.final_result_hash,
+                    full_source_run_hash=stable_hash(
+                        hybrid_final_result.model_dump(mode="json")
+                    ),
+                    proposal_batch_hash=proposal_source.batch_hash,
+                    consistency_audit_hash=consistency_source.audit_hash,
+                    modifier_bundle_hash=modifier_source.bundle_hash,
+                    projection_audit_hash=projection_audit.audit_hash,
+                    ledger_hash=ledger_source.ledger_hash,
+                    accepted_proposal_ids=modifier_source.accepted_proposal_ids,
+                )
+                replay_artifact = repository.add_artifact(
+                    run_id,
+                    "hybrid_replay_record",
+                    replay_source.schema_version,
+                    replay_source.model_dump(mode="json"),
+                    auto_supersede=False,
+                )
+                repository.append_event(
+                    run_id,
+                    "ENGINE",
+                    "consistency_audit",
+                    "Hybrid deterministic replay rooted",
+                    "Accepted Agent proposals were mapped and replayed by the deterministic engine.",
+                    payload={
+                        "accepted_proposal_count": len(
+                            modifier_source.accepted_proposal_ids
+                        ),
+                        "modifier_bundle_hash": modifier_source.bundle_hash,
+                        "ledger_hash": ledger_source.ledger_hash,
+                        "projection_audit_hash": projection_audit.audit_hash,
+                        "replay_hash": replay_source.replay_hash,
+                        "provider_calls_required": 0,
+                    },
+                )
+                result = hybrid_final_result
+            elif job.engine_mode == "hybrid":
                 outcome = run_hybrid_simulation(result, proposals, report, seed=job.seed or 42)
                 if outcome.projection_audit is not None:
                     repository.add_artifact(
@@ -869,7 +996,89 @@ def process_job(run_id: str) -> RunJobStatus:
                     projection_audit.model_dump(mode="json"),
                     auto_supersede=not execution_contract.is_v2,
                 )
-            if execution_contract.is_v2 and job.engine_mode == "mock_agent":
+            if execution_contract.is_v2 and job.engine_mode in V2_HYBRID_MODES:
+                if (
+                    runtime is None
+                    or runtime_artifact is None
+                    or proposal_source is None
+                    or proposal_artifact is None
+                    or modifier_source is None
+                    or modifier_artifact is None
+                    or ledger_source is None
+                    or ledger_artifact is None
+                    or projection_audit is None
+                    or projection_audit_artifact is None
+                    or replay_source is None
+                    or replay_artifact is None
+                ):
+                    raise V2ExecutionPathNotEnabledError(
+                        "hybrid V2 proof sources are incomplete"
+                    )
+                hybrid_references = [
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            runtime_artifact,
+                            runtime.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.agent-runtime.v1",
+                        content_hash=runtime.runtime_hash,
+                    ),
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            proposal_artifact,
+                            proposal_source.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.proposal-batch.v1",
+                        content_hash=proposal_source.batch_hash,
+                    ),
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            consistency_artifact,
+                            consistency_source.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.final-consistency.v1",
+                        content_hash=consistency_source.audit_hash,
+                    ),
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            modifier_artifact,
+                            modifier_source.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.action-modifier-bundle.v1",
+                        content_hash=modifier_source.bundle_hash,
+                    ),
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            ledger_artifact,
+                            ledger_source.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.commitment-ledger.v1",
+                        content_hash=ledger_source.ledger_hash,
+                    ),
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            projection_audit_artifact,
+                            projection_audit.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.projection-audit.v1",
+                        content_hash=projection_audit.audit_hash,
+                    ),
+                    build_proof_artifact_ref(
+                        root_artifact_from_summary(
+                            replay_artifact,
+                            replay_source.model_dump(mode="json"),
+                        ),
+                        proof_schema="kp.hybrid-replay.v1",
+                        content_hash=replay_source.replay_hash,
+                    ),
+                ]
+                step_output_override = build_mode_proof_step_output(
+                    run_id=run_id,
+                    attempt=attempt_id,
+                    engine_mode=job.engine_mode,
+                    references=tuple(hybrid_references),
+                ).model_dump(mode="json")
+            elif execution_contract.is_v2 and job.engine_mode == "mock_agent":
                 if proposal_source is None or proposal_artifact is None:
                     raise V2ExecutionPathNotEnabledError(
                         "mock_agent V2 consistency step is missing PB"
@@ -893,6 +1102,10 @@ def process_job(run_id: str) -> RunJobStatus:
                     ),
                 ]
                 if projection_audit_artifact is not None:
+                    if projection_audit is None:
+                        raise V2ExecutionPathNotEnabledError(
+                            "mock_agent V2 PA source is missing"
+                        )
                     proof_references.append(
                         build_proof_artifact_ref(
                             root_artifact_from_summary(
@@ -946,6 +1159,10 @@ def process_job(run_id: str) -> RunJobStatus:
                     ),
                 ]
                 if projection_audit_artifact is not None:
+                    if projection_audit is None:
+                        raise V2ExecutionPathNotEnabledError(
+                            "controlled_agent V2 PA source is missing"
+                        )
                     controlled_references.append(
                         build_proof_artifact_ref(
                             root_artifact_from_summary(

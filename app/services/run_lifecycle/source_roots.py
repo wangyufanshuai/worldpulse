@@ -10,7 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.services.consistency.hashing import stable_hash
 from app.services.negotiation import (
     AgentRuntimeResultSource,
+    CommitmentLedgerSource,
     ConsistencyAuditSource,
+    HybridModifierBundleSource,
+    HybridReplaySource,
     KernelProposalBatchSource,
     ProjectionAuditSource,
 )
@@ -299,7 +302,8 @@ def validate_mode_proof_step_root(
             artifact.payload,
         )
         supersedes_allowed = (
-            engine_mode == "controlled_agent"
+            engine_mode
+            in {"controlled_agent", "hybrid", "hybrid_recorded"}
             and reference.proof_schema == "kp.agent-runtime.v1"
         )
         if artifact.supersedes_artifact_id is not None and not supersedes_allowed:
@@ -342,6 +346,16 @@ def validate_mode_proof_step_root(
         ),
     }:
         raise SourceRootError("controlled_agent proof-step sequence is not canonical")
+    if engine_mode in {"hybrid", "hybrid_recorded"} and tokens != (
+        "kp.agent-runtime.v1",
+        "kp.proposal-batch.v1",
+        "kp.final-consistency.v1",
+        "kp.action-modifier-bundle.v1",
+        "kp.commitment-ledger.v1",
+        "kp.projection-audit.v1",
+        "kp.hybrid-replay.v1",
+    ):
+        raise SourceRootError("hybrid proof-step sequence is not canonical")
     return output
 
 
@@ -360,11 +374,24 @@ def _proof_source_identity(
         if source.role != "final" or source.tick is not None:
             raise SourceRootError("FC root must select final/null-tick Consistency")
         return "consistency_audit", source.schema_version, source.audit_hash
+    if proof_schema == "kp.action-modifier-bundle.v1":
+        source = HybridModifierBundleSource.model_validate(payload)
+        return (
+            "deterministic_action_modifiers",
+            source.schema_version,
+            source.bundle_hash,
+        )
+    if proof_schema == "kp.commitment-ledger.v1":
+        source = CommitmentLedgerSource.model_validate(payload)
+        return "commitment_ledger", source.schema_version, source.ledger_hash
     if proof_schema == "kp.projection-audit.v1":
         source = ProjectionAuditSource.model_validate(payload)
         if source.schema_version != "agent-action-projection-audit.v2":
             raise SourceRootError("non-negotiation PA root has the wrong schema")
         return "agent_action_projection_audit", source.schema_version, source.audit_hash
+    if proof_schema == "kp.hybrid-replay.v1":
+        source = HybridReplaySource.model_validate(payload)
+        return "hybrid_replay_record", source.schema_version, source.replay_hash
     raise SourceRootError(f"proof-step schema is not enabled: {proof_schema}")
 
 
