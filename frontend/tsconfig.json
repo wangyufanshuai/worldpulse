@@ -15,5 +15,5 @@
     "target": "ES2022",
     "useDefineForClassFields": true
   },
-  "include": ["src/**/*.js", "src/**/*.vue", "vite.config.js", "vitest.config.js"]
+  "include": ["src/**/*.js", "src/**/*.ts", "src/**/*.vue", "vite.config.js", "vitest.config.js"]
 }

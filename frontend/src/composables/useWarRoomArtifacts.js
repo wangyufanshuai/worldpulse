@@ -1,4 +1,32 @@
-import { computed, ref } from 'vue'
+import { computed, getCurrentScope, onScopeDispose, ref, watch } from 'vue'
+
+function useBlobUrl(source, type) {
+  let activeUrl = ''
+
+  function release() {
+    if (!activeUrl) return
+    URL.revokeObjectURL(activeUrl)
+    activeUrl = ''
+  }
+
+  const url = computed(() => {
+    const content = source()
+    if (!activeUrl) {
+      activeUrl = URL.createObjectURL(new Blob([content], { type }))
+    }
+    return activeUrl
+  })
+  const stop = watch(source, release, { flush: 'sync' })
+
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      stop()
+      release()
+    })
+  }
+
+  return url
+}
 
 export function useWarRoomArtifacts({ detail, isWarRoom, runVersions, selectedRunId, warRoomData, dataJsonPreview, showToast }) {
   const runDiff = ref(null)
@@ -10,9 +38,9 @@ export function useWarRoomArtifacts({ detail, isWarRoom, runVersions, selectedRu
   const replayPreviewOpen = ref(false)
 
   const warRoomDiff = computed(() => runDiff.value?.changed_metrics?.war_room || null)
-  const markdownUrl = computed(() => URL.createObjectURL(new Blob([detail.value?.report?.markdown || ''], { type: 'text/markdown;charset=utf-8' })))
-  const replayPackUrl = computed(() => URL.createObjectURL(new Blob([replayPack.value?.markdown || ''], { type: 'text/markdown;charset=utf-8' })))
-  const replayPackJsonUrl = computed(() => URL.createObjectURL(new Blob([replayPack.value?.artifacts?.json_manifest || '{}'], { type: 'application/json;charset=utf-8' })))
+  const markdownUrl = useBlobUrl(() => detail.value?.report?.markdown || '', 'text/markdown;charset=utf-8')
+  const replayPackUrl = useBlobUrl(() => replayPack.value?.markdown || '', 'text/markdown;charset=utf-8')
+  const replayPackJsonUrl = useBlobUrl(() => replayPack.value?.artifacts?.json_manifest || '{}', 'application/json;charset=utf-8')
   const replayPackFilename = computed(() => `${String(detail.value?.project?.title || 'worldpulse').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${replayPack.value?.run_id || 'war-room'}-replay-pack.md`)
   const replayPackJsonFilename = computed(() => replayPackFilename.value.replace(/\.md$/, '-manifest.json'))
   const markdownPreview = computed(() => (replayPack.value?.markdown || '').slice(0, 6000))

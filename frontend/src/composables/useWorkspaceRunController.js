@@ -1,5 +1,5 @@
 import { nextTick } from 'vue'
-import { chatWithProject, getProject, getProjectRun, runProject } from '../api'
+import { researchWorkspaceClient } from '../api/researchWorkspaceClient'
 
 export function useWorkspaceRunController(ctx) {
   async function loadWorkspaceState(runId = ctx.selectedRunId.value) {
@@ -24,7 +24,9 @@ export function useWorkspaceRunController(ctx) {
     } catch { ctx.presets.value = null }
   }
   async function load(runId = ctx.selectedRunId.value) {
-    ctx.detail.value = runId ? await getProjectRun(ctx.projectId(), runId) : await getProject(ctx.projectId())
+    ctx.detail.value = runId
+      ? await researchWorkspaceClient.getProjectRun(ctx.projectId(), runId)
+      : await researchWorkspaceClient.getProject(ctx.projectId())
     ctx.selectedRunId.value = ctx.detail.value?.latest_run?.run_id || ''
     await loadWorkspaceState(ctx.selectedRunId.value)
     ctx.syncScenarioDraft()
@@ -51,7 +53,7 @@ export function useWorkspaceRunController(ctx) {
         ctx.showToast('生命周期任务已排队；请启动或保持 worker 运行')
         return
       }
-      ctx.detail.value = await runProject(ctx.projectId(), ctx.runMode.value)
+      ctx.detail.value = await researchWorkspaceClient.runProject(ctx.projectId(), ctx.runMode.value)
       ctx.selectedRunId.value = ctx.detail.value?.latest_run?.run_id || ''
       await loadWorkspaceState(ctx.selectedRunId.value)
       ctx.resetReplayArtifacts()
@@ -65,7 +67,7 @@ export function useWorkspaceRunController(ctx) {
   async function send() {
     ctx.chatting.value = true
     try {
-      await chatWithProject(ctx.projectId(), ctx.message.value)
+      await researchWorkspaceClient.chatWithProject(ctx.projectId(), ctx.message.value)
       ctx.message.value = ''
       await load(ctx.selectedRunId.value)
     } finally { ctx.chatting.value = false }

@@ -37,6 +37,7 @@ test('War Room lifecycle shell and modules remain interactive', async ({ page, r
 
   await page.goto(`projects/${project.project_id}/war-room/overview`)
   await expect(page.getByTestId('war-room-lifecycle-rail')).toBeVisible()
+  await expect(page.getByTestId('guided-research-host')).toHaveCount(0)
   await expect(page.getByTestId('war-room-lifecycle-map')).toBeVisible()
   await expect(page.getByTestId('war-room-event-stream')).toBeVisible()
   await expect(page.getByTestId('consistency-audit-panel')).toBeVisible()

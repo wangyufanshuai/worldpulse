@@ -396,30 +396,20 @@
       </section>
     </template>
 
-    <template v-else>
-      <section class="workspace-head">
-        <div class="workspace-title">
-          <div class="section-kicker"><ShieldAlert :size="16" /> 研究工作台</div>
-          <h1>{{ detail.project.title }}</h1>
-          <p>{{ detail.project.question }}</p>
-        </div>
-        <div class="head-actions">
-          <span :class="['status-badge', detail.project.status]">{{ statusText }}</span>
-          <label class="mode-switch">
-            <span>运行模式</span>
-            <select v-model="runMode">
-              <option value="fast">快速研究</option>
-              <option value="full">完整真实数据</option>
-            </select>
-          </label>
-          <button class="primary" :disabled="running" @click="run">
-            <Play :size="16" /> {{ running ? '运行中...' : '运行研究' }}
-          </button>
-        </div>
-      </section>
-    </template>
+    <GuidedResearchHost
+      v-else
+      :model="guidedHostModel"
+      @update:run-mode="runMode = $event"
+      @run="run"
+      @update:message="message = $event"
+      @send="send"
+      @open-evidence="openEvidenceDrawer($event.finding, $event.index)"
+      @close-evidence="evidenceDrawer = null"
+    >
+      <template #graph><div ref="graphEl" class="graph-canvas"></div></template>
+    </GuidedResearchHost>
 
-    <aside v-if="replayPreviewOpen && replayPack" class="replay-preview-drawer">
+    <aside v-if="isWarRoom && replayPreviewOpen && replayPack" class="replay-preview-drawer">
       <button class="drawer-close" type="button" @click="replayPreviewOpen = false"><X :size="16" /> 关闭</button>
       <div class="section-kicker"><PackageCheck :size="16" /> 复盘包预览</div>
       <h2>{{ replayPack.title }}</h2>
@@ -436,16 +426,16 @@
       <pre class="markdown-preview">{{ markdownPreview }}</pre>
     </aside>
 
-    <section class="workflow-rail">
-      <article v-for="step in steps" :key="step.key" :class="{ done: step.done }">
+    <section v-if="isWarRoom" class="workflow-rail">
+      <article v-for="step in warRoomSteps" :key="step.key" :class="{ done: step.done }">
         <span>{{ step.index }}</span><strong>{{ step.title }}</strong><p>{{ step.desc }}</p>
       </article>
     </section>
 
-    <section class="split-lab">
+    <section v-if="isWarRoom" class="split-lab">
       <div class="graph-panel">
         <div class="section-title">
-          <div><div class="section-kicker"><Network :size="16" /> 因果链路</div><h2>{{ isWarRoom ? '沙盘影响图' : '事件到市场的推理路径' }}</h2></div>
+          <div><div class="section-kicker"><Network :size="16" /> 因果链路</div><h2>沙盘影响图</h2></div>
           <span v-if="detail.graph" class="quality-pill">置信度 {{ Math.round(detail.graph.confidence) }}</span>
         </div>
         <div ref="graphEl" class="graph-canvas"></div>
@@ -464,7 +454,7 @@
       </aside>
     </section>
 
-    <section ref="reportPanelEl" class="report-chat">
+    <section v-if="isWarRoom" ref="reportPanelEl" class="report-chat">
       <article class="report-panel">
         <div class="section-title">
           <div><div class="section-kicker"><FileText :size="16" /> 研判报告</div><h2>{{ detail.report?.title || '等待报告' }}</h2></div>
@@ -491,7 +481,7 @@
       </aside>
     </section>
 
-    <aside v-if="evidenceDrawer" class="evidence-drawer">
+    <aside v-if="isWarRoom && evidenceDrawer" class="evidence-drawer">
       <button class="drawer-close" @click="evidenceDrawer = null"><X :size="16" /> 关闭</button>
       <div class="section-kicker"><FileSearch :size="16" /> 证据抽屉</div>
       <h2>{{ evidenceDrawer.finding }}</h2>
@@ -527,18 +517,17 @@ import {
   PackageCheck,
   PanelRightOpen,
   Pause,
-  Play,
   Search,
   Send,
   ServerCog,
   ScanText,
   Settings,
-  ShieldAlert,
   ShieldCheck,
   UsersRound,
   X
 } from 'lucide-vue-next'
 import worldMapCommand from '../../assets/war-room/world-map-command.png'
+import GuidedResearchHost from '../../components/research-workspace/GuidedResearchHost.vue'
 import WarRoomAnalysisModule from '../../components/war-room/WarRoomAnalysisModule.vue'
 import WarRoomDataModule from '../../components/war-room/WarRoomDataModule.vue'
 import WarRoomGraphModule from '../../components/war-room/WarRoomGraphModule.vue'
@@ -571,6 +560,7 @@ import { useWarRoomInteractions } from '../../composables/useWarRoomInteractions
 import { useWorkspaceGovernanceController } from '../../composables/useWorkspaceGovernanceController'
 import { useWorkspaceRunController } from '../../composables/useWorkspaceRunController'
 import { useWorkspaceShell } from '../../composables/useWorkspaceShell'
+import { buildGuidedResearchProjection, citationKindLabel } from '../../composables/guidedResearchProjection'
 import { decisionLabels, eventFilterOptions, graphTypeOptions, localizedText, prompts } from './warRoomWorkspaceConfig'
 
 const props = defineProps({ projectId: String, section: String })
@@ -1054,18 +1044,13 @@ const activeEntityDetail = computed(() => {
 })
 const statusText = computed(() => ({ created: '已创建', completed: '已完成' }[detail.value?.project?.status] || detail.value?.project?.status || '未知'))
 const currentModeText = computed(() => isWarRoom.value ? 'War Room' : (detail.value?.latest_run?.data_snapshot?.run_mode === 'full' ? '完整真实数据' : '快速研究'))
-const steps = computed(() => isWarRoom.value ? [
+const guidedProjection = computed(() => buildGuidedResearchProjection(detail.value))
+const warRoomSteps = computed(() => [
   { index: '01', key: 'scenario', title: '场景设定', desc: '锁定场景、持续天数和传播参数', done: !!detail.value?.project },
   { index: '02', key: 'agents', title: '国家 Agent', desc: '计算国家压力与行动倾向', done: !!warRoom.value?.agent_decisions?.length },
   { index: '03', key: 'chains', title: '供应链', desc: '能源、粮食、芯片、贸易与金融结算', done: !!warRoom.value?.supply_chains?.length },
   { index: '04', key: 'heatmap', title: '风险热力', desc: '识别承压国家和主导通道', done: !!warRoom.value?.risk_heatmap?.length },
   { index: '05', key: 'report', title: '报告追问', desc: '生成沙盘报告和引用证据', done: !!detail.value?.report }
-] : [
-  { index: '01', key: 'project', title: '研究任务', desc: '问题、地区和事件范围已锁定', done: !!detail.value?.project },
-  { index: '02', key: 'events', title: '事件识别', desc: '聚合新闻、冲突和宏观信号', done: !!detail.value?.latest_run?.event_snapshot?.length },
-  { index: '03', key: 'graph', title: '因果图谱', desc: '生成可解释节点和边', done: !!detail.value?.graph },
-  { index: '04', key: 'backtest', title: '历史验证', desc: '相似事件窗口回测', done: !!detail.value?.latest_run?.backtest_snapshot?.sample_count },
-  { index: '05', key: 'report', title: '报告追问', desc: '生成报告并继续对话', done: !!detail.value?.report }
 ])
 function decisionStatus(status) { return decisionLabels[status] || status || '--' }
 function averageRisk() {
@@ -1164,11 +1149,26 @@ function signed(value) {
   return `${num >= 0 ? '+' : ''}${Number.isInteger(num) ? num : num.toFixed(1)}`
 }
 function openEvidenceDrawer(finding, findingIndex = 0) {
+  const citations = guidedProjection.value.citationsByFinding[findingIndex] || []
   evidenceDrawer.value = {
     finding,
-    summary: detail.value?.report?.citations?.[findingIndex]?.summary || '按结论内容匹配最相关的证据和因果边。'
+    summary: citations.length ? citations.map(item => item.summary).join('\n\n') : '该结论没有直接绑定的引用。',
+    citations: citations.map(item => ({ ...item, kind_label: citationKindLabel(item.kind) })),
   }
 }
+const guidedHostModel = computed(() => ({
+  detail: detail.value,
+  projection: guidedProjection.value,
+  statusText: statusText.value,
+  currentModeText: currentModeText.value,
+  runMode: runMode.value,
+  running: running.value,
+  chatting: chatting.value,
+  message: message.value,
+  prompts,
+  markdownUrl: markdownUrl.value,
+  evidenceDrawer: evidenceDrawer.value,
+}))
 function edgeLabel(id) {
   const rawId = id?.id || id
   if (String(rawId || '').startsWith('country:')) return countryNameShort(String(rawId).split(':')[1])

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { ref } from 'vue'
+import { describe, expect, it, vi } from 'vitest'
+import { effectScope, ref } from 'vue'
 
 import { mergeLifecycleEvents } from '../src/composables/useRunLifecycle'
 import { lifecycleControlMatrix } from '../src/composables/useRunLifecycleConsole'
@@ -48,6 +48,41 @@ describe('War Room composables', () => {
     expect(artifacts.compareTargetRunId.value).toBe('run-2')
     expect(artifacts.compareBaseRunId.value).toBe('run-1')
     expect(hybridSummaryMetrics({ accepted_proposal_ids: ['p1'], baseline_diff: { country_risk: [{ country_code: 'A', delta: 3 }], supply_chain_pressure: [{ key: 'energy', delta: 2 }] } })).toMatchObject({ acceptedCount: 1 })
+  })
+
+  it('revokes report object URLs when content changes and the scope closes', () => {
+    let sequence = 0
+    const createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:test-${++sequence}`)
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const detail = ref({ project: { title: 'Test' }, report: { markdown: '# first' } })
+    const scope = effectScope()
+    let artifacts
+
+    try {
+      scope.run(() => {
+        artifacts = useWarRoomArtifacts({
+          detail,
+          isWarRoom: ref(false),
+          runVersions: ref([]),
+          selectedRunId: ref(''),
+          warRoomData: {},
+          dataJsonPreview: ref('{}'),
+          showToast: () => {},
+        })
+      })
+      expect(artifacts.markdownUrl.value).toBe('blob:test-1')
+      detail.value = { ...detail.value, report: { markdown: '# second' } }
+      expect(revokeObjectUrl).toHaveBeenCalledWith('blob:test-1')
+      expect(artifacts.markdownUrl.value).toBe('blob:test-2')
+
+      scope.stop()
+      expect(revokeObjectUrl).toHaveBeenCalledWith('blob:test-2')
+      expect(createObjectUrl).toHaveBeenCalledTimes(2)
+    } finally {
+      scope.stop()
+      createObjectUrl.mockRestore()
+      revokeObjectUrl.mockRestore()
+    }
   })
 
   it('keeps one evaluation SSE or polling subscription per batch', () => {
