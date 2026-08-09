@@ -35,6 +35,9 @@ lineage tests and a provider-free stored replay test.
 
 ## Slice 3C — controlled Agent Provider adapter
 
+Status: completed by local checkpoint `a28145a`; production lifecycle routing
+continues to call the V1-compatible Agent Runtime façade.
+
 Expose the existing mock and allowlisted live providers through the
 `agent_provider` port. The adapter preserves budgets, timeout, fallback,
 action parsing, capability checks, Consistency and Action Adapter semantics.
@@ -80,7 +83,8 @@ must reject missing or mismatched plugin manifest/configuration hashes.
 ## First implementation checkpoint
 
 Slice 3A was the pure contract checkpoint `5d7a51a`; Slice 3B is the first
-real built-in implementation checkpoint `cc1f7b9`. After 3B passes, the next
-authorized code slice is 3C (the controlled Agent Provider adapter). Production
-world-data routing must remain unchanged until the adapter lineage is adopted
-by an explicit application port and its replay/organization gates are complete.
+real built-in implementation checkpoint `cc1f7b9`; Slice 3C wraps the existing
+controlled Agent Runtime in `a28145a`. The next authorized code slice is 3D:
+one active Rule Pack and one real Evaluator adapter. Production world-data and
+Agent lifecycle routing must remain unchanged until their plugin lineage is
+adopted by explicit application ports and replay/organization gates.
