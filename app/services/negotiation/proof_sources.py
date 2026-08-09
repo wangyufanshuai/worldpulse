@@ -15,7 +15,8 @@ from typing import Annotated, Literal, Self, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.core.negotiation_models import NegotiationMessage
+from app.core.models import WarRoomScenarioRequest
+from app.core.negotiation_models import NarrativeDiffusionAudit, NegotiationMessage
 from app.services.agent_contract.models import (
     AgentActionProposal,
     AgentConstraintContext,
@@ -427,7 +428,10 @@ def build_kernel_proposal_batch_source(
     if len(set(proposal_ids)) != len(proposal_ids):
         raise ValueError("PB source proposals must have unique IDs")
     for proposal in ordered:
-        if proposal.schema_version != "agent-action-proposal.v1" or proposal.run_id != run_id:
+        if (
+            proposal.schema_version != "agent-action-proposal.v1"
+            or proposal.run_id != run_id
+        ):
             raise ValueError("PB source proposal identity mismatch")
         target_ids = tuple(proposal.target_ids)
         if target_ids != tuple(
@@ -451,8 +455,7 @@ def build_kernel_proposal_batch_source(
             run_id=run_id,
         )
         mock_by_id = {
-            item.proposal_id: item.model_dump(mode="json")
-            for item in mock_proposals
+            item.proposal_id: item.model_dump(mode="json") for item in mock_proposals
         }
         ordered_by_id = {
             item.proposal_id: item.model_dump(mode="json") for item in ordered
@@ -518,8 +521,7 @@ class NegotiationRoundSource(ClosedSource):
         input_payload, messages = _validated_round_input(self)
         output_payload = _validated_round_output(self)
         expected_round_id = (
-            "round_"
-            + stable_hash({"session": self.session_id, "tick": self.tick})[:20]
+            "round_" + stable_hash({"session": self.session_id, "tick": self.tick})[:20]
         )
         if self.round_id != expected_round_id:
             raise ValueError("RR round_id is not the canonical session/tick ID")
@@ -561,7 +563,7 @@ class NegotiationRoundSource(ClosedSource):
         if self.round_hash != expected_round_hash:
             raise ValueError("RR round_hash mismatch")
         if len(messages) > 1:
-            for previous, current in zip(messages, messages[1:], strict=True):
+            for previous, current in zip(messages[:-1], messages[1:], strict=True):
                 if current.previous_hash != previous.message_hash:
                     raise ValueError("RR local message predecessor chain mismatch")
         return self
@@ -615,7 +617,9 @@ def _validated_round_message(
             "message_type": message.message_type,
             "visibility": message.visibility,
             "parent_message_id": message.parent_message_id,
-            "proposal": proposal.model_dump(mode="json") if proposal is not None else None,
+            "proposal": proposal.model_dump(mode="json")
+            if proposal is not None
+            else None,
             "narrative": message.narrative,
             "previous_hash": message.previous_hash,
         }
@@ -674,7 +678,9 @@ def _validated_round_input(
     ):
         raise ValueError("RR message_count mismatch")
     sequences = tuple(item.seq for item in messages)
-    if sequences and sequences != tuple(range(sequences[0], sequences[0] + len(sequences))):
+    if sequences and sequences != tuple(
+        range(sequences[0], sequences[0] + len(sequences))
+    ):
         raise ValueError("RR local message seq must be contiguous")
     proposal_ids = tuple(
         sorted(
@@ -689,13 +695,15 @@ def _validated_round_input(
         ):
             raise ValueError(f"RR {name} must be an array of strings")
     stored_proposal_ids = tuple(restored["proposal_ids"])
-    if stored_proposal_ids != proposal_ids or len(
-        set(stored_proposal_ids)
-    ) != len(stored_proposal_ids):
+    if stored_proposal_ids != proposal_ids or len(set(stored_proposal_ids)) != len(
+        stored_proposal_ids
+    ):
         raise ValueError("RR proposal_ids must equal current-message proposals")
     for name in ("accepted_proposal_ids", "eligible_proposal_ids"):
         values = tuple(restored[name])
-        if values != tuple(sorted(set(values), key=lambda value: value.encode("utf-8"))):
+        if values != tuple(
+            sorted(set(values), key=lambda value: value.encode("utf-8"))
+        ):
             raise ValueError(f"RR {name} must be unique and ascending")
     expected_messages_hash = stable_hash(
         {
@@ -735,9 +743,15 @@ def _validated_round_output(source: NegotiationRoundSource) -> dict[str, object]
         restored["projection_audit_hash"],
     )
     if projected:
-        if any(value is None for value in conditional) or restored["no_projection_reason"] is not None:
+        if (
+            any(value is None for value in conditional)
+            or restored["no_projection_reason"] is not None
+        ):
             raise ValueError("RR projected output binding is incomplete")
-    elif any(value is not None for value in conditional) or restored["no_projection_reason"] != "no_projection":
+    elif (
+        any(value is not None for value in conditional)
+        or restored["no_projection_reason"] != "no_projection"
+    ):
         raise ValueError("RR no-projection output binding is invalid")
     return restored
 
@@ -766,7 +780,9 @@ class NegotiationProposalBatchSource(ClosedSource):
         )
         if self.proposal_count != len(self.proposals):
             raise ValueError("NP proposal_count must equal complete proposal count")
-        for claim, raw_proposal in zip(claims.proposal_claim_tuples, self.proposals, strict=True):
+        for claim, raw_proposal in zip(
+            claims.proposal_claim_tuples, self.proposals, strict=True
+        ):
             proposal = AgentActionProposal.model_validate(
                 _restore_lists(raw_proposal), strict=True
             )
@@ -776,7 +792,9 @@ class NegotiationProposalBatchSource(ClosedSource):
             if len(set(target_ids)) != len(target_ids) or target_ids != tuple(
                 sorted(target_ids, key=lambda value: value.encode("utf-8"))
             ):
-                raise ValueError("NP complete proposal target_ids must be unique and ascending")
+                raise ValueError(
+                    "NP complete proposal target_ids must be unique and ascending"
+                )
             expected_class = ACTION_CLASS_BY_TYPE.get(proposal.action_type)
             semantic_key_hash = stable_hash(
                 {
@@ -799,7 +817,9 @@ class NegotiationProposalBatchSource(ClosedSource):
             if claim[7] == "current_message" and proposal.turn != self.tick:
                 raise ValueError("NP current proposal turn must equal the current tick")
             if claim[7] == "active_commitment_origin" and proposal.turn != claim[9]:
-                raise ValueError("NP active origin must retain its source-admission turn")
+                raise ValueError(
+                    "NP active origin must retain its source-admission turn"
+                )
 
         expected_hash = stable_hash(
             {
@@ -919,9 +939,15 @@ class CommitmentEntrySource(ClosedSource):
     def validate_entry_hashes_and_events(self) -> Self:
         if ACTION_CLASS_BY_TYPE.get(self.action_type) != "bilateral_commitment":
             raise ValueError("CL commitment action_type must be bilateral")
-        if len(self.party_agent_ids) != 2 or tuple(
-            sorted(set(self.party_agent_ids), key=lambda value: value.encode("utf-8"))
-        ) != self.party_agent_ids:
+        if (
+            len(self.party_agent_ids) != 2
+            or tuple(
+                sorted(
+                    set(self.party_agent_ids), key=lambda value: value.encode("utf-8")
+                )
+            )
+            != self.party_agent_ids
+        ):
             raise ValueError("CL party_agent_ids must be exactly two unique sorted ids")
         expected_terms_hash = stable_hash(
             {"schema_version": "commitment-ledger.v2", "terms": self.terms}
@@ -938,7 +964,8 @@ class CommitmentEntrySource(ClosedSource):
         )
         if (
             proposal.proposal_id != self.source_proposal_id
-            or stable_hash(proposal.model_dump(mode="json")) != self.source_proposal_hash
+            or stable_hash(proposal.model_dump(mode="json"))
+            != self.source_proposal_hash
             or proposal.action_type != self.action_type
             or proposal.turn != self.source_admission_tick
         ):
@@ -981,7 +1008,10 @@ class CommitmentEntrySource(ClosedSource):
             if index == 1:
                 if event.status != "proposed":
                     raise ValueError("CL first event must be proposed")
-            elif previous_status is None or (previous_status, event.status) not in allowed_edges:
+            elif (
+                previous_status is None
+                or (previous_status, event.status) not in allowed_edges
+            ):
                 raise ValueError("CL event state transition is illegal")
             if (event.source_message_id is None) != (event.source_message_hash is None):
                 raise ValueError("CL event message id/hash nullability mismatch")
@@ -1035,7 +1065,9 @@ class CommitmentLedgerSource(ClosedSource):
     @model_validator(mode="after")
     def validate_complete_source(self) -> Self:
         entry_ids = tuple(item.commitment_id for item in self.entries)
-        if entry_ids != tuple(sorted(set(entry_ids), key=lambda value: value.encode("utf-8"))):
+        if entry_ids != tuple(
+            sorted(set(entry_ids), key=lambda value: value.encode("utf-8"))
+        ):
             raise ValueError("CL entries must be unique and ascending by commitment id")
         if self.ledger_entry_count != len(self.entries):
             raise ValueError("CL ledger_entry_count mismatch")
@@ -1092,15 +1124,15 @@ def build_empty_commitment_ledger_source(
 ConsistencyRole: TypeAlias = Literal["final", "admission", "projection"]
 
 
-def _require_closed_keys(
-    value: object, expected: set[str], field_name: str
-) -> None:
+def _require_closed_keys(value: object, expected: set[str], field_name: str) -> None:
     if not isinstance(value, dict) or set(value) != expected:
         raise ValueError(f"{field_name} must have its exact closed field set")
 
 
 def _synthetic_consistency_time(role: ConsistencyRole, tick: int | None) -> str:
-    offset = 0 if role == "final" else 2 * int(tick or 0) - (1 if role == "admission" else 0)
+    offset = (
+        0 if role == "final" else 2 * int(tick or 0) - (1 if role == "admission" else 0)
+    )
     value = datetime(2000, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=offset)
     return value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
@@ -1181,9 +1213,13 @@ class ConsistencyAuditSource(ClosedSource):
         )
         if any(context_nulls) and not all(context_nulls):
             raise ValueError("Consistency context must be all-null or all-non-null")
-        if len(self.proposal_ids) != len(self.proposal_hashes) or tuple(
-            sorted(set(self.proposal_ids), key=lambda value: value.encode("utf-8"))
-        ) != self.proposal_ids:
+        if (
+            len(self.proposal_ids) != len(self.proposal_hashes)
+            or tuple(
+                sorted(set(self.proposal_ids), key=lambda value: value.encode("utf-8"))
+            )
+            != self.proposal_ids
+        ):
             raise ValueError("Consistency proposal vectors must align and be sorted")
         report = _validate_inner_consistency_payload(self.inner_audit)
         expected_inner_run_id = (
@@ -1240,7 +1276,10 @@ def build_consistency_audit_source(
     if len(set(proposal_ids)) != len(proposal_ids):
         raise ValueError("Consistency source proposals must have unique IDs")
     for proposal in proposals:
-        if proposal.schema_version != "agent-action-proposal.v1" or proposal.run_id != run_id:
+        if (
+            proposal.schema_version != "agent-action-proposal.v1"
+            or proposal.run_id != run_id
+        ):
             raise ValueError("Consistency source proposal identity mismatch")
         target_ids = tuple(proposal.target_ids)
         if target_ids != tuple(
@@ -1330,9 +1369,15 @@ class HybridModifierBundleSource(ClosedSource):
             or inner.scenario_patch != _restore_lists(self.scenario_patch)
         ):
             raise ValueError("MB inner bundle/hash/scenario patch mismatch")
-        if tuple(
-            sorted(set(self.accepted_proposal_ids), key=lambda value: value.encode("utf-8"))
-        ) != self.accepted_proposal_ids:
+        if (
+            tuple(
+                sorted(
+                    set(self.accepted_proposal_ids),
+                    key=lambda value: value.encode("utf-8"),
+                )
+            )
+            != self.accepted_proposal_ids
+        ):
             raise ValueError("MB accepted proposal ids must be unique and ascending")
         outer_modifiers = tuple(
             DeterministicActionModifier.model_validate(
@@ -1363,7 +1408,9 @@ class HybridModifierBundleSource(ClosedSource):
             or len(inner_by_id) != len(inner.modifiers)
             or len(outer_by_id) != len(outer_modifiers)
         ):
-            raise ValueError("MB inner/outer accepted proposal or modifier mapping mismatch")
+            raise ValueError(
+                "MB inner/outer accepted proposal or modifier mapping mismatch"
+            )
         expected_modifiers = tuple(
             sorted(
                 (
@@ -1381,9 +1428,8 @@ class HybridModifierBundleSource(ClosedSource):
                 ),
             )
         )
-        if (
-            self.modifier_tuples != expected_modifiers
-            or self.modifier_count != len(expected_modifiers)
+        if self.modifier_tuples != expected_modifiers or self.modifier_count != len(
+            expected_modifiers
         ):
             raise ValueError("MB modifier tuple/count mismatch")
         expected_hash = stable_hash(
@@ -1412,6 +1458,7 @@ def build_hybrid_modifier_bundle_source(
     run_id: str,
     consistency_audit_hash: str,
     bundle: HybridModifierBundle,
+    tick: int | None = None,
 ) -> HybridModifierBundleSource:
     """Wrap a verified production Action Adapter result as a closed V2 MB."""
 
@@ -1445,7 +1492,7 @@ def build_hybrid_modifier_bundle_source(
     payload = {
         "schema_version": "hybrid-modifier-bundle.v2",
         "run_id": run_id,
-        "tick": None,
+        "tick": tick,
         "consistency_audit_hash": consistency_audit_hash,
         "inner_bundle": bundle.model_dump(mode="json"),
         "inner_bundle_hash": bundle.bundle_hash,
@@ -1489,14 +1536,18 @@ class ProjectionAuditRecordSource(ClosedSource):
                     or self.modifier_id is None
                     or self.rejection_reason is not None
                 ):
-                    raise ValueError("PA projected accepted record violates truth table")
+                    raise ValueError(
+                        "PA projected accepted record violates truth table"
+                    )
             elif self.projection_status == "not_projected":
                 if (
                     self.projection_hash is not None
                     or self.modifier_id is not None
                     or self.rejection_reason is not None
                 ):
-                    raise ValueError("PA audit-only accepted record violates truth table")
+                    raise ValueError(
+                        "PA audit-only accepted record violates truth table"
+                    )
             else:
                 raise ValueError("PA accepted record has an illegal projection status")
         elif (
@@ -1505,7 +1556,9 @@ class ProjectionAuditRecordSource(ClosedSource):
             or self.modifier_id is not None
             or self.rejection_reason is None
         ):
-            raise ValueError("PA rejected/constrained/expired record violates truth table")
+            raise ValueError(
+                "PA rejected/constrained/expired record violates truth table"
+            )
         return self
 
     def as_claim_tuple(self) -> ProjectionRecordClaimTuple:
@@ -1563,7 +1616,10 @@ class ProjectionAuditSource(ClosedSource):
             raise ValueError("non-negotiation PA must have null session and tick")
         elif self.projection_mode == "negotiation":
             raise ValueError("agent-action PA may not use negotiation projection mode")
-        if self.projection_mode == "audit_only" and self.modifier_bundle_hash is not None:
+        if (
+            self.projection_mode == "audit_only"
+            and self.modifier_bundle_hash is not None
+        ):
             raise ValueError("audit-only PA may not carry a modifier bundle")
         if self.projection_mode == "hybrid" and self.modifier_bundle_hash is None:
             raise ValueError("hybrid PA requires a modifier bundle")
@@ -1594,11 +1650,12 @@ class ProjectionAuditSource(ClosedSource):
         projected_records = tuple(
             item for item in self.records if item.projection_status == "projected"
         )
-        if tuple(item.proposal_id for item in projected_records) != self.projected_proposal_ids:
+        if (
+            tuple(item.proposal_id for item in projected_records)
+            != self.projected_proposal_ids
+        ):
             raise ValueError("PA projected records and projected ids mismatch")
-        modifier_by_proposal = {
-            item.proposal_id: item for item in self.modifier_tuples
-        }
+        modifier_by_proposal = {item.proposal_id: item for item in self.modifier_tuples}
         if len(modifier_by_proposal) != len(self.modifier_tuples):
             raise ValueError("PA modifier proposal ids must be unique")
         for record in projected_records:
@@ -1676,7 +1733,10 @@ def build_audit_only_projection_source(
         "expired": "expired",
     }
     for index, proposal in enumerate(ordered):
-        if proposal.schema_version != "agent-action-proposal.v1" or proposal.run_id != run_id:
+        if (
+            proposal.schema_version != "agent-action-proposal.v1"
+            or proposal.run_id != run_id
+        ):
             raise ValueError("audit-only PA proposal identity mismatch")
         target_ids = tuple(proposal.target_ids)
         if target_ids != tuple(
@@ -1743,6 +1803,8 @@ def build_hybrid_projection_source(
     proposals: tuple[AgentActionProposal, ...],
     decisions: tuple[AgentActionDecision, ...],
     modifier_bundle: HybridModifierBundleSource,
+    session_id: str | None = None,
+    tick: int | None = None,
 ) -> ProjectionAuditSource:
     """Build the mandatory closed PA for a deterministic hybrid rerun."""
 
@@ -1757,8 +1819,15 @@ def build_hybrid_projection_source(
         proposal_ids
     ):
         raise ValueError("hybrid PA decisions must equal proposal membership")
-    if modifier_bundle.run_id != run_id or (
-        modifier_bundle.consistency_audit_hash != consistency_audit_hash
+    negotiation = session_id is not None or tick is not None
+    if (session_id is None) != (tick is None):
+        raise ValueError(
+            "projection source session_id/tick must be both null or non-null"
+        )
+    if (
+        modifier_bundle.run_id != run_id
+        or (modifier_bundle.consistency_audit_hash != consistency_audit_hash)
+        or modifier_bundle.tick != tick
     ):
         raise ValueError("hybrid PA modifier source coordinate mismatch")
 
@@ -1790,7 +1859,10 @@ def build_hybrid_projection_source(
         "expired": "expired",
     }
     for index, proposal in enumerate(ordered):
-        if proposal.schema_version != "agent-action-proposal.v1" or proposal.run_id != run_id:
+        if (
+            proposal.schema_version != "agent-action-proposal.v1"
+            or proposal.run_id != run_id
+        ):
             raise ValueError("hybrid PA proposal identity mismatch")
         target_ids = tuple(proposal.target_ids)
         if target_ids != tuple(
@@ -1828,11 +1900,15 @@ def build_hybrid_projection_source(
             }
         )
     payload = {
-        "schema_version": "agent-action-projection-audit.v2",
+        "schema_version": (
+            "negotiation-projection-audit.v2"
+            if negotiation
+            else "agent-action-projection-audit.v2"
+        ),
         "run_id": run_id,
-        "session_id": None,
-        "tick": None,
-        "projection_mode": "hybrid",
+        "session_id": session_id,
+        "tick": tick,
+        "projection_mode": "negotiation" if negotiation else "hybrid",
         "consistency_audit_hash": consistency_audit_hash,
         "modifier_bundle_hash": modifier_bundle.bundle_hash,
         "proposal_ids": proposal_ids,
@@ -1842,8 +1918,7 @@ def build_hybrid_projection_source(
         "projected_semantic_key_hashes": projected_semantics,
         "projected_count": len(projected_ids),
         "modifier_tuples": tuple(
-            item.model_dump(mode="json")
-            for item in modifier_bundle.modifier_tuples
+            item.model_dump(mode="json") for item in modifier_bundle.modifier_tuples
         ),
         "modifier_count": modifier_bundle.modifier_count,
         "records": tuple(records),
@@ -1853,6 +1928,33 @@ def build_hybrid_projection_source(
     }
     return ProjectionAuditSource.model_validate(
         {**payload, "audit_hash": stable_hash(payload)}
+    )
+
+
+def build_negotiation_projection_source(
+    *,
+    run_id: str,
+    session_id: str,
+    tick: int,
+    consistency_audit_hash: str,
+    before_result_hash: str,
+    final_result_hash: str,
+    proposals: tuple[AgentActionProposal, ...],
+    decisions: tuple[AgentActionDecision, ...],
+    modifier_bundle: HybridModifierBundleSource,
+) -> ProjectionAuditSource:
+    """Build the tick-bound PA for a governed negotiation projection."""
+
+    return build_hybrid_projection_source(
+        run_id=run_id,
+        consistency_audit_hash=consistency_audit_hash,
+        before_result_hash=before_result_hash,
+        final_result_hash=final_result_hash,
+        proposals=proposals,
+        decisions=decisions,
+        modifier_bundle=modifier_bundle,
+        session_id=session_id,
+        tick=tick,
     )
 
 
@@ -1921,9 +2023,13 @@ class NarrativeDiffusionSource(ClosedSource):
     def validate_complete_source(self) -> Self:
         if self.core_audit.seed != self.diffusion_request.seed:
             raise ValueError("ND core/request seed mismatch")
-        if len(set(self.input_proposal_ids)) != len(self.input_proposal_ids) or tuple(
-            sorted(self.input_proposal_ids, key=lambda value: value.encode("utf-8"))
-        ) != self.input_proposal_ids:
+        if (
+            len(set(self.input_proposal_ids)) != len(self.input_proposal_ids)
+            or tuple(
+                sorted(self.input_proposal_ids, key=lambda value: value.encode("utf-8"))
+            )
+            != self.input_proposal_ids
+        ):
             raise ValueError("ND input proposal ids must be unique and ascending")
         if len(self.input_proposal_ids) != len(self.input_proposal_hashes):
             raise ValueError("ND input proposal id/hash vectors must align")
@@ -1957,11 +2063,15 @@ class NarrativeDiffusionSource(ClosedSource):
                 _to_units(self.core_audit.tone_deltas.stabilizing, "stabilizing tone"),
             ),
         )
-        if expected_tones != (
-            ("firm", 30000),
-            ("informational", -10000),
-            ("stabilizing", -40000),
-        ) or self.tone_delta_tuples != expected_tones:
+        if (
+            expected_tones
+            != (
+                ("firm", 30000),
+                ("informational", -10000),
+                ("stabilizing", -40000),
+            )
+            or self.tone_delta_tuples != expected_tones
+        ):
             raise ValueError("ND fixed tone tuple mismatch")
 
         expected_countries: tuple[CountryDeltaTuple, ...] = tuple(
@@ -1984,7 +2094,9 @@ class NarrativeDiffusionSource(ClosedSource):
         tone_units = dict(expected_tones)
         for application in self.core_audit.applications:
             if application.proposal_id not in input_ids:
-                raise ValueError("ND application proposal is not an authenticated input")
+                raise ValueError(
+                    "ND application proposal is not an authenticated input"
+                )
             complete_application = application.model_dump(mode="json")
             base = _to_units(application.base_delta, "application base delta")
             propagation = _to_units(
@@ -2015,7 +2127,9 @@ class NarrativeDiffusionSource(ClosedSource):
                 application.receiver_country,
                 _checked_int64(cumulative - applied, "application initial cumulative"),
             )
-            unclamped = _checked_int64(prior + candidate, "application cumulative update")
+            unclamped = _checked_int64(
+                prior + candidate, "application cumulative update"
+            )
             expected_cumulative = max(-80000, min(80000, unclamped))
             expected_applied = _checked_int64(
                 expected_cumulative - prior,
@@ -2106,6 +2220,127 @@ class NarrativeDiffusionSource(ClosedSource):
         )
 
 
+def build_narrative_diffusion_source(
+    *,
+    run_id: str,
+    session_id: str,
+    tick: int,
+    proposals: tuple[AgentActionProposal, ...],
+    audit: NarrativeDiffusionAudit,
+    diffusion_request: WarRoomScenarioRequest,
+    before_result_hash: str,
+    after_result_hash: str,
+) -> NarrativeDiffusionSource:
+    """Materialize the closed ND source from the deterministic diffusion audit."""
+
+    ordered_proposals = tuple(
+        sorted(proposals, key=lambda item: item.proposal_id.encode("utf-8"))
+    )
+    if any(item.action_type != "public_narrative" for item in ordered_proposals):
+        raise ValueError("ND inputs must contain only public_narrative proposals")
+    core = audit.model_dump(mode="json", exclude={"audit_hash"})
+    if stable_hash(core) != audit.audit_hash:
+        raise ValueError("ND audit hash mismatch before materialization")
+    request_payload = diffusion_request.model_dump(mode="json")
+    if diffusion_request.seed is None:
+        raise ValueError("ND diffusion request requires a concrete seed")
+
+    tone_delta_tuples: tuple[ToneDeltaTuple, ...] = (
+        ("firm", _to_units(audit.tone_deltas["firm"], "firm tone")),
+        (
+            "informational",
+            _to_units(audit.tone_deltas["informational"], "informational tone"),
+        ),
+        (
+            "stabilizing",
+            _to_units(audit.tone_deltas["stabilizing"], "stabilizing tone"),
+        ),
+    )
+    country_delta_tuples = tuple(
+        (
+            country_id,
+            _to_units(delta, f"country delta {country_id}"),
+        )
+        for country_id, delta in sorted(
+            audit.country_deltas.items(), key=lambda item: item[0].encode("utf-8")
+        )
+    )
+    application_tuples: list[DiffusionApplicationTuple] = []
+    for raw in audit.applications:
+        application = DiffusionApplicationSource.model_validate(raw, strict=True)
+        application_payload = application.model_dump(mode="json")
+        application_hash = stable_hash(
+            {
+                "schema_version": "narrative-diffusion.v2",
+                "application": application_payload,
+            }
+        )
+        application_tuples.append(
+            (
+                application.proposal_id,
+                application.target_country,
+                application.receiver_country,
+                application.tone,
+                application.audience,
+                _to_units(application.base_delta, "application base delta"),
+                _to_units(
+                    application.propagation_multiplier,
+                    "application propagation multiplier",
+                ),
+                _to_units(
+                    application.alliance_multiplier, "application alliance multiplier"
+                ),
+                _to_units(
+                    application.effective_multiplier, "application effective multiplier"
+                ),
+                _to_units(application.applied_delta, "application applied delta"),
+                _to_units(application.cumulative_delta, "application cumulative delta"),
+                application_hash,
+            )
+        )
+    application_tuples.sort(
+        key=lambda item: (
+            item[0].encode("utf-8"),
+            item[1].encode("utf-8"),
+            item[2].encode("utf-8"),
+            item[3].encode("utf-8"),
+            item[4].encode("utf-8"),
+            item[11],
+        )
+    )
+    input_proposals = tuple(
+        (item.proposal_id, stable_hash(item.model_dump(mode="json")))
+        for item in ordered_proposals
+    )
+    payload = {
+        "schema_version": "narrative-diffusion.v2",
+        "run_id": run_id,
+        "session_id": session_id,
+        "tick": tick,
+        "attempted": bool(ordered_proposals),
+        "input_proposal_ids": tuple(item[0] for item in input_proposals),
+        "input_proposal_hashes": tuple(item[1] for item in input_proposals),
+        "core_audit": core,
+        "narrative_diffusion_audit_hash": audit.audit_hash,
+        "diffusion_request": request_payload,
+        "diffusion_request_hash": stable_hash(
+            {
+                "schema_version": "narrative-diffusion.v2",
+                "diffusion_request": request_payload,
+            }
+        ),
+        "before_result_hash": before_result_hash,
+        "after_result_hash": after_result_hash,
+        "tone_delta_tuples": tone_delta_tuples,
+        "country_delta_tuples": country_delta_tuples,
+        "application_tuples": tuple(application_tuples),
+        "application_count": len(application_tuples),
+    }
+    return NarrativeDiffusionSource.model_validate(
+        {**payload, "diffusion_evidence_hash": stable_hash(payload)}
+    )
+
+
 class HybridReplaySource(ClosedSource):
     """Complete provider-free hybrid-replay-record.v2 source."""
 
@@ -2194,6 +2429,48 @@ def build_hybrid_replay_source(
         "accepted_proposal_ids": accepted_proposal_ids,
     }
     return HybridReplaySource.model_validate(
+        {**payload, "replay_hash": stable_hash(payload)}
+    )
+
+
+def build_negotiation_replay_source(
+    *,
+    run_id: str,
+    session_id: str,
+    baseline_result_hash: str,
+    final_result_hash: str,
+    round_hashes: tuple[str, ...],
+    proposal_batch_hashes: tuple[str, ...],
+    admission_audit_hashes: tuple[str, ...],
+    ledger_hashes: tuple[str, ...],
+    eligibility_hashes: tuple[str, ...],
+    projection_consistency_hashes: tuple[str | None, ...],
+    modifier_bundle_hashes: tuple[str | None, ...],
+    diffusion_evidence_hashes: tuple[str, ...],
+    projection_audit_hashes: tuple[str | None, ...],
+    message_chain_head: str | None,
+) -> NegotiationReplaySource:
+    """Build the provider-free terminal NR source for negotiation."""
+
+    payload = {
+        "schema_version": "negotiation-replay.v2",
+        "run_id": run_id,
+        "session_id": session_id,
+        "baseline_result_hash": baseline_result_hash,
+        "final_result_hash": final_result_hash,
+        "round_hashes": round_hashes,
+        "proposal_batch_hashes": proposal_batch_hashes,
+        "admission_audit_hashes": admission_audit_hashes,
+        "ledger_hashes": ledger_hashes,
+        "eligibility_hashes": eligibility_hashes,
+        "projection_consistency_hashes": projection_consistency_hashes,
+        "modifier_bundle_hashes": modifier_bundle_hashes,
+        "diffusion_evidence_hashes": diffusion_evidence_hashes,
+        "projection_audit_hashes": projection_audit_hashes,
+        "message_chain_head": message_chain_head,
+        "provider_calls_required": 0,
+    }
+    return NegotiationReplaySource.model_validate(
         {**payload, "replay_hash": stable_hash(payload)}
     )
 
@@ -2352,8 +2629,7 @@ def extract_rr_claims(
         not isinstance(expected_previous_hash, str)
         or len(expected_previous_hash) != 64
         or any(
-            character not in "0123456789abcdef"
-            for character in expected_previous_hash
+            character not in "0123456789abcdef" for character in expected_previous_hash
         )
     ):
         raise ValueError("RR expected_previous_hash must be a lowercase SHA-256 digest")
@@ -2361,9 +2637,7 @@ def extract_rr_claims(
         raise ValueError("RR authoritative message boundary is inconsistent")
     if type(tick) is not int or tick < 1 or tick > 6:
         raise ValueError("RR authoritative tick must be a strict integer in 1..6")
-    if tick == 1 and (
-        expected_first_seq != 1 or expected_previous_hash is not None
-    ):
+    if tick == 1 and (expected_first_seq != 1 or expected_previous_hash is not None):
         raise ValueError("RR first tick must begin at the message-chain origin")
 
     source = NegotiationRoundSource.model_validate(dict(payload))
@@ -2430,8 +2704,7 @@ def extract_np_claims(
         source.run_id != run_id
         or source.session_id != session_id
         or source.tick != tick
-        or source.source_hashes
-        != (messages_hash, admission_audit_hash, ledger_hash)
+        or source.source_hashes != (messages_hash, admission_audit_hash, ledger_hash)
     ):
         raise ValueError("NP authoritative coordinate/source binding mismatch")
     return source.extract_claims()
@@ -2459,7 +2732,9 @@ def extract_consistency_claims(
         or source.agent_pack_hash != agent_pack_hash
         or source.constraint_context_hash != constraint_context_hash
     ):
-        raise ValueError("Consistency authoritative coordinate/context binding mismatch")
+        raise ValueError(
+            "Consistency authoritative coordinate/context binding mismatch"
+        )
     proposals = tuple(
         AgentActionProposal.model_validate(_restore_lists(dict(item)), strict=True)
         for item in complete_proposals
@@ -2522,7 +2797,11 @@ def extract_consistency_claims(
             },
             strict=True,
         )
-    if agent_pack_id is None or agent_pack_hash is None or constraint_context_hash is None:
+    if (
+        agent_pack_id is None
+        or agent_pack_hash is None
+        or constraint_context_hash is None
+    ):
         raise ValueError("admission/projection Consistency requires non-null context")
     if tick is None:
         raise ValueError("admission/projection Consistency requires a tick")

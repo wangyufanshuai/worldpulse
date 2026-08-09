@@ -23,6 +23,9 @@ from .proof_sources import (
     build_hybrid_projection_source,
     build_hybrid_replay_source,
     build_kernel_proposal_batch_source,
+    build_narrative_diffusion_source,
+    build_negotiation_projection_source,
+    build_negotiation_replay_source,
     extract_ar_claims,
     extract_cl_claims,
     extract_consistency_claims,
@@ -53,6 +56,14 @@ def replay_negotiation_from_storage(*args: Any, **kwargs: Any):
 
     return implementation(*args, **kwargs)
 
+
+def materialize_negotiation_proof(*args: Any, **kwargs: Any):
+    """Lazy export for provider-free V2 negotiation proof materialization."""
+    from .proof_materialization import materialize_negotiation_proof as implementation
+
+    return implementation(*args, **kwargs)
+
+
 __all__ = [
     "NegotiationReadApplicationPort",
     "NegotiationReadApplicationService",
@@ -77,6 +88,9 @@ __all__ = [
     "build_hybrid_projection_source",
     "build_hybrid_replay_source",
     "build_kernel_proposal_batch_source",
+    "build_narrative_diffusion_source",
+    "build_negotiation_projection_source",
+    "build_negotiation_replay_source",
     "extract_ar_claims",
     "extract_cl_claims",
     "extract_consistency_claims",
@@ -90,6 +104,7 @@ __all__ = [
     "extract_pb_claims",
     "extract_rr_claims",
     "mock_agent_batch_source_hash",
+    "materialize_negotiation_proof",
     "negotiation_read_service",
     "replay_negotiation_from_storage",
     "run_negotiation",
