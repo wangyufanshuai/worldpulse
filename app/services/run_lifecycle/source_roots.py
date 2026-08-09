@@ -15,6 +15,11 @@ from app.services.negotiation import (
     HybridModifierBundleSource,
     HybridReplaySource,
     KernelProposalBatchSource,
+    NarrativeDiffusionSource,
+    NegotiationEligibilitySource,
+    NegotiationProposalBatchSource,
+    NegotiationReplaySource,
+    NegotiationRoundSource,
     ProjectionAuditSource,
 )
 from app.services.simulation_kernel import (
@@ -305,6 +310,20 @@ def validate_mode_proof_step_root(
             engine_mode
             in {"controlled_agent", "hybrid", "hybrid_recorded"}
             and reference.proof_schema == "kp.agent-runtime.v1"
+        ) or (
+            engine_mode == "negotiation"
+            and reference.proof_schema
+            in {
+                "kp.negotiation-round.v1",
+                "kp.negotiation-proposal-batch.v1",
+                "kp.negotiation-admission-consistency.v1",
+                "kp.commitment-ledger.v1",
+                "kp.negotiation-eligibility.v1",
+                "kp.negotiation-projection-consistency.v1",
+                "kp.action-modifier-bundle.v1",
+                "kp.narrative-diffusion.v1",
+                "kp.projection-audit.v1",
+            }
         )
         if artifact.supersedes_artifact_id is not None and not supersedes_allowed:
             raise SourceRootError(
@@ -356,7 +375,70 @@ def validate_mode_proof_step_root(
         "kp.hybrid-replay.v1",
     ):
         raise SourceRootError("hybrid proof-step sequence is not canonical")
+    if engine_mode == "negotiation":
+        _validate_negotiation_proof_sequence(references, artifacts)
     return output
+
+
+def _validate_negotiation_proof_sequence(
+    references: tuple[ProofArtifactReference, ...],
+    artifacts: tuple[RootArtifact, ...],
+) -> None:
+    coordinates = tuple(
+        (reference.proof_schema, artifact.payload.get("tick"))
+        for reference, artifact in zip(references, artifacts, strict=True)
+    )
+    fixed = (
+        tuple(("kp.negotiation-round.v1", tick) for tick in range(1, 7))
+        + tuple(
+            ("kp.negotiation-proposal-batch.v1", tick)
+            for tick in range(1, 7)
+        )
+        + tuple(
+            ("kp.negotiation-admission-consistency.v1", tick)
+            for tick in range(1, 7)
+        )
+        + tuple(("kp.commitment-ledger.v1", tick) for tick in range(1, 7))
+        + tuple(
+            ("kp.negotiation-eligibility.v1", tick)
+            for tick in range(1, 7)
+        )
+    )
+    if coordinates[:30] != fixed:
+        raise SourceRootError("negotiation fixed proof prefix is not canonical")
+    cursor = 30
+    projection_ticks: list[int] = []
+    while (
+        cursor < len(coordinates)
+        and coordinates[cursor][0]
+        == "kp.negotiation-projection-consistency.v1"
+    ):
+        tick = coordinates[cursor][1]
+        if type(tick) is not int:
+            raise SourceRootError("negotiation PC tick is malformed")
+        projection_ticks.append(tick)
+        cursor += 1
+    if projection_ticks != sorted(set(projection_ticks)):
+        raise SourceRootError("negotiation PC ticks must be unique and ascending")
+    expected_tail = (
+        (("kp.final-consistency.v1", None),)
+        + tuple(
+            ("kp.action-modifier-bundle.v1", tick)
+            for tick in projection_ticks
+        )
+        + tuple(("kp.narrative-diffusion.v1", tick) for tick in range(1, 7))
+        + tuple(("kp.projection-audit.v1", tick) for tick in projection_ticks)
+        + (("kp.negotiation-replay.v1", None),)
+    )
+    if coordinates[cursor:] != expected_tail:
+        raise SourceRootError("negotiation conditional proof tail is not canonical")
+    session_ids = {
+        item.payload.get("session_id")
+        for item in artifacts
+        if "session_id" in item.payload
+    }
+    if len(session_ids) != 1 or None in session_ids:
+        raise SourceRootError("negotiation proof sources must share one session")
 
 
 def _proof_source_identity(
@@ -366,6 +448,16 @@ def _proof_source_identity(
     if proof_schema == "kp.agent-runtime.v1":
         source = AgentRuntimeResultSource.model_validate(payload)
         return "agent_runtime_audit", source.schema_version, source.runtime_hash
+    if proof_schema == "kp.negotiation-round.v1":
+        source = NegotiationRoundSource.model_validate(payload)
+        return "negotiation_round", source.schema_version, source.round_hash
+    if proof_schema == "kp.negotiation-proposal-batch.v1":
+        source = NegotiationProposalBatchSource.model_validate(payload)
+        return (
+            "negotiation_proposal_batch",
+            source.schema_version,
+            source.batch_hash,
+        )
     if proof_schema == "kp.proposal-batch.v1":
         source = KernelProposalBatchSource.model_validate(payload)
         return "agent_action_proposals", source.schema_version, source.batch_hash
@@ -373,6 +465,19 @@ def _proof_source_identity(
         source = ConsistencyAuditSource.model_validate(payload)
         if source.role != "final" or source.tick is not None:
             raise SourceRootError("FC root must select final/null-tick Consistency")
+        return "consistency_audit", source.schema_version, source.audit_hash
+    if proof_schema in {
+        "kp.negotiation-admission-consistency.v1",
+        "kp.negotiation-projection-consistency.v1",
+    }:
+        source = ConsistencyAuditSource.model_validate(payload)
+        expected_role = (
+            "admission"
+            if proof_schema == "kp.negotiation-admission-consistency.v1"
+            else "projection"
+        )
+        if source.role != expected_role or source.tick is None:
+            raise SourceRootError("negotiation Consistency root role/tick mismatch")
         return "consistency_audit", source.schema_version, source.audit_hash
     if proof_schema == "kp.action-modifier-bundle.v1":
         source = HybridModifierBundleSource.model_validate(payload)
@@ -384,14 +489,34 @@ def _proof_source_identity(
     if proof_schema == "kp.commitment-ledger.v1":
         source = CommitmentLedgerSource.model_validate(payload)
         return "commitment_ledger", source.schema_version, source.ledger_hash
+    if proof_schema == "kp.negotiation-eligibility.v1":
+        source = NegotiationEligibilitySource.model_validate(payload)
+        return (
+            "negotiation_eligibility",
+            source.schema_version,
+            source.eligibility_hash,
+        )
+    if proof_schema == "kp.narrative-diffusion.v1":
+        source = NarrativeDiffusionSource.model_validate(payload)
+        return (
+            "narrative_diffusion",
+            source.schema_version,
+            source.diffusion_evidence_hash,
+        )
     if proof_schema == "kp.projection-audit.v1":
         source = ProjectionAuditSource.model_validate(payload)
-        if source.schema_version != "agent-action-projection-audit.v2":
-            raise SourceRootError("non-negotiation PA root has the wrong schema")
-        return "agent_action_projection_audit", source.schema_version, source.audit_hash
+        artifact_type = (
+            "agent_action_projection_audit"
+            if source.schema_version == "agent-action-projection-audit.v2"
+            else "negotiation_projection_audit"
+        )
+        return artifact_type, source.schema_version, source.audit_hash
     if proof_schema == "kp.hybrid-replay.v1":
         source = HybridReplaySource.model_validate(payload)
         return "hybrid_replay_record", source.schema_version, source.replay_hash
+    if proof_schema == "kp.negotiation-replay.v1":
+        source = NegotiationReplaySource.model_validate(payload)
+        return "negotiation_replay", source.schema_version, source.replay_hash
     raise SourceRootError(f"proof-step schema is not enabled: {proof_schema}")
 
 
