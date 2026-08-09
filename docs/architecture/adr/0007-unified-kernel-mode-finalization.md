@@ -18,10 +18,10 @@ The current implementation has strong but separate chains:
   outside the Kernel port;
 - negotiation stores six rounds, message and state hash chains, Commitment
   Ledger snapshots, Action Adapter bundles and provider-free replay. The
-  admission Consistency report is stored, but the current second, projection
-  Consistency report is transient. Persisting and version-binding both reports,
-  and closing per-tick Projection Audit cardinality, are implementation work
-  required by this contract;
+  admission and projection Consistency reports, per-tick Projection Audits and
+  their version-bound proof sources are now persisted by the checkpoint
+  `072a363`; before that checkpoint the projection report was transient and the
+  negotiation branch was not closed under this contract;
 - `report_projection_manifest` proves only the final result hash and workspace
   compatibility. It does not state which governed authority path admitted that
   result.
