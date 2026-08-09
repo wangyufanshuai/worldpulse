@@ -50,6 +50,9 @@ contract tests, tamper tests and existing hybrid/negotiation suites.
 
 ## Slice 3D — Rule Pack and Evaluator adapters
 
+Status: completed by local checkpoint `1f253ad`; production activation,
+evaluation scheduling and benchmark curation remain on existing governed paths.
+
 Wrap the existing active Rule Pack resolver and Evaluation application behind
 `rule_pack` and `evaluator` ports. Rule Pack activation remains human-reviewed
 and calibration-gated. Evaluators may observe and score Artifacts but may not
@@ -84,7 +87,9 @@ must reject missing or mismatched plugin manifest/configuration hashes.
 
 Slice 3A was the pure contract checkpoint `5d7a51a`; Slice 3B is the first
 real built-in implementation checkpoint `cc1f7b9`; Slice 3C wraps the existing
-controlled Agent Runtime in `a28145a`. The next authorized code slice is 3D:
-one active Rule Pack and one real Evaluator adapter. Production world-data and
-Agent lifecycle routing must remain unchanged until their plugin lineage is
-adopted by explicit application ports and replay/organization gates.
+controlled Agent Runtime in `a28145a`; Slice 3D adds governed Rule Pack and
+Evaluator adapters in `1f253ad`. The next authorized code slice is 3E: Chinese
+War Room report renderer adaptation and end-to-end plugin lineage completion.
+Production world-data and Agent lifecycle routing must remain unchanged until
+their plugin lineage is adopted by explicit application ports and
+replay/organization gates.
