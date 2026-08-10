@@ -2,8 +2,9 @@
 
 Status: active; Slice 4A completed by local checkpoint
 `98811eff4f2d113cbfba9a35226583dd4e0620e8`; Slice 4B completed by local
-checkpoint `ad691ab7e0c529a77fac24278eed0e2b5add7d44`; Slice 4C is the next
-bounded implementation slice
+checkpoint `ad691ab7e0c529a77fac24278eed0e2b5add7d44`; Slice 4C completed by
+local checkpoint `c1740422b13bcf70efec358f615b6d697c019916`; Phase 4D remains gated by
+the real Historical Benchmark review
 
 This plan follows [ADR-0009](adr/0009-research-workspace-v2-guided-flow.md).
 It is a progressive extraction and projection program, not a frontend rewrite,
@@ -214,23 +215,38 @@ go through `EvidenceApplicationPort`; no Connector writes Evidence directly.
 
 ## Phase 4C — bounded Experiment Matrix read surface
 
-### What to implement
+Status: completed by local checkpoint
+`c1740422b13bcf70efec358f615b6d697c019916`.
+
+### Implemented boundary
 
 Copy LEAN's parameter-set identity separation into a WorldPulse view model,
 not an optimizer:
 
-- project a finite matrix from stored runs and existing governed Evaluation
-  members;
-- display `parameter_set_hash`, scenario revision/hash, role, run ID, status,
-  comparability and non-comparable reasons;
-- expose baseline/control/treated labels only when backed by stored lineage;
-- aggregate Run Diff metrics and uncertainty without recomputing numeric state;
-- add the missing typed frontend wrapper for the existing governed V10 project
-  experiment only if its route-level contract test is added first.
+- the typed frontend client uses the shared `api.js` transport and only the
+  existing governed V10 GET contracts;
+- the matrix projects the fixed seven-member population and displays at most
+  six canonically sorted rows; the hidden seventh member still participates in
+  every whole-batch gate;
+- `parameter_set_hash` is the stored `EvaluationMember.input_hash`. Hybrid and
+  negotiation members for seeds `11`, `29` and `47` must share the same hash or
+  the complete matrix fails closed;
+- a row can be comparable only when the batch is completed, safety passed,
+  `7/7` members completed, zero failed, the report hash is present, exactly
+  seven members are terminal and verified, and all required batch/member
+  lineage is present;
+- the loaded snapshot is bound to organization, project, approved Draft, Pack
+  and manifest context. Context drift removes old rows and metrics immediately;
+- queued/running batches use one terminal-aware polling timer. Terminal state,
+  error, context change and component disposal stop it, and same-context loads
+  share one in-flight request;
+- role remains unavailable unless the stored contract supplies it. The UI does
+  not infer baseline/control/treated, uncertainty or plugin lineage.
 
 Any new matrix creation or arbitrary row count requires a follow-up backend ADR.
-The initial UI cap is 2–6 displayed rows; it must not claim to replace the
-existing fixed seven-member evaluation matrix.
+The UI cap is six displayed rows and does not claim to replace or generalize
+the existing fixed seven-member evaluation matrix. Run Diff and uncertainty
+remain Phase 4D work and were not inferred from V10 metrics in this slice.
 
 ### Documentation references
 
@@ -258,6 +274,21 @@ existing fixed seven-member evaluation matrix.
 - Do not call the matrix an optimizer, forecast or prediction engine.
 - Do not expose internal `ExperimentBranch` as a public Project API.
 - Do not infer a control group from array order or latest-run position.
+
+### Completion evidence
+
+- frontend unit `18 files / 143 passed`, type check and production build
+  passed; Playwright `14 passed`;
+- Phase 4C backend set `20 passed, 2 skipped`; the complete backend suite
+  remained `703 passed, 5 skipped`;
+- Pilot/Benchmark contracts `26 passed`, V2 boundary verification reported
+  `legacy_internal_imports: 0`, and the release artifact scan passed across
+  `537` tracked files;
+- the five skips remain external gates: four require a live
+  `WORLDPULSE_TEST_POSTGRES_URL`, while one requires the human-curated 120-case
+  corpus and sealed label pack. They are not claimed as verification;
+- independent verification, anti-pattern and code-quality/security/concurrency
+  reviews approved the final slice with no P0-P3 finding.
 
 ## Phase 4D — Run Comparison, uncertainty and cited brief
 
@@ -338,7 +369,7 @@ Pause and ask before any of the following:
 4. A new V2 public non-deterministic creation path, separate service, queue or
    deployment model.
 
-The next execution slice is 4C only: expose the existing governed finite
-Evaluation/Run matrix as a bounded read surface. This status does not authorize
-a new API, migration, arbitrary matrix creation or expansion above the existing
-Phase 4C decision gates.
+Slice 4C is complete. Phase 4D must not start until a real `benchmark-reviewer`
+completes the Pilot decisions and the Historical Benchmark gates produce their
+reviewed downstream artifacts. A new API, migration, arbitrary matrix,
+expansion above six visible rows or `v2.0.0-rc1` remains unauthorized.

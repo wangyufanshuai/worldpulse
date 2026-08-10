@@ -2,7 +2,8 @@
 
 Status: accepted; Slice 4A completed by local checkpoint
 `98811eff4f2d113cbfba9a35226583dd4e0620e8`; Slice 4B completed by local
-checkpoint `ad691ab7e0c529a77fac24278eed0e2b5add7d44`; Phase 4 remains active
+checkpoint `ad691ab7e0c529a77fac24278eed0e2b5add7d44`; Slice 4C completed by
+local checkpoint `c1740422b13bcf70efec358f615b6d697c019916`; Phase 4 remains active
 
 ## Context
 
@@ -123,13 +124,13 @@ read-only or invokes the existing governed Scenario Draft Evaluation endpoint.
 It must not invent `/branches`, `/experiments`, `/checkpoints` or arbitrary
 matrix routes.
 
-When the backend matrix slice is authorized, each row must carry:
+The Slice 4C read model carries only stored or explicitly unavailable fields:
 
 ```text
 matrix_id
 scenario_revision_id
 parameter_set_hash
-role = baseline | control | treated
+role = unavailable (V10 does not store role)
 run_id
 status
 comparable
@@ -138,12 +139,20 @@ metrics_projection
 artifact/evidence/plugin lineage
 ```
 
-Rows are capped by an explicit budget and use canonical parameter ordering.
-The first release may show 2–6 user-visible rows, but the implementation must
-not imply that the current fixed seven-member V10 project evaluation is an
-arbitrary matrix. Control/treatment effects are always computed by the
-deterministic runtime and reported as deltas with uncertainty, never as a
-forecast.
+Rows use canonical parameter ordering and are capped at six visible entries,
+while all seven fixed V10 members remain mandatory for batch comparability.
+The stored `input_hash` is the parameter-set identity; identical canonical
+maps for seeds `11`, `29` and `47` must share it. Every row is non-comparable
+unless the whole batch is completed, safety passed, `7/7` complete, zero
+failed, report-bound and fully verified with required lineage. The surface does
+not imply that V10 is an arbitrary matrix and does not infer role,
+control/treatment effects, uncertainty or plugin lineage.
+
+Successfully loaded data is also bound to the complete organization, project,
+approved Draft, Pack and manifest context. Context drift invalidates the
+snapshot before rendering. Queued/running batches use one terminal-aware
+polling timer and same-context callers share one in-flight request; terminal
+state, error, context change and disposal stop further refresh or stale commit.
 
 ### 5. Defer Agent Interview to a separate observation artifact slice
 
@@ -156,7 +165,7 @@ cannot write WorldState, risk fields, supply-chain pressure, country capability
 or Commitment Ledger entries. Replay and retry read the stored artifact and
 must use zero Provider calls.
 
-## Allowed APIs and contracts for Slice 4A
+## Allowed APIs and contracts for Slices 4A-4C
 
 The following are real, currently implemented contracts:
 
@@ -202,12 +211,21 @@ Positive:
   requirements before they become UI affordances.
 - Existing War Room selectors, organization isolation and lifecycle semantics
   remain stable.
+- Slice 4C exposes the governed finite Evaluation matrix without a new route,
+  mutation, migration, Provider call or numeric authority.
 
 Costs:
 
 - A typed view model temporarily coexists with the permissive legacy JS API.
 - Some stage surfaces remain read-only until backend contracts are approved.
 - The first phase needs additional projection and route-level contract tests.
+
+Slice 4C verification recorded on 2026-08-10: frontend unit `143 passed`,
+Playwright `14 passed`, backend `703 passed, 5 skipped`, Pilot/Benchmark
+contracts `26 passed`, boundary verification reported zero legacy/forbidden
+imports and the release scan passed. The five skips remain explicit external
+PostgreSQL and real 120-case Benchmark gates. Phase 4D and any
+`v2.0.0-rc1` discussion remain blocked until the real reviewer workflow closes.
 
 ## Rollback
 
