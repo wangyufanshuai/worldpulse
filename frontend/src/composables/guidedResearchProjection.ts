@@ -1,5 +1,6 @@
 import type {
   GuidedGateVerdict,
+  GuidedExperimentMatrixProjection,
   GuidedGovernanceProjection,
   GuidedResearchProjection,
   GuidedStageStatus,
@@ -30,6 +31,7 @@ interface StageInput {
 export interface GuidedResearchProjectionContext {
   runDiff?: ResearchRunDiff | null
   governance?: GuidedGovernanceProjection | null
+  experimentMatrix?: GuidedExperimentMatrixProjection | null
 }
 
 function stage({
@@ -222,6 +224,7 @@ export function buildGuidedResearchProjection(
   const approvedDraft = governance?.scenario.approvedDraft || null
   const scenarioGovernanceReasons = governance?.scenario.gate_reasons || []
   const approvedScenarioReady = Boolean(approvedDraft && !scenarioGovernanceReasons.length)
+  const experimentMatrix = context.experimentMatrix || null
   let scenarioStatus: GuidedStageStatus
   let scenarioVerdict: GuidedGateVerdict
   let scenarioReasons: string[]
@@ -229,10 +232,36 @@ export function buildGuidedResearchProjection(
     scenarioStatus = 'blocked'
     scenarioVerdict = 'block'
     scenarioReasons = [dependencyReason(scenarioBlockedBy)]
+  } else if (approvedScenarioReady && experimentMatrix?.loading) {
+    scenarioStatus = 'in_progress'
+    scenarioVerdict = 'unavailable'
+    scenarioReasons = ['正在读取 V10 受治理的有限实验矩阵。']
+  } else if (approvedScenarioReady && experimentMatrix?.gate.verdict === 'pass') {
+    if (['queued', 'running', 'pausing', 'cancelling'].includes(experimentMatrix.execution_status)) {
+      scenarioStatus = 'in_progress'
+      scenarioVerdict = 'pass'
+      scenarioReasons = []
+    } else if (experimentMatrix.execution_status === 'completed') {
+      if (experimentMatrix.rows.some(row => row.comparable)) {
+        scenarioStatus = 'complete'
+        scenarioVerdict = 'pass'
+        scenarioReasons = []
+      } else {
+        scenarioStatus = 'blocked'
+        scenarioVerdict = 'unavailable'
+        scenarioReasons = ['V10 批次已完成，但当前可见行均缺少可比较结果 lineage；请查看行级原因。']
+      }
+    } else {
+      scenarioStatus = 'blocked'
+      scenarioVerdict = 'unavailable'
+      scenarioReasons = [`V10 批次状态 ${experimentMatrix.execution_status || 'unknown'} 不提供可比较结果。`]
+    }
   } else if (approvedScenarioReady) {
-    scenarioStatus = 'complete'
-    scenarioVerdict = 'pass'
-    scenarioReasons = []
+    scenarioStatus = 'blocked'
+    scenarioVerdict = experimentMatrix?.gate.verdict || 'unavailable'
+    scenarioReasons = experimentMatrix?.gate.reasons.length
+      ? [...experimentMatrix.gate.reasons]
+      : ['尚未加载真实 V10 project_experiment 有限矩阵。']
   } else if (governanceLoaded) {
     scenarioStatus = 'ready'
     scenarioVerdict = 'unavailable'
@@ -253,7 +282,7 @@ export function buildGuidedResearchProjection(
     verdict: scenarioVerdict,
     dependsOn: scenarioDependencies,
     reasons: scenarioReasons,
-    sourceContracts: ['ScenarioCandidate', 'ScenarioDraft'],
+    sourceContracts: ['ScenarioCandidate', 'ScenarioDraft', ...(experimentMatrix ? experimentMatrix.source_contracts : [])],
     lineage: approvedScenarioReady && approvedDraft ? {
       scenario_draft_id: approvedDraft.draft_id,
       scenario_draft_hash: approvedDraft.draft_hash,
@@ -261,6 +290,10 @@ export function buildGuidedResearchProjection(
       scenario_evidence_pack_hash: approvedDraft.evidence_pack_hash || '',
       scenario_parent_draft_id: approvedDraft.parent_draft_id || '',
       scenario_version: String(approvedDraft.version),
+      ...(experimentMatrix?.matrix_id ? {
+        experiment_matrix_id: experimentMatrix.matrix_id,
+        experiment_visible_rows: String(experimentMatrix.rows.length),
+      } : {}),
     } : {},
   }))
 

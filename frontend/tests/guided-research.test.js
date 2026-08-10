@@ -135,6 +135,41 @@ describe('Guided Research projection', () => {
     expect(scenario.unavailable_reasons[0]).toContain('4A 尚无真实场景治理投影')
   })
 
+  it('completes the scenario-matrix stage only from an approved draft plus a real V10 matrix projection', () => {
+    const approvedDraft = {
+      draft_id: 'draft-approved', draft_hash: 'd'.repeat(64), evidence_pack_id: 'pack-1',
+      evidence_pack_hash: 'p'.repeat(64), parent_draft_id: null, version: 1,
+    }
+    const governance = {
+      evidence: { summary: {
+        integrity_status: 'verified', cutoff_safe: true, snapshot_count: 1, claim_count: 1,
+      }, gate_reasons: [] },
+      scenario: { approvedDraft, gate_reasons: [] },
+    }
+    const baseMatrix = {
+      loading: false, matrix_id: 'eval-1', rows: [{ row_id: 'member-1', comparable: true }],
+      source_contracts: ['GET /api/v10/evaluations/{batch_id}/members → EvaluationMember[]'],
+      gate: { verdict: 'pass', reasons: [] }, execution_status: 'queued',
+    }
+    const detail = projectDetail()
+
+    const missing = stageByKey(buildGuidedResearchProjection(detail, { governance }), 'scenario-matrix')
+    expect(missing.status).toBe('blocked')
+    expect(missing.unavailable_reasons[0]).toContain('V10 project_experiment')
+
+    const running = stageByKey(buildGuidedResearchProjection(detail, {
+      governance, experimentMatrix: baseMatrix,
+    }), 'scenario-matrix')
+    expect(running.status).toBe('in_progress')
+    expect(running.gate.verdict).toBe('pass')
+    expect(running.lineage.experiment_matrix_id).toBe('eval-1')
+
+    const completed = stageByKey(buildGuidedResearchProjection(detail, {
+      governance, experimentMatrix: { ...baseMatrix, execution_status: 'completed' },
+    }), 'scenario-matrix')
+    expect(completed.status).toBe('complete')
+  })
+
   it('uses in_progress only for an actually running run and blocks dependent stages', () => {
     const projection = buildGuidedResearchProjection(projectDetail({
       runStatus: 'running',

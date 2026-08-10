@@ -193,6 +193,7 @@ export interface GuidedResearchHostModel {
   detail: ProjectDetail
   projection: GuidedResearchProjection
   governance: GuidedGovernanceProjection
+  experimentMatrix: GuidedExperimentMatrixProjection
   statusText: string
   currentModeText: string
   runMode: string
@@ -427,6 +428,139 @@ export interface ResearchGovernanceClient {
     payload: ScenarioDraftReviewRequest,
   ): Promise<ScenarioDraft>
   cloneScenarioDraft(organizationId: string, projectId: string, draftId: string): Promise<ScenarioDraft>
+}
+
+export type EvaluationMode = 'deterministic' | 'hybrid' | 'negotiation'
+
+export interface EvaluationBatch {
+  batch_id: string
+  organization_id: string
+  project_id?: string | null
+  scenario_draft_id?: string | null
+  scenario_draft_hash?: string | null
+  evidence_pack_hash?: string | null
+  suite_id: string
+  suite_hash: string
+  rule_pack_id?: string | null
+  rule_pack_hash?: string | null
+  runtime_profile: Record<string, unknown>
+  runtime_profile_hash: string
+  provider_mode: string
+  source_type: string
+  status: string
+  parent_batch_id?: string | null
+  total_members: number
+  completed_members: number
+  failed_members: number
+  safety_status: string
+  quality_status: string
+  metrics: Record<string, unknown>
+  report_hash?: string | null
+  created_by_user_id?: string | null
+  created_at: string
+  updated_at: string
+  completed_at?: string | null
+  evaluation_track: string
+  gate_manifest_hash?: string | null
+  root_batch_id?: string | null
+}
+
+export interface EvaluationMember {
+  member_id: string
+  batch_id: string
+  case_id: string
+  engine_mode: EvaluationMode
+  seed: number
+  run_id?: string | null
+  status: string
+  baseline_result_hash?: string | null
+  result_hash?: string | null
+  metrics: Record<string, unknown>
+  artifact_refs: string[]
+  error_code?: string | null
+  error_message?: string | null
+  created_at: string
+  updated_at: string
+  completed_at?: string | null
+  input_hash?: string | null
+  expected_baseline_hash?: string | null
+  verification_status: string
+  verification_hash?: string | null
+}
+
+export interface EvaluationMetric {
+  metric_id: string
+  batch_id: string
+  member_id?: string | null
+  scope: string
+  metric_key: string
+  value: Record<string, unknown> | number | string
+  passed?: boolean | null
+  metric_hash: string
+  created_at: string
+}
+
+export interface ResearchExperimentClient {
+  listEvaluationBatches(organizationId: string): Promise<EvaluationBatch[]>
+  getEvaluation(batchId: string): Promise<EvaluationBatch>
+  getEvaluationMembers(batchId: string): Promise<EvaluationMember[]>
+  getEvaluationMetrics(batchId: string): Promise<EvaluationMetric[]>
+}
+
+export interface GuidedExperimentMatrixRow {
+  matrix_id: string
+  row_id: string
+  scenario_revision_id: string
+  scenario_revision_hash: string
+  parameter_set_hash: string
+  role: null
+  role_unavailable_reason: string
+  engine_mode: EvaluationMode
+  seed: number
+  run_id: string
+  status: string
+  comparable: boolean
+  non_comparable_reasons: string[]
+  metrics_projection: Record<string, unknown>
+  evaluation_metrics: EvaluationMetric[]
+  uncertainty_unavailable_reason: string
+  plugin_lineage_unavailable_reason: string
+  lineage: {
+    evidence_pack_hash: string
+    suite_id: string
+    suite_hash: string
+    rule_pack_id: string
+    rule_pack_hash: string
+    runtime_profile_hash: string
+    gate_manifest_hash: string
+    root_batch_id: string
+    report_hash: string
+    baseline_result_hash: string
+    expected_baseline_hash: string
+    result_hash: string
+    verification_hash: string
+    artifact_refs: string[]
+  }
+}
+
+export interface GuidedExperimentMatrixProjection {
+  schema_version: 'guided-experiment-matrix.v1'
+  loading: boolean
+  error: string
+  matrix_id: string
+  project_id: string
+  execution_status: string
+  fixed_population: number
+  visible_row_cap: 6
+  total_rows: number
+  hidden_row_count: number
+  rows: GuidedExperimentMatrixRow[]
+  batch_metrics: EvaluationMetric[]
+  gate: {
+    verdict: GuidedGateVerdict
+    reasons: string[]
+  }
+  source_contracts: string[]
 }
 
 export interface GuidedGovernancePermission {

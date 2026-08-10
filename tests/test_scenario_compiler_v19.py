@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 import pytest
 from pypdf import PdfWriter
 
-from app.core.organization_models import OrganizationMemberAddRequest
+from app.core.organization_models import OrganizationCreateRequest, OrganizationMemberAddRequest
 from app.core.scenario_compiler_models import ScenarioCandidateDecisionRequest, ScenarioDraftReviewRequest, ScenarioDraftRunRequest
 from app.main import app
 from app.services import organizations, project_store
@@ -118,6 +118,95 @@ def test_markdown_to_approved_scenario_and_negotiation_run(monkeypatch, tmp_path
         ORG, project_id, draft["draft_id"], ScenarioDraftReviewRequest(decision="approve", comment="Evidence and assumptions verified"), reviewer,
     )
     assert approved.status == "approved"
+
+    # Phase 4C reads the existing governed V10 project experiment contract.
+    # Lock the route and DTO lineage before the frontend projects it; this is
+    # still the fixed seven-member V10 matrix, not an arbitrary optimizer API.
+    experiment_response = client.post(
+        f"/api/v10/organizations/{ORG}/projects/{project_id}/scenario-drafts/{draft['draft_id']}/evaluations",
+        json={"provider": "mock"},
+    )
+    assert experiment_response.status_code == 200, experiment_response.text
+    experiment = experiment_response.json()
+    assert experiment["evaluation_track"] == "project_experiment"
+    assert experiment["project_id"] == project_id
+    assert experiment["scenario_draft_id"] == draft["draft_id"]
+    assert experiment["scenario_draft_hash"] == approved.draft_hash
+    assert experiment["evidence_pack_hash"] == approved.evidence_pack_hash
+    assert experiment["total_members"] == 7
+
+    listed_response = client.get(f"/api/v10/organizations/{ORG}/evaluations")
+    assert listed_response.status_code == 200, listed_response.text
+    assert any(item["batch_id"] == experiment["batch_id"] for item in listed_response.json())
+
+    detail_response = client.get(f"/api/v10/evaluations/{experiment['batch_id']}")
+    members_response = client.get(f"/api/v10/evaluations/{experiment['batch_id']}/members")
+    metrics_response = client.get(f"/api/v10/evaluations/{experiment['batch_id']}/metrics")
+    assert detail_response.status_code == 200, detail_response.text
+    assert members_response.status_code == 200, members_response.text
+    assert metrics_response.status_code == 200, metrics_response.text
+    members = members_response.json()
+    assert len(members) == 7
+    assert all(item["input_hash"] for item in members)
+    assert all(item["run_id"] is None and item["status"] == "pending" for item in members)
+    hashes_by_seed: dict[int, set[str]] = {}
+    for member in members:
+        hashes_by_seed.setdefault(member["seed"], set()).add(member["input_hash"])
+    # Canonically identical scenario parameter maps retain the same stored
+    # identity across engine modes. The UI aliases this value; it never hashes.
+    assert set(hashes_by_seed) == {1, 11, 29, 47}
+    assert all(len(hashes_by_seed[seed]) == 1 for seed in (11, 29, 47))
+    assert metrics_response.json() == []
+
+    wrong_scope = client.get("/api/v10/organizations/org_other/evaluations")
+    assert wrong_scope.status_code == 404
+    isolated = organizations.create_organization(
+        OrganizationCreateRequest(name="V10 Isolated", slug="v10-isolated"), owner,
+    )
+    isolated_headers = {"X-WorldPulse-Org": isolated.organization_id}
+    for suffix in ("", "/members", "/metrics"):
+        isolated_read = client.get(
+            f"/api/v10/evaluations/{experiment['batch_id']}{suffix}",
+            headers=isolated_headers,
+        )
+        assert isolated_read.status_code == 404
+        assert "Unknown evaluation batch" in isolated_read.text
+
+    cancelled = client.post(f"/api/v10/evaluations/{experiment['batch_id']}/cancel")
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "cancelled"
+    retried_response = client.post(f"/api/v10/evaluations/{experiment['batch_id']}/retry")
+    assert retried_response.status_code == 200, retried_response.text
+    retried = retried_response.json()
+    assert retried["batch_id"] != experiment["batch_id"]
+    assert retried["parent_batch_id"] == experiment["batch_id"]
+    assert retried["root_batch_id"] == experiment["batch_id"]
+    for key in (
+        "organization_id", "project_id", "scenario_draft_id", "scenario_draft_hash",
+        "evidence_pack_hash", "suite_id", "suite_hash", "rule_pack_id", "rule_pack_hash",
+        "runtime_profile_hash", "evaluation_track", "gate_manifest_hash",
+    ):
+        assert retried[key] == experiment[key]
+    retried_members_response = client.get(f"/api/v10/evaluations/{retried['batch_id']}/members")
+    assert retried_members_response.status_code == 200
+    retried_members = retried_members_response.json()
+    assert len(retried_members) == 7
+    assert {item["member_id"] for item in retried_members}.isdisjoint(
+        {item["member_id"] for item in members}
+    )
+    assert sorted(item["input_hash"] for item in retried_members) == sorted(
+        item["input_hash"] for item in members
+    )
+    assert all(item["batch_id"] == retried["batch_id"] for item in retried_members)
+    assert all(
+        item["status"] == "pending"
+        and item["run_id"] is None
+        and item["result_hash"] is None
+        and item["verification_status"] == "pending"
+        and item["verification_hash"] is None
+        for item in retried_members
+    )
+
     cloned = service.clone_draft(ORG, project_id, draft["draft_id"], owner)
     assert cloned.parent_draft_id == draft["draft_id"]
     assert cloned.draft_hash != approved.draft_hash

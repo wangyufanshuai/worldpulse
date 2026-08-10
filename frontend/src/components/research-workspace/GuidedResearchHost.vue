@@ -198,6 +198,8 @@
       </div>
     </section>
 
+    <GuidedExperimentMatrix :matrix="model.experimentMatrix" />
+
     <section class="split-lab guided-world-model" data-testid="guided-world-model">
       <div class="graph-panel">
         <div class="section-title">
@@ -360,6 +362,7 @@ import {
   ShieldAlert,
   X,
 } from 'lucide-vue-next'
+import GuidedExperimentMatrix from './GuidedExperimentMatrix.vue'
 import type { GuidedResearchHostModel, GuidedStageStatus, EvidenceIntegrityStatus, EvidencePackVerificationStatus, ScenarioDraftStatus, GuidedGovernanceStep } from '../../contracts/researchWorkspace'
 
 const props = defineProps({

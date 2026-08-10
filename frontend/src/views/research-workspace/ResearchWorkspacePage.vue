@@ -567,6 +567,7 @@ import { useWorkspaceGovernanceController } from '../../composables/useWorkspace
 import { useWorkspaceRunController } from '../../composables/useWorkspaceRunController'
 import { useWorkspaceShell } from '../../composables/useWorkspaceShell'
 import { buildGuidedResearchProjection, citationKindLabel } from '../../composables/guidedResearchProjection'
+import { useGuidedExperimentMatrix } from '../../composables/useGuidedExperimentMatrix'
 import { useGuidedResearchGovernance } from '../../composables/useGuidedResearchGovernance'
 import { decisionLabels, eventFilterOptions, graphTypeOptions, localizedText, prompts } from './warRoomWorkspaceConfig'
 
@@ -888,6 +889,13 @@ const {
   downloadUiState,
   resetReplayArtifacts,
 } = useWarRoomArtifacts({ detail, isWarRoom, runVersions, selectedRunId, warRoomData, dataJsonPreview, showToast })
+const guidedExperiment = useGuidedExperimentMatrix(
+  () => props.projectId,
+  guidedGovernance.organization,
+  guidedGovernance.approvedDraft,
+  guidedGovernance.approvedPackVerification,
+  () => guidedGovernance.projection.value.scenario.gate_reasons,
+)
 const activeCountryCodes = computed(() => {
   if (selectedMapEntity.value?.type === 'country') return [selectedMapEntity.value.id]
   return activeTimelineEvent.value?.relatedCountries?.length ? activeTimelineEvent.value.relatedCountries : [topRiskCountry.value?.country_code || 'CHN']
@@ -1060,6 +1068,7 @@ const statusText = computed(() => ({ created: '已创建', completed: '已完成
 const currentModeText = computed(() => isWarRoom.value ? 'War Room' : (detail.value?.latest_run?.data_snapshot?.run_mode === 'full' ? '完整真实数据' : '快速研究'))
 const guidedProjection = computed(() => buildGuidedResearchProjection(detail.value, {
   governance: isWarRoom.value ? null : guidedGovernance.projection.value,
+  experimentMatrix: isWarRoom.value ? null : guidedExperiment.projection.value,
 }))
 const warRoomSteps = computed(() => [
   { index: '01', key: 'scenario', title: '场景设定', desc: '锁定场景、持续天数和传播参数', done: !!detail.value?.project },
@@ -1185,7 +1194,10 @@ function submitGuidedDraft(draftId) {
   guidedGovernance.submitDraft(draftId).then(() => showToast('Scenario Draft 已提交审阅')).catch(() => {})
 }
 function reviewGuidedDraft({ draftId, decision }) {
-  guidedGovernance.reviewDraft(draftId, { decision }).then(() => showToast(decision === 'approve' ? 'Scenario Draft 已批准' : '已请求修订')).catch(() => {})
+  guidedGovernance.reviewDraft(draftId, { decision }).then(async () => {
+    await guidedExperiment.load().catch(() => null)
+    showToast(decision === 'approve' ? 'Scenario Draft 已批准' : '已请求修订')
+  }).catch(() => {})
 }
 function cloneGuidedDraft(draftId) {
   guidedGovernance.cloneDraft(draftId).then(() => showToast('已通过 clone 创建新修订')).catch(() => {})
@@ -1194,6 +1206,7 @@ const guidedHostModel = computed(() => ({
   detail: detail.value,
   projection: guidedProjection.value,
   governance: guidedGovernance.projection.value,
+  experimentMatrix: guidedExperiment.projection.value,
   statusText: statusText.value,
   currentModeText: currentModeText.value,
   runMode: runMode.value,
@@ -1243,7 +1256,10 @@ const { load, loadWorkspaceState, loadPresets, run, send } = useWorkspaceRunCont
   activeSection, negotiation, loadEvaluationCenter, renderGraph, auth, running,
   runLifecycle, lifecycleEngineMode, scenarioPayload, runMode,
   resetReplayArtifacts, showToast, chatting, message,
-  loadGuidedGovernance: () => guidedGovernance.load().catch(() => null),
+  loadGuidedGovernance: async () => {
+    await guidedGovernance.load().catch(() => null)
+    await guidedExperiment.load().catch(() => null)
+  },
 })
 reloadWorkspace = load
 
@@ -1267,6 +1283,7 @@ watch(focusedGraphEdgeId, () => {
 watch(() => scenarioDraft.scenario_key, applySelectedScenarioDefaults)
 onMounted(load)
 onUnmounted(() => {
+  guidedExperiment.dispose()
   runLifecycle.stop()
   stopGraphs()
   disposeShell()
